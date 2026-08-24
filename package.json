@@ -1,0 +1,60 @@
+{
+  "name": "pesk",
+  "version": "0.1.0",
+  "description": "Animated Windows desktop pet.",
+  "main": "build/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-renderer-assets.js",
+    "test": "npm run build && jest --runInBand",
+    "start": "npm run build && electron .",
+    "dev": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "jest": {
+    "transform": {
+      "^.+\\.tsx?$": [
+        "@swc/jest",
+        {
+          "jsc": {
+            "parser": {
+              "syntax": "typescript"
+            }
+          },
+          "module": {
+            "type": "commonjs"
+          }
+        }
+      ]
+    },
+    "testMatch": [
+      "**/tests/**/*.test.ts"
+    ]
+  },
+  "devDependencies": {
+    "@swc/core": "^1.16.1",
+    "@swc/jest": "^0.2.39",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.2.0",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "jest": "^30.4.2",
+    "prettier": "^3.9.6",
+    "typescript": "^7.0.2"
+  },
+  "build": {
+    "appId": "com.pesk.app",
+    "productName": "Pesk",
+    "files": [
+      "build/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/pesk.ico",
+      "artifactName": "Pesk-Setup-${version}.${ext}"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pesk Chat</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body class="chat-only">
+  <main id="chat" aria-label="Codex chat">
+    <section id="codex-chat" aria-label="Codex chat">
+      <div id="codex-chat-header">
+        <select id="codex-session-select" aria-label="Codex session">
+          <option value="">No active session</option>
+        </select>
+      </div>
+      <div id="codex-error" role="alert" hidden></div>
+      <div id="codex-history" aria-live="polite"></div>
+      <form id="codex-chat-form">
+        <textarea id="codex-chat-input" rows="3" placeholder="Message Codex..." aria-label="Message Codex"></textarea>
+      </form>
+    </section>
+  </main>
+  <script type="module" src="chat-renderer.js"></script>
+</body>
+
+</html>

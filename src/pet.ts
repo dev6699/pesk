@@ -1,0 +1,426 @@
+import { app, BrowserWindow, screen } from "electron";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
+import { getConfigDirectory, loadRawConfig } from "./config.js";
+import type { PeskSettings } from "./config.js";
+
+export interface AnimationFrames {
+  name: string;
+  frames: string[];
+  fps: number;
+  speed: number;
+  size: number;
+}
+
+interface PetWindowOptions {
+  getSettings: () => PeskSettings;
+  saveSettings: () => void;
+  sendSettings: () => void;
+  refreshTrayMenu: () => void;
+  positionChat: () => void;
+  showChat: () => void;
+  hideChat: () => void;
+  hideMenu: () => void;
+  focusChat: () => void;
+}
+
+/** Owns the animated pet window, movement state, and animation selection. */
+export class PetWindowController {
+  private readonly animationFrames: AnimationFrames[];
+  private petWindow: BrowserWindow | null = null;
+  private dragTimer: NodeJS.Timeout | null = null;
+  private dragTick = 0;
+  private wanderDirection = 1;
+  private wanderVerticalDirection = 1;
+
+  constructor(private readonly options: PetWindowOptions) {
+    this.animationFrames = loadAnimations();
+  }
+
+  /** Returns the current pet window, if it has been created. */
+  get window(): BrowserWindow | null {
+    return this.petWindow;
+  }
+
+  /** Returns the configured animation frame sets. */
+  getAnimations(): AnimationFrames[] {
+    return this.animationFrames;
+  }
+
+  /** Returns the configured native pet size used for window scaling. */
+  getSize(): number {
+    return this.animationFrames[0]?.size ?? 180;
+  }
+
+  /** Persists a configured animation selection. */
+  selectAnimation(name: string): void {
+    const animation = this.animationFrames.find((item) => item.name === name);
+    if (!animation) return;
+    const settings = this.options.getSettings();
+    settings.animation = animation.name;
+    this.options.saveSettings();
+    this.options.sendSettings();
+  }
+
+  /** Persists whether animation selection is fixed or shuffled. */
+  setAnimationMode(mode: PeskSettings["animationMode"]): void {
+    const settings = this.options.getSettings();
+    settings.animationMode = mode;
+    this.options.saveSettings();
+    this.options.sendSettings();
+    this.options.refreshTrayMenu();
+  }
+
+  /** Creates the transparent pet window and wires its lifecycle events. */
+  create(): void {
+    const settings = this.options.getSettings();
+    const position = this.initialPosition();
+    const size = Math.round(this.getSize() * settings.scale);
+    this.petWindow = new BrowserWindow({
+      type: "toolbar",
+      x: position.x,
+      y: position.y,
+      width: size,
+      height: size,
+      frame: false,
+      thickFrame: false,
+      roundedCorners: false,
+      transparent: true,
+      backgroundColor: "#00000000",
+      resizable: false,
+      movable: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      show: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: path.join(__dirname, "preload.js"),
+      },
+    });
+
+    this.petWindow.setMenu(null);
+    this.petWindow.setSkipTaskbar(true);
+    this.petWindow.setAlwaysOnTop(true, "floating");
+    this.petWindow.loadFile(path.join(__dirname, "renderer", "pet.html"));
+    this.petWindow.once("ready-to-show", () => {
+      if (settings.visible) this.petWindow?.showInactive();
+      if (process.env.DESKTOP_PET_DEVTOOLS === "1") {
+        this.petWindow?.webContents.openDevTools({ mode: "detach" });
+      }
+    });
+    this.petWindow.on("moved", () => {
+      this.saveWindowPosition();
+      this.options.positionChat();
+    });
+    this.petWindow.on("focus", () =>
+      this.petWindow?.webContents.send("pet-focus-changed", true),
+    );
+    this.petWindow.on("blur", () =>
+      this.petWindow?.webContents.send("pet-focus-changed", false),
+    );
+    this.petWindow.on("closed", () => {
+      this.petWindow = null;
+    });
+  }
+
+  /** Toggles pet and chat visibility while preserving chat preference. */
+  toggleVisibility(): void {
+    const settings = this.options.getSettings();
+    settings.visible = !settings.visible;
+    if (settings.visible) this.petWindow?.show();
+    else this.petWindow?.hide();
+    if (settings.visible) this.options.showChat();
+    else this.options.hideChat();
+    this.options.saveSettings();
+    this.options.refreshTrayMenu();
+    this.options.sendSettings();
+  }
+
+  /** Toggles animation pause state. */
+  togglePaused(): void {
+    const settings = this.options.getSettings();
+    settings.paused = !settings.paused;
+    this.options.sendSettings();
+    this.options.refreshTrayMenu();
+    this.options.saveSettings();
+  }
+
+  /** Toggles wandering and unlocks the pet when wandering resumes. */
+  toggleWandering(): void {
+    const settings = this.options.getSettings();
+    settings.wandering = !settings.wandering;
+    if (settings.wandering) settings.locked = false;
+    this.options.sendSettings();
+    this.options.refreshTrayMenu();
+    this.options.saveSettings();
+  }
+
+  /** Toggles the pet position lock. */
+  toggleLocked(): void {
+    const settings = this.options.getSettings();
+    settings.locked = !settings.locked;
+    this.options.sendSettings();
+    this.options.refreshTrayMenu();
+    this.options.saveSettings();
+  }
+
+  /** Shows the pet and restores chat when its preference allows it. */
+  show(): void {
+    const settings = this.options.getSettings();
+    settings.visible = true;
+    this.petWindow?.show();
+    this.options.showChat();
+    this.options.saveSettings();
+    this.options.refreshTrayMenu();
+  }
+
+  /** Brings the pet and Codex chat to the foreground for keyboard input. */
+  focus(): void {
+    if (!this.petWindow || this.petWindow.isFocused()) return;
+    const settings = this.options.getSettings();
+    settings.visible = true;
+    this.options.hideMenu();
+    this.petWindow.setFocusable(true);
+    if (this.petWindow.isVisible()) this.petWindow.hide();
+    this.petWindow.show();
+    this.petWindow.setSkipTaskbar(true);
+    this.petWindow.moveTop();
+    this.petWindow.webContents.send("codex-chat-visibility", true);
+    this.petWindow.focus();
+    this.petWindow.webContents.focus();
+    this.petWindow.webContents.send("codex-input-focus");
+    this.options.focusChat();
+  }
+
+  /** Moves the pet by renderer-provided deltas within its work area. */
+  move(dx: number, dy: number): void {
+    const settings = this.options.getSettings();
+    if (
+      !this.petWindow ||
+      settings.locked ||
+      !Number.isFinite(dx) ||
+      !Number.isFinite(dy)
+    )
+      return;
+
+    const [x, y] = this.petWindow.getPosition();
+    const area = screen.getDisplayMatching(this.petWindow.getBounds()).workArea;
+    const bounds = this.petWindow.getBounds();
+    const minX = area.x;
+    const maxX = area.x + area.width - bounds.width;
+    const minY = area.y;
+    const maxY = area.y + area.height - bounds.height;
+    let nextX = x + Math.abs(dx) * this.wanderDirection;
+    let nextY = y + Math.abs(dy) * this.wanderVerticalDirection;
+    if (nextX >= maxX) {
+      nextX = maxX;
+      this.wanderDirection = -1;
+    } else if (nextX <= minX) {
+      nextX = minX;
+      this.wanderDirection = 1;
+    }
+    if (nextY >= maxY) {
+      nextY = maxY;
+      this.wanderVerticalDirection = -1;
+    } else if (nextY <= minY) {
+      nextY = minY;
+      this.wanderVerticalDirection = 1;
+    }
+    this.petWindow.setPosition(Math.round(nextX), Math.round(nextY), false);
+    this.options.positionChat();
+  }
+
+  /** Starts cursor tracking for native-feeling pet dragging. */
+  startDragging(): void {
+    const settings = this.options.getSettings();
+    if (!this.petWindow || settings.locked || this.dragTimer) return;
+    settings.wandering = false;
+    this.options.saveSettings();
+    this.options.refreshTrayMenu();
+    this.options.sendSettings();
+
+    const [windowX, windowY] = this.petWindow.getPosition();
+    const cursor = screen.getCursorScreenPoint();
+    const offsetX = cursor.x - windowX;
+    const offsetY = cursor.y - windowY;
+    this.dragTimer = setInterval(() => {
+      if (!this.petWindow || settings.locked) return this.stopDragging();
+      const current = screen.getCursorScreenPoint();
+      this.petWindow.setPosition(
+        Math.round(current.x - offsetX),
+        Math.round(current.y - offsetY),
+        false,
+      );
+      this.options.positionChat();
+      this.dragTick += 1;
+    }, 16);
+  }
+
+  /** Stops cursor tracking and persists the final pet position. */
+  stopDragging(): void {
+    if (this.dragTimer) clearInterval(this.dragTimer);
+    this.dragTimer = null;
+    this.dragTick = 0;
+    this.saveWindowPosition();
+  }
+
+  /** Resizes the pet around its current center within display limits. */
+  resize(scale: number): void {
+    if (!this.petWindow || !Number.isFinite(scale)) return;
+    const settings = this.options.getSettings();
+    const display = screen.getDisplayMatching(this.petWindow.getBounds());
+    const nextScale = Math.min(this.maxScale(display), Math.max(0.25, scale));
+    const [oldWidth, oldHeight] = this.petWindow.getSize();
+    const [oldX, oldY] = this.petWindow.getPosition();
+    const newSize = Math.round(this.getSize() * nextScale);
+    const centerX = oldX + oldWidth / 2;
+    const centerY = oldY + oldHeight / 2;
+    settings.scale = nextScale;
+    this.petWindow.setResizable(true);
+    this.petWindow.setSize(newSize, newSize, false);
+    this.petWindow.setResizable(false);
+    this.petWindow.setPosition(
+      Math.round(centerX - newSize / 2),
+      Math.round(centerY - newSize / 2),
+      false,
+    );
+    this.options.positionChat();
+    this.options.saveSettings();
+    this.options.sendSettings();
+  }
+
+  /** Stops movement and closes the pet window during shutdown. */
+  close(): void {
+    this.stopDragging();
+    this.petWindow?.close();
+  }
+
+  private saveWindowPosition(): void {
+    if (!this.petWindow) return;
+    const settings = this.options.getSettings();
+    const [x, y] = this.petWindow.getPosition();
+    const display = screen.getDisplayMatching(this.petWindow.getBounds());
+    settings.x = x;
+    settings.y = y;
+    settings.monitor = {
+      id: display.id,
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      scaleFactor: display.scaleFactor,
+    };
+    this.options.saveSettings();
+  }
+
+  private maxScale(display = screen.getPrimaryDisplay()): number {
+    const area = display.workArea;
+    return Math.max(
+      0.25,
+      Math.min(area.width / this.getSize(), area.height / this.getSize()),
+    );
+  }
+
+  private initialPosition(): { x: number; y: number } {
+    const settings = this.options.getSettings();
+    const saved = settings.monitor;
+    const displays = screen.getAllDisplays();
+    const display =
+      (saved &&
+        (displays.find((item) => item.id === saved.id) ??
+          displays.find(
+            (item) =>
+              item.bounds.x === saved.x &&
+              item.bounds.y === saved.y &&
+              item.bounds.width === saved.width &&
+              item.bounds.height === saved.height,
+          ))) ??
+      screen.getPrimaryDisplay();
+    const area = display.workArea;
+    const scale = Math.min(
+      this.maxScale(display),
+      Math.max(0.25, settings.scale || 1),
+    );
+    settings.scale = scale;
+    const size = Math.round(this.getSize() * scale);
+    const maxX = area.x + Math.max(0, area.width - size);
+    const maxY = area.y + Math.max(0, area.height - size);
+    return {
+      x: Math.min(maxX, Math.max(area.x, settings.x ?? maxX - 40)),
+      y: Math.min(maxY, Math.max(area.y, settings.y ?? maxY - 40)),
+    };
+  }
+}
+
+function loadAnimations(): AnimationFrames[] {
+  const config = loadRawConfig();
+  const configuredAnimationsDir =
+    typeof config.animationsDir === "string" && config.animationsDir.trim()
+      ? config.animationsDir.trim()
+      : null;
+  const animationPaths = configuredAnimationsDir
+    ? [
+      path.isAbsolute(configuredAnimationsDir)
+        ? configuredAnimationsDir
+        : path.resolve(getConfigDirectory(), configuredAnimationsDir),
+    ]
+    : [path.join(app.getPath("userData"), "animations")];
+  const existingAnimationPaths = animationPaths.filter((directory) =>
+    fs.existsSync(directory),
+  );
+  if (!existingAnimationPaths.length) return [];
+
+  let defaultFps = 6;
+  let movementSpeed = 1.2;
+  let configuredSize = 180;
+  const animationFps: Record<string, number> = {};
+  try {
+    if (Number.isFinite(config.fps) && config.fps > 0) defaultFps = config.fps;
+    if (Number.isFinite(config.speed) && config.speed > 0)
+      movementSpeed = config.speed;
+    if (Number.isFinite(config.petSize) && config.petSize > 0)
+      configuredSize = config.petSize;
+    if (config.animations && typeof config.animations === "object") {
+      for (const [name, value] of Object.entries(config.animations)) {
+        const fps = (value as { fps?: unknown }).fps;
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          Number.isFinite(fps) &&
+          (fps as number) > 0
+        ) {
+          animationFps[name.toLowerCase()] = fps as number;
+        }
+      }
+    }
+  } catch {
+    // A missing or invalid global config uses the default animation settings.
+  }
+
+  const animations = new Map<string, AnimationFrames>();
+  for (const animationsPath of existingAnimationPaths) {
+    for (const entry of fs
+      .readdirSync(animationsPath, { withFileTypes: true })
+      .filter((item) => item.isDirectory())) {
+      const directory = path.join(animationsPath, entry.name);
+      const frames = fs
+        .readdirSync(directory)
+        .filter((file) => /^\d{3}\.png$/i.test(file))
+        .sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10))
+        .map((file) => pathToFileURL(path.join(directory, file)).href);
+      if (frames.length) {
+        animations.set(entry.name, {
+          name: entry.name,
+          frames,
+          fps: animationFps[entry.name.toLowerCase()] ?? defaultFps,
+          speed: movementSpeed,
+          size: configuredSize,
+        });
+      }
+    }
+  }
+  return [...animations.values()];
+}

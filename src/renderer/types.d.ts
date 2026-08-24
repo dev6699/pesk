@@ -1,0 +1,72 @@
+interface PetSettings {
+  animation: string;
+  animationMode: "selected" | "shuffle";
+  scale: number;
+  paused: boolean;
+  locked: boolean;
+  wandering: boolean;
+  visible: boolean;
+  codexChatVisible: boolean;
+  codexStatus: "idle" | "working" | "waiting";
+  codexConnected: boolean;
+  codexThreadId?: string;
+  codexError?: string;
+  codexThreads: Array<{ id: string; preview?: string; status?: string }>;
+  codexActivity: Record<string, unknown> | null;
+  codexHistory: Array<{
+    role: "user" | "assistant" | "system";
+    text: string;
+    timestamp?: number;
+    temporary?: boolean;
+    turnId?: string;
+    approval?: {
+      requestId: string | number;
+      state: "pending" | "approved" | "denied";
+    };
+  }>;
+}
+
+interface AnimationFrames {
+  name: string;
+  frames: string[];
+  fps: number;
+  speed: number;
+  size: number;
+}
+
+interface Window {
+  petApi: {
+    getSettings: () => Promise<PetSettings>;
+    getAnimations: () => Promise<AnimationFrames[]>;
+    getChatSize: () => Promise<{ width: number; height: number }>;
+    movePet: (dx: number, dy: number) => void;
+    startDrag: () => void;
+    endDrag: () => void;
+    zoomPet: (scale: number) => void;
+    showPetMenu: () => void;
+    togglePaused: () => void;
+    toggleWandering: () => void;
+    toggleLocked: () => void;
+    togglePetVisibility: () => void;
+    openConfigFolder: () => void;
+    toggleCodexChat: () => void;
+    selectCodexThread: (threadId: string) => void;
+    selectAnimation: (name: string) => void;
+    setAnimationMode: (mode: "selected" | "shuffle") => void;
+    quitPesk: () => void;
+    respondCodexPermission: (
+      requestId: string | number,
+      decision: "allow" | "deny",
+    ) => void;
+    submitCodexPrompt: (prompt: string) => Promise<PetSettings>;
+    getPresets: () => Promise<{ name: string }[]>;
+    runPreset: (name: string) => void;
+    closeMenuWindow: () => void;
+    onMenuUpdated: (callback: () => void) => void;
+    onMenuFocusChanged: (callback: (focused: boolean) => void) => void;
+    onPetFocusChanged: (callback: (focused: boolean) => void) => void;
+    onCodexChatVisibility: (callback: (visible: boolean) => void) => void;
+    onCodexInputFocus: (callback: () => void) => void;
+    onSettingsChanged: (callback: (settings: PetSettings) => void) => void;
+  };
+}

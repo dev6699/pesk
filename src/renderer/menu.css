@@ -1,0 +1,244 @@
+/* Menu window styles. */
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  background: transparent;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+  opacity: 1;
+  font-weight: 700;
+  text-shadow: none;
+}
+
+body {
+  box-sizing: border-box;
+  padding: 24px;
+  overflow: hidden;
+}
+
+main {
+  position: relative;
+  min-height: calc(100vh - 48px);
+  box-sizing: border-box;
+  padding: 20px;
+  overflow: hidden;
+  border: 1px solid #ffffff99;
+  border-radius: 24px;
+  background:
+    linear-gradient(325deg, #ffffff66, transparent 42%),
+    linear-gradient(325deg, #ffb347bb, #d9854f99 55%, #ffffff55),
+    #c98a5edd;
+  box-shadow:
+    inset 0 1px 0 #ffffffaa,
+    inset 0 -1px 0 #ffffff55;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.menu-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.focus-state {
+  display: inline-flex;
+  align-items: center;
+}
+
+.focus-state i {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #1687d9;
+  box-shadow: 0 0 8px #1687d9;
+  animation: focus-pulse 1.5s ease-in-out infinite;
+}
+
+.focus-state.unfocused i {
+  background: #777;
+  box-shadow: none;
+  animation: none;
+}
+
+@keyframes focus-pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: .85;
+  }
+
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+}
+
+.help {
+  margin: 8px 0 20px;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+  font-size: 13px;
+}
+
+h2 {
+  margin: 18px 0 8px;
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+}
+
+#sections {
+  display: flex;
+  gap: 6px;
+}
+
+#sections button {
+  padding: 7px 10px;
+  text-align: center;
+  font-size: 13px;
+}
+
+#sections button.active {
+  border-color: #1687d9cc;
+  background: #1687d9cc;
+  outline: none;
+}
+
+#controls,
+#animations,
+#presets {
+  display: grid;
+  gap: 5px;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #ffffff88 transparent;
+}
+
+#preset-list {
+  display: grid;
+  gap: 5px;
+}
+
+#preset-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 11px 13px;
+  border: 1px solid #ffffff66;
+  border-radius: 13px;
+  background: #ffffff2b;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+  font: inherit;
+  font-weight: 700;
+}
+
+#preset-search::placeholder {
+  color: #ffffffcc;
+  opacity: 1;
+}
+
+#preset-search:focus {
+  border-color: #1687d9cc;
+  outline: none;
+  background: #1687d9cc;
+}
+
+#controls::-webkit-scrollbar,
+#animations::-webkit-scrollbar,
+#presets::-webkit-scrollbar {
+  width: 8px;
+}
+
+#controls::-webkit-scrollbar-thumb,
+#animations::-webkit-scrollbar-thumb,
+#presets::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  background: #ffffff88;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+button {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #ffffff66;
+  border-radius: 10px;
+  background: #ffffff2b;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+  opacity: 1;
+  text-align: left;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-shadow: none;
+  box-shadow: inset 0 1px 0 #ffffff55, 0 0 8px #7778;
+  transition: 120ms ease;
+}
+
+button:hover,
+button:focus-visible {
+  border-color: #ffc15a;
+  background: #f7931a4d;
+  outline: 2px solid #f7931aaa;
+  outline-offset: 2px;
+  transform: translateY(-1px);
+}
+
+button.selected {
+  color: #ffffff;
+  border-color: #ffffff66;
+  background: #ffffff2b;
+  outline: none;
+  transform: none;
+}
+
+#sections button.active:hover,
+#sections button.active:focus-visible {
+  border-color: #1687d9cc;
+  background: #1687d9cc;
+  outline: none;
+  transform: none;
+}
+
+button:focus-visible {
+  border-color: #1687d9cc;
+  background: #1687d9cc;
+  outline: none;
+  transform: none;
+}
+
+button.selected::after {
+  content: "✓";
+  float: right;
+  color: #ffffff;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.empty {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+  font-size: 14px;
+}

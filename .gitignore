@@ -1,0 +1,8 @@
+config.json
+animations
+
+node_modules
+__pycache__
+coverage
+dist
+build

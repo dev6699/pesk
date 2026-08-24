@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "outDir": "build/renderer",
+    "rootDir": "src/renderer",
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": [
+      "ES2022",
+      "DOM"
+    ]
+  },
+  "include": [
+    "src/renderer/renderer.ts",
+    "src/renderer/chat-renderer.ts",
+    "src/renderer/menu.ts",
+    "src/renderer/types.d.ts"
+  ]
+}
