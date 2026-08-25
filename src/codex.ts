@@ -554,7 +554,7 @@ export class CodexController {
         !(this.status === "working" && this.history.length) &&
         !hasMissingLiveUser
       ) {
-        this.history = restored.slice(-40);
+        this.history = restored;
         this.trim();
         this.rebuildActivityIndexes();
       }
@@ -1081,20 +1081,9 @@ export class CodexController {
     return Date.now() - at < 10_000;
   }
 
-  /** Keeps the renderer history bounded to the most recent 40 messages. */
+  /** Retains the complete renderer history for scrolling and review. */
   private trim(): void {
-    if (this.history.length > 40) {
-      const removed = this.history.length - 40;
-      this.history = this.history.slice(-40);
-      if (this.streamingAssistant >= 0) {
-        this.streamingAssistant -= removed;
-        if (this.streamingAssistant < 0) {
-          this.streamingAssistant = -1;
-          this.streamingAssistantItemId = undefined;
-        }
-      }
-      this.rebuildActivityIndexes();
-    }
+    // History is intentionally unbounded; the renderer's history panel scrolls.
   }
 
   private rebuildActivityIndexes(): void {

@@ -14,7 +14,11 @@ const codex = new CodexRenderer(
   defaultSettings(),
 );
 
-document.addEventListener("keydown", (event) => codex.handleKeydown(event));
+document.addEventListener(
+  "keydown",
+  (event) => codex.handleKeydown(event),
+  true,
+);
 window.peskApi.onSettingsChanged((next) => codex.updateSettings(next));
 window.peskApi.onCodexInputFocus(() => codex.focusInput());
 

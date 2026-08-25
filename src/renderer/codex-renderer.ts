@@ -6,6 +6,7 @@ export class CodexRenderer {
   private workingTimer: number | undefined;
   private workingLabelTimer: number | undefined;
   private workingLabelSince: number | undefined;
+  private selectedMessageIndex = -1;
 
   constructor(
     private readonly chat: HTMLElement,
@@ -39,15 +40,81 @@ export class CodexRenderer {
   handleKeydown(event: KeyboardEvent): void {
     if (
       !this.chat.hidden &&
-      event.ctrlKey &&
-      (event.key === "ArrowUp" || event.key === "ArrowDown")
+      event.key.toLowerCase() === "c" &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      this.selectedMessageIndex >= 0 &&
+      !this.hasHighlightedText()
     ) {
       event.preventDefault();
-      this.history.scrollBy({
-        top: event.key === "ArrowUp" ? -64 : 64,
+      void this.copySelectedMessageToClipboard();
+      return;
+    }
+    if (
+      !this.chat.hidden &&
+      (event.key === "Home" || event.key === "End") &&
+      event.altKey &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey
+    ) {
+      event.preventDefault();
+      this.history.scrollTo({
+        top: event.key === "Home" ? 0 : this.history.scrollHeight,
         behavior: "smooth",
       });
       return;
+    }
+    if (
+      !this.chat.hidden &&
+      event.key === "ArrowRight" &&
+      event.altKey &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      this.copySelectedMessageToInput()
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (
+      !this.chat.hidden &&
+      event.key === "Enter" &&
+      event.altKey &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      this.toggleSelectedMessage()
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (
+      !this.chat.hidden &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+    ) {
+      const direction = event.key === "ArrowUp" ? -1 : 1;
+      if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        this.selectMessage(direction, "user");
+        return;
+      }
+      if (event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        this.history.scrollBy({
+          top: direction * 64,
+          behavior: "smooth",
+        });
+        return;
+      }
+      if (event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        this.selectMessage(direction);
+        return;
+      }
     }
     const pendingApproval = this.history.querySelector<HTMLElement>(
       ".codex-approval-pending",
@@ -154,6 +221,152 @@ export class CodexRenderer {
     }
   }
 
+  private selectMessage(
+    direction: -1 | 1,
+    role?: PetSettings["codexHistory"][number]["role"],
+  ): void {
+    const messages = Array.from(
+      this.history.querySelectorAll<HTMLElement>(".codex-message"),
+    );
+    if (!messages.length) return;
+
+    const candidateIndices = messages
+      .map((message, index) => ({ message, index }))
+      .filter(
+        ({ message }) =>
+          !role || message.classList.contains(`codex-message-${role}`),
+      )
+      .map(({ index }) => index);
+    if (!candidateIndices.length) return;
+    const visibleIndices = this.visibleMessageIndices(
+      messages,
+      candidateIndices,
+    );
+    const selectionIsVisible = visibleIndices.includes(
+      this.selectedMessageIndex,
+    );
+    const currentCandidateIndex = candidateIndices.indexOf(
+      this.selectedMessageIndex,
+    );
+    const nextIndex = selectionIsVisible
+      ? candidateIndices[
+          Math.max(
+            0,
+            Math.min(
+              candidateIndices.length - 1,
+              currentCandidateIndex + direction,
+            ),
+          )
+        ]
+      : ((direction < 0
+          ? visibleIndices[visibleIndices.length - 1]
+          : visibleIndices[0]) ??
+        (direction < 0
+          ? candidateIndices[candidateIndices.length - 1]
+          : candidateIndices[0]));
+    this.selectedMessageIndex = nextIndex;
+    this.applySelectedMessage();
+    messages[nextIndex]?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth",
+    });
+  }
+
+  private applySelectedMessage(): void {
+    const messages = Array.from(
+      this.history.querySelectorAll<HTMLElement>(".codex-message"),
+    );
+    messages.forEach((message, index) => {
+      const selected = index === this.selectedMessageIndex;
+      message.classList.toggle("codex-message-selected", selected);
+      message.setAttribute("aria-selected", String(selected));
+    });
+  }
+
+  private visibleMessageIndices(
+    messages: HTMLElement[],
+    candidateIndices = messages.map((_message, index) => index),
+  ): number[] {
+    const historyBounds = this.history.getBoundingClientRect();
+    return candidateIndices
+      .map((index) => ({
+        index,
+        bounds: messages[index].getBoundingClientRect(),
+      }))
+      .filter(
+        ({ bounds }) =>
+          bounds.bottom > historyBounds.top &&
+          bounds.top < historyBounds.bottom,
+      )
+      .map(({ index }) => index);
+  }
+
+  private toggleSelectedMessage(): boolean {
+    if (this.selectedMessageIndex < 0) return false;
+    const message =
+      this.history.querySelectorAll<HTMLElement>(".codex-message")[
+        this.selectedMessageIndex
+      ];
+    const details = message?.querySelector<HTMLDetailsElement>("details");
+    if (!details) return false;
+    details.open = !details.open;
+    return true;
+  }
+
+  private copySelectedMessageToInput(): boolean {
+    const text = this.selectedMessageText();
+    if (!text) return false;
+    this.input.value = text;
+    this.resizeInput();
+    this.focusInput();
+    return true;
+  }
+
+  private async copySelectedMessageToClipboard(): Promise<void> {
+    const text = this.selectedMessageText();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const copyTarget = document.createElement("textarea");
+      copyTarget.value = text;
+      copyTarget.style.position = "fixed";
+      copyTarget.style.opacity = "0";
+      document.body.append(copyTarget);
+      copyTarget.select();
+      document.execCommand("copy");
+      copyTarget.remove();
+    }
+  }
+
+  private selectedMessageText(): string | undefined {
+    if (this.selectedMessageIndex < 0) return undefined;
+    const message =
+      this.history.querySelectorAll<HTMLElement>(".codex-message")[
+        this.selectedMessageIndex
+      ];
+    if (!message) return undefined;
+    const content = message.cloneNode(true) as HTMLElement;
+    content
+      .querySelectorAll(".codex-message-time, .codex-approval-actions")
+      .forEach((element) => element.remove());
+    return content.textContent?.trim() || undefined;
+  }
+
+  private hasHighlightedText(): boolean {
+    if (
+      (document.activeElement === this.input ||
+        document.activeElement instanceof HTMLInputElement) &&
+      this.input.selectionStart !== null &&
+      this.input.selectionEnd !== null &&
+      this.input.selectionStart !== this.input.selectionEnd
+    ) {
+      return true;
+    }
+    const selection = window.getSelection();
+    return Boolean(selection && !selection.isCollapsed && selection.toString());
+  }
+
   private handleInputKeydown(event: KeyboardEvent): void {
     if (event.key !== "Enter") return;
     if (event.ctrlKey || event.metaKey) {
@@ -237,6 +450,7 @@ export class CodexRenderer {
       if (message.approval) this.renderApproval(bubble, message);
       this.history.append(bubble);
     }
+    this.applySelectedMessage();
     if (!this.historyInitialized || wasAtBottom) {
       this.history.scrollTop = this.history.scrollHeight;
     }

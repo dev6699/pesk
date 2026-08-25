@@ -27,12 +27,15 @@ body {
   z-index: 0;
   border-radius: 50%;
   background:
-    radial-gradient(ellipse at 50% 76%,
+    radial-gradient(
+      ellipse at 50% 76%,
       #fff7ed 0 8%,
       #fde68a 18%,
       #fbbf2466 38%,
-      transparent 70%),
-    conic-gradient(from 180deg at 50% 76%,
+      transparent 70%
+    ),
+    conic-gradient(
+      from 180deg at 50% 76%,
       transparent 0deg 10deg,
       #fff7ed66 10deg 17deg,
       transparent 17deg 29deg,
@@ -45,7 +48,8 @@ body {
       #fed7aa55 144deg 151deg,
       transparent 151deg 163deg,
       #fff7ed66 163deg 170deg,
-      transparent 170deg 180deg);
+      transparent 170deg 180deg
+    );
   box-shadow:
     0 0 18px #fbbf24cc,
     0 0 38px #fb923c88;
@@ -62,19 +66,23 @@ body {
 
 #pet.codex-update::after {
   background:
-    radial-gradient(ellipse at 50% 76%,
+    radial-gradient(
+      ellipse at 50% 76%,
       #dbeafe 0 8%,
       #60a5fa 18%,
       #38bdf866 38%,
-      transparent 70%),
-    conic-gradient(from 180deg at 50% 76%,
+      transparent 70%
+    ),
+    conic-gradient(
+      from 180deg at 50% 76%,
       transparent 0deg 10deg,
       #dbeafe66 10deg 17deg,
       transparent 17deg 29deg,
       #67e8f955 29deg 36deg,
       transparent 36deg 144deg,
       #dbeafe66 144deg 151deg,
-      transparent 151deg 180deg);
+      transparent 151deg 180deg
+    );
   box-shadow:
     0 0 18px #38bdf6cc,
     0 0 38px #2563eb88;
@@ -119,7 +127,6 @@ body.chat-only #codex-chat {
 }
 
 @keyframes petFocusStage {
-
   0%,
   100% {
     opacity: 0.72;
@@ -206,11 +213,14 @@ body.chat-only #codex-chat {
 #codex-chat-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: initial;
   gap: 8px;
   min-width: 0;
+  width: 100%;
   max-width: 100%;
-  overflow: hidden;
+  box-sizing: border-box;
+  min-height: 29px;
+  overflow: visible;
   padding: 0 2px 7px;
   color: #fff;
   font:
@@ -220,10 +230,16 @@ body.chat-only #codex-chat {
 }
 
 #codex-session-select {
-  width: 100%;
+  width: 0;
   min-width: 0;
   max-width: none;
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  height: 24px;
+  line-height: 16px;
   padding: 3px 5px;
   border: 1px solid #ffffff88;
   border-radius: 6px;
@@ -236,12 +252,18 @@ body.chat-only #codex-chat {
 
 #codex-session-copy {
   flex: 0 0 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
   padding: 4px 7px;
   border: 1px solid #ffffff88;
   border-radius: 6px;
   background: #000000cc;
   color: #fff;
   cursor: pointer;
+  white-space: nowrap;
+  height: 24px;
+  line-height: 14px;
   font:
     10px/1.2 system-ui,
     sans-serif;
@@ -367,6 +389,11 @@ body.chat-only #codex-chat {
   overflow-wrap: anywhere;
 }
 
+.codex-message-selected {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
 .codex-markdown code {
   display: inline-block;
   max-width: 100%;
@@ -398,17 +425,17 @@ body.chat-only #codex-chat {
   line-height: 1;
 }
 
-.codex-markdown li>p {
+.codex-markdown li > p {
   display: inline;
 }
 
-.codex-markdown p+ul,
-.codex-markdown p+ol {
+.codex-markdown p + ul,
+.codex-markdown p + ol {
   margin-top: -1em !important;
 }
 
-.codex-markdown ul+p,
-.codex-markdown ol+p {
+.codex-markdown ul + p,
+.codex-markdown ol + p {
   margin-top: -1em !important;
 }
 
