@@ -640,13 +640,11 @@ export class CodexController {
       params.status && typeof params.status === "object"
         ? (params.status as Record<string, unknown>)
         : undefined;
-    if (
+    const shouldShowForUpdate =
       method === "turn/completed" ||
       method === "item/commandExecution/requestApproval" ||
       method === "item/fileChange/requestApproval" ||
-      (method === "thread/status/changed" && threadStatus?.type === "idle")
-    )
-      this.options.showPetForUpdate();
+      (method === "thread/status/changed" && threadStatus?.type === "idle");
     const thread =
       params.thread && typeof params.thread === "object"
         ? (params.thread as Record<string, unknown>)
@@ -812,11 +810,6 @@ export class CodexController {
       method === "item/commandExecution/requestApproval" ||
       method === "item/fileChange/requestApproval"
     ) {
-      this.options.showApproval(
-        id ?? 0,
-        typeof params.command === "string" ? params.command : "",
-        typeof params.reason === "string" ? params.reason : "",
-      );
       this.activity = {
         ...message,
         approval: true,
@@ -828,6 +821,20 @@ export class CodexController {
         typeof params.reason === "string" ? params.reason : "",
       );
       this.setStatus("waiting");
+    }
+    if (shouldShowForUpdate) {
+      this.options.sendSettings();
+      this.options.showPetForUpdate();
+    }
+    if (
+      method === "item/commandExecution/requestApproval" ||
+      method === "item/fileChange/requestApproval"
+    ) {
+      this.options.showApproval(
+        id ?? 0,
+        typeof params.command === "string" ? params.command : "",
+        typeof params.reason === "string" ? params.reason : "",
+      );
     }
   }
 

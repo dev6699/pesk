@@ -62,7 +62,8 @@ function options() {
 }
 
 function connectedController(turns: unknown[] = []) {
-  const controller = new CodexController(options());
+  const controllerOptions = options();
+  const controller = new CodexController(controllerOptions);
   (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
     FakeWebSocket;
   (controller as unknown as { connect: () => void }).connect();
@@ -91,7 +92,7 @@ function connectedController(turns: unknown[] = []) {
     }),
   );
 
-  return { controller, socket };
+  return { controller, socket, options: controllerOptions };
 }
 
 beforeEach(() => {
@@ -1258,7 +1259,8 @@ describe("CodexController", () => {
   });
 
   test("requests approval and sends the selected decision", () => {
-    const { controller, socket } = connectedController();
+    const { controller, socket, options: controllerOptions } =
+      connectedController();
 
     socket.emit(
       "message",
@@ -1278,6 +1280,9 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().status).toBe("waiting");
+    expect(controllerOptions.sendSettings.mock.invocationCallOrder[0]).toBeLessThan(
+      controllerOptions.showApproval.mock.invocationCallOrder[0],
+    );
     expect(controller.getState().history).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
