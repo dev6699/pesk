@@ -5,6 +5,15 @@ export interface CodexMessage {
   timestamp?: number;
   temporary?: boolean;
   turnId?: string;
+  itemId?: string;
+  activity?: {
+    kind: "command" | "fileChange";
+    status?: string;
+    command?: string;
+    cwd?: string;
+    output?: string;
+    changes?: string[];
+  };
   approval?: {
     requestId: string | number;
     state: "pending" | "approved" | "denied";
@@ -32,6 +41,8 @@ export interface CodexState {
   activity: Record<string, unknown> | null;
   history: CodexMessage[];
   threads: CodexThreadSummary[];
+  workingSince?: number;
+  workedElapsed?: number;
 }
 
 interface Options {
@@ -59,7 +70,11 @@ export class CodexController {
   private connectionError: string | undefined;
   private history: CodexMessage[] = [];
   private threads: CodexThreadSummary[] = [];
+  private workingSince: number | undefined;
+  private workedElapsed: number | undefined;
   private streamingAssistant = -1;
+  private streamingAssistantItemId: string | undefined;
+  private readonly activityIndexes = new Map<string, number>();
   private needsReconcile = false;
   private initialized = false;
   private nextId = 0;
@@ -83,6 +98,8 @@ export class CodexController {
       activity: this.activity,
       history: this.history,
       threads: this.threads,
+      workingSince: this.workingSince,
+      workedElapsed: this.workedElapsed,
     };
   }
 
@@ -122,6 +139,8 @@ export class CodexController {
     )
       return false;
     const prompt = value.trim();
+    this.workingSince = undefined;
+    this.workedElapsed = undefined;
     const newThreadMatch = prompt.match(/^\/new(?:\s+(.+))?$/);
     if (newThreadMatch) {
       return this.startNewThread(newThreadMatch[1]);
@@ -190,6 +209,10 @@ export class CodexController {
       this.connected = true;
       this.history = [];
       this.streamingAssistant = -1;
+      this.streamingAssistantItemId = undefined;
+      this.workingSince = undefined;
+      this.workedElapsed = undefined;
+      this.activityIndexes.clear();
       this.threads = [
         { id: thread.id, status: "idle" },
         ...this.threads.filter((candidate) => candidate.id !== thread.id),
@@ -351,6 +374,10 @@ export class CodexController {
           this.threadId = undefined;
           this.history = [];
           this.streamingAssistant = -1;
+          this.streamingAssistantItemId = undefined;
+          this.workingSince = undefined;
+          this.workedElapsed = undefined;
+          this.activityIndexes.clear();
           this.activity = null;
         }
         this.options.sendSettings();
@@ -388,7 +415,11 @@ export class CodexController {
   }
 
   /** Replaces the selected session and optionally resumes it. */
-  private switchThread(id: string, resume = true): void {
+  private switchThread(
+    id: string,
+    resume = true,
+    preserveHistory = false,
+  ): void {
     if (
       !id ||
       (this.threads.length > 0 &&
@@ -401,8 +432,12 @@ export class CodexController {
       return;
     }
     this.threadId = id;
-    this.history = [];
+    if (!preserveHistory) this.history = [];
     this.streamingAssistant = -1;
+    this.streamingAssistantItemId = undefined;
+    this.workingSince = undefined;
+    this.workedElapsed = undefined;
+    this.activityIndexes.clear();
     this.options.sendSettings();
     if (resume) {
       this.resume(id);
@@ -501,6 +536,9 @@ export class CodexController {
               });
             }
           }
+          if (item.type === "commandExecution" || item.type === "fileChange") {
+            restored.push(this.activityMessage(item, timestamp));
+          }
         }
       }
       const restoredUsers = new Set(
@@ -518,6 +556,7 @@ export class CodexController {
       ) {
         this.history = restored.slice(-40);
         this.trim();
+        this.rebuildActivityIndexes();
       }
       this.options.sendSettings();
     });
@@ -587,7 +626,15 @@ export class CodexController {
           },
         ];
       }
-      this.switchThread(thread.id, method !== "thread/started");
+      const preservePendingPrompt =
+        method === "thread/started" &&
+        this.threadId === undefined &&
+        this.history.some((item) => item.role === "user");
+      this.switchThread(
+        thread.id,
+        method !== "thread/started",
+        preservePendingPrompt,
+      );
     }
     if (method === "turn/started") {
       const turn =
@@ -618,6 +665,12 @@ export class CodexController {
           );
         }
       }
+      if (item?.type === "commandExecution" || item?.type === "fileChange") {
+        this.addOrUpdateActivity(
+          item,
+          typeof item.id === "string" ? item.id : undefined,
+        );
+      }
     }
     if (method === "turn/completed") {
       this.activity = message;
@@ -644,8 +697,18 @@ export class CodexController {
       }
     }
     if (method === "item/agentMessage/delta") {
-      this.appendDelta(typeof params.delta === "string" ? params.delta : "");
+      this.appendDelta(
+        typeof params.delta === "string" ? params.delta : "",
+        typeof params.itemId === "string" ? params.itemId : undefined,
+        typeof params.turnId === "string" ? params.turnId : undefined,
+      );
       this.activity = message;
+    }
+    if (method === "item/commandExecution/outputDelta") {
+      this.appendActivityOutput(
+        typeof params.itemId === "string" ? params.itemId : undefined,
+        typeof params.delta === "string" ? params.delta : "",
+      );
     }
     if (method === "item/completed") {
       const item =
@@ -653,7 +716,15 @@ export class CodexController {
           ? (params.item as Record<string, unknown>)
           : undefined;
       if (item?.type === "agentMessage" && typeof item.text === "string") {
-        this.completeAssistant(item.text);
+        this.completeAssistant(
+          item.text,
+          typeof item.id === "string" ? item.id : undefined,
+        );
+      } else if (item?.type === "commandExecution" || item?.type === "fileChange") {
+        this.addOrUpdateActivity(
+          item,
+          typeof item.id === "string" ? item.id : undefined,
+        );
       }
     }
     if (
@@ -752,69 +823,60 @@ export class CodexController {
     if (this.streamingAssistant >= 0) {
       this.streamingAssistant += 1;
     }
+    this.rebuildActivityIndexes();
     this.trim();
     this.options.sendSettings();
   }
 
-  /** Creates or updates the temporary assistant working message. */
+  /** Starts the live working indicator without adding a history message. */
   private ensureWorking(turnId?: string): void {
-    const current = this.history[this.history.length - 1];
-    if (current?.role === "assistant" && current.temporary) {
-      current.turnId = turnId ?? current.turnId;
-      this.streamingAssistant = this.history.length - 1;
-      return;
-    }
-    this.history.push({
-      role: "assistant",
-      text: "Working…",
-      temporary: true,
-      timestamp: Date.now(),
-      turnId,
-    });
-    this.streamingAssistant = this.history.length - 1;
-    this.trim();
+    if (this.workingSince === undefined) this.workingSince = Date.now();
     this.options.sendSettings();
   }
 
   /** Appends an assistant stream delta to the current conversation. */
-  private appendDelta(delta: string): void {
+  private appendDelta(delta: string, itemId?: string, turnId?: string): void {
     if (!delta) {
       return;
     }
-    const index = this.history.findIndex(
-      (x) => x.role === "assistant" && x.temporary,
-    );
-    if (index >= 0) {
-      this.streamingAssistant = index;
-    }
-    if (this.streamingAssistant < 0) {
+    if (
+      this.streamingAssistant < 0 ||
+      (itemId &&
+        this.streamingAssistantItemId &&
+        itemId !== this.streamingAssistantItemId)
+    ) {
       this.history.push({
         role: "assistant",
         text: delta,
         timestamp: Date.now(),
+        turnId,
+        itemId,
       });
       this.streamingAssistant = this.history.length - 1;
+      this.streamingAssistantItemId = itemId;
     } else {
-      this.history[this.streamingAssistant].text =
-        `${this.history[this.streamingAssistant].temporary ? "" : this.history[this.streamingAssistant].text}${delta}`;
-      delete this.history[this.streamingAssistant].temporary;
+      this.history[this.streamingAssistant].text += delta;
     }
     this.trim();
     this.options.sendSettings();
   }
 
   /** Replaces temporary output with the completed assistant message. */
-  private completeAssistant(text: string): void {
+  private completeAssistant(text: string, itemId?: string): void {
     const value = text.trim();
     if (!value) {
       return;
     }
-    const current = this.history.find(
-      (x) => x.role === "assistant" && x.temporary,
-    );
+    const current =
+      this.history.find(
+        (x) => x.role === "assistant" && itemId && x.itemId === itemId,
+      ) ??
+      (this.streamingAssistant >= 0
+        ? this.history[this.streamingAssistant]
+        : undefined);
     if (current) {
       current.text = value;
-      delete current.temporary;
+      current.itemId = itemId ?? current.itemId;
     } else if (
       this.streamingAssistant >= 0 &&
       this.history[this.streamingAssistant]?.role === "assistant"
@@ -827,8 +889,81 @@ export class CodexController {
         timestamp: Date.now(),
       });
     }
+    this.streamingAssistantItemId = undefined;
     this.trim();
     this.options.sendSettings();
+  }
+
+  /** Creates or updates a visible command/file activity message. */
+  private addOrUpdateActivity(
+    item: Record<string, unknown>,
+    itemId?: string,
+  ): void {
+    const message = this.activityMessage(item, Date.now());
+    message.itemId = itemId;
+    const existingIndex = itemId ? this.activityIndexes.get(itemId) : undefined;
+    if (existingIndex !== undefined && this.history[existingIndex]) {
+      const existing = this.history[existingIndex];
+      if (existing.activity && !message.activity?.output) {
+        if (message.activity) {
+          message.activity.output = existing.activity.output;
+          message.text = formatActivityText(message.activity);
+        }
+      }
+      existing.text = message.text;
+      existing.activity = message.activity;
+      existing.itemId = itemId;
+    } else {
+      this.history.push(message);
+      if (itemId) this.activityIndexes.set(itemId, this.history.length - 1);
+    }
+    this.trim();
+    this.options.sendSettings();
+  }
+
+  /** Appends streamed command output to its activity history entry. */
+  private appendActivityOutput(itemId: string | undefined, delta: string): void {
+    if (!itemId || !delta) return;
+    const index = this.activityIndexes.get(itemId);
+    if (index === undefined) return;
+    const message = this.history[index];
+    if (!message.activity) return;
+    message.activity.output = `${message.activity.output ?? ""}${delta}`;
+    message.text = formatActivityText(message.activity);
+    this.options.sendSettings();
+  }
+
+  /** Converts a persisted or live app-server item into a system message. */
+  private activityMessage(
+    item: Record<string, unknown>,
+    timestamp: number,
+  ): CodexMessage {
+    const kind = item.type === "commandExecution" ? "command" : "fileChange";
+    const changes = this.records(item.changes).map((change) => {
+      const filePath =
+        typeof change.path === "string" ? change.path : "unknown file";
+      const changeKind =
+        typeof change.kind === "string" ? `${change.kind}: ` : "";
+      return `${changeKind}${filePath}`;
+    });
+    const activity: NonNullable<CodexMessage["activity"]> = {
+      kind,
+      status: typeof item.status === "string" ? item.status : undefined,
+      command: typeof item.command === "string" ? item.command : undefined,
+      cwd: typeof item.cwd === "string" ? item.cwd : undefined,
+      output:
+        typeof item.aggregatedOutput === "string"
+          ? item.aggregatedOutput
+          : undefined,
+      changes,
+    };
+    return {
+      role: "system",
+      text: formatActivityText(activity),
+      timestamp,
+      itemId: typeof item.id === "string" ? item.id : undefined,
+      activity,
+    };
   }
 
   /** Adds a pending command or file-change approval to conversation history. */
@@ -899,12 +1034,33 @@ export class CodexController {
   private trim(): void {
     if (this.history.length > 40) {
       this.history = this.history.slice(-40);
+      this.rebuildActivityIndexes();
     }
+  }
+
+  private rebuildActivityIndexes(): void {
+    this.activityIndexes.clear();
+    this.history.forEach((message, index) => {
+      if (message.itemId && message.activity) {
+        this.activityIndexes.set(message.itemId, index);
+      }
+    });
   }
 
   /** Updates status and publishes the new renderer snapshot. */
   private setStatus(status: CodexState["status"]): void {
     this.status = status;
+    if (status === "working" && this.workingSince === undefined) {
+      this.workingSince = Date.now();
+    }
+    if (status === "idle") {
+      if (this.workingSince !== undefined) {
+        this.workedElapsed = Math.max(0, Date.now() - this.workingSince);
+      }
+      this.workingSince = undefined;
+      this.streamingAssistant = -1;
+      this.streamingAssistantItemId = undefined;
+    }
     this.options.sendSettings();
   }
 
@@ -961,6 +1117,18 @@ export class CodexController {
       }, 3000);
     }
   }
+}
+
+function formatActivityText(
+  activity: NonNullable<CodexMessage["activity"]>,
+): string {
+  const title = activity.kind === "command" ? "Command" : "File change";
+  const lines = [`${title}${activity.status ? ` · ${activity.status}` : ""}`];
+  if (activity.command) lines.push(`$ ${activity.command}`);
+  if (activity.cwd) lines.push(`cwd: ${activity.cwd}`);
+  if (activity.changes?.length) lines.push(...activity.changes);
+  if (activity.output) lines.push(activity.output);
+  return lines.join("\n");
 }
 
 /** Converts a browser WebSocket error event into useful diagnostic text. */

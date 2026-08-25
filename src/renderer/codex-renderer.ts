@@ -1,17 +1,23 @@
+import { marked } from "./vendor/marked.js";
+
 export class CodexRenderer {
   private settings: PetSettings;
   private historyInitialized = false;
+  private workingTimer: number | undefined;
 
   constructor(
     private readonly chat: HTMLElement,
     private readonly sessionSelect: HTMLSelectElement,
     private readonly error: HTMLElement,
     private readonly history: HTMLElement,
+    private readonly workingStatus: HTMLElement,
+    private readonly workingElapsed: HTMLElement,
     private readonly form: HTMLFormElement,
     private readonly input: HTMLTextAreaElement,
     settings: PetSettings,
   ) {
     this.settings = settings;
+    this.renderWorkingStatus();
     sessionSelect.addEventListener("change", () => {
       if (sessionSelect.value)
         window.peskApi.selectCodexThread(sessionSelect.value);
@@ -92,6 +98,7 @@ export class CodexRenderer {
     }
     this.sessionSelect.disabled = !next.codexThreads.length;
     this.renderHistory(next.codexHistory, Boolean(next.codexThreadId));
+    this.renderWorkingStatus();
     this.chat.hidden = !next.codexChatVisible;
     if (!this.chat.hidden && document.activeElement !== this.input) {
       requestAnimationFrame(() => this.input.focus());
@@ -161,8 +168,12 @@ export class CodexRenderer {
     for (const message of history ?? []) {
       const bubble = document.createElement("div");
       bubble.className = `codex-message codex-message-${message.role}`;
+      if (message.activity) {
+        bubble.classList.add(`codex-activity-${message.activity.kind}`);
+        if (message.activity.output) bubble.classList.add("codex-activity-output");
+      }
       if (message.temporary) bubble.classList.add("codex-message-working");
-      bubble.textContent = message.text;
+      bubble.append(this.renderMessageContent(message));
       const time = document.createElement("time");
       time.className = "codex-message-time";
       time.textContent = new Date(
@@ -172,10 +183,55 @@ export class CodexRenderer {
       if (message.approval) this.renderApproval(bubble, message);
       this.history.append(bubble);
     }
+    this.history.append(this.workingStatus);
     if (!this.historyInitialized || wasAtBottom) {
       this.history.scrollTop = this.history.scrollHeight;
     }
     this.historyInitialized = true;
+  }
+
+  private renderMessageContent(
+    message: PetSettings["codexHistory"][number],
+  ): HTMLElement {
+    if (message.activity?.kind === "command") {
+      const details = document.createElement("details");
+      details.className = "codex-command-details";
+      const summary = document.createElement("summary");
+      summary.textContent = `Command · ${message.activity.status ?? "in progress"}`;
+      details.append(summary);
+      const body = document.createElement("pre");
+      body.className = "codex-activity-details";
+      body.textContent = formatCommandActivity(message.activity);
+      details.append(body);
+      return details;
+    }
+    const content = document.createElement("div");
+    if (message.role === "assistant" && !message.activity) {
+      content.className = "codex-markdown";
+      content.innerHTML = renderMarkdown(message.text);
+    } else {
+      content.textContent = message.text;
+    }
+    return content;
+  }
+
+  private renderWorkingStatus(): void {
+    if (this.workingTimer !== undefined) window.clearInterval(this.workingTimer);
+    this.workingTimer = undefined;
+    const since = this.settings.codexWorkingSince;
+    const worked = this.settings.codexWorkedElapsed;
+    this.workingStatus.hidden = since === undefined && worked === undefined;
+    if (since === undefined) {
+      this.workingStatus.firstElementChild!.textContent = "Worked for";
+      this.workingElapsed.textContent = formatElapsed(worked ?? 0);
+      return;
+    }
+    this.workingStatus.firstElementChild!.textContent = "Working…";
+    const update = () => {
+      this.workingElapsed.textContent = formatElapsed(Date.now() - since);
+    };
+    update();
+    this.workingTimer = window.setInterval(update, 1000);
   }
 
   private renderApproval(
@@ -214,4 +270,62 @@ export class CodexRenderer {
       bubble.append(result);
     }
   }
+}
+
+function formatElapsed(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+}
+
+function renderMarkdown(value: string): string {
+  const html = marked.parse(value, { async: false, breaks: true, gfm: true });
+  return sanitizeMarkdownHtml(String(html));
+}
+
+function sanitizeMarkdownHtml(html: string): string {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const allowed = new Set([
+    "A", "BLOCKQUOTE", "BR", "CODE", "DEL", "EM", "H1", "H2", "H3",
+    "H4", "H5", "H6", "HR", "LI", "OL", "P", "PRE", "STRONG", "UL",
+  ]);
+  const visit = (element: Element): void => {
+    for (const child of [...element.children]) {
+      if (!allowed.has(child.tagName)) {
+        child.remove();
+        continue;
+      }
+      for (const attribute of [...child.attributes]) {
+        const name = attribute.name.toLowerCase();
+        const keep =
+          child.tagName === "A" &&
+          ((name === "href" && /^(https?:|mailto:|#)/i.test(attribute.value)) ||
+            name === "title");
+        if (!keep) {
+          child.removeAttribute(attribute.name);
+        }
+      }
+      if (child.tagName === "A") {
+        child.setAttribute("target", "_blank");
+        child.setAttribute("rel", "noreferrer");
+      }
+      visit(child);
+    }
+  };
+  visit(template.content as unknown as Element);
+  return template.innerHTML;
+}
+
+function formatCommandActivity(
+  activity: NonNullable<PetSettings["codexHistory"][number]["activity"]>,
+): string {
+  return [
+    activity.command ? `$ ${activity.command}` : "",
+    activity.cwd ? `cwd: ${activity.cwd}` : "",
+    activity.output ?? "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

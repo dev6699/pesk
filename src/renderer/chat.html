@@ -17,7 +17,12 @@
         </select>
       </div>
       <div id="codex-error" role="alert" hidden></div>
-      <div id="codex-history" aria-live="polite"></div>
+      <div id="codex-history" aria-live="polite">
+        <div id="codex-working-status" aria-live="polite" hidden>
+          <span>Working…</span>
+          <time id="codex-working-elapsed">00:00</time>
+        </div>
+      </div>
       <form id="codex-chat-form">
         <textarea id="codex-chat-input" rows="3" placeholder="Message Codex..." aria-label="Message Codex"></textarea>
       </form>

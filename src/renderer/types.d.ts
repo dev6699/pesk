@@ -13,12 +13,23 @@ interface PetSettings {
   codexError?: string;
   codexThreads: Array<{ id: string; preview?: string; status?: string }>;
   codexActivity: Record<string, unknown> | null;
+  codexWorkingSince?: number;
+  codexWorkedElapsed?: number;
   codexHistory: Array<{
     role: "user" | "assistant" | "system";
     text: string;
     timestamp?: number;
     temporary?: boolean;
     turnId?: string;
+    itemId?: string;
+    activity?: {
+      kind: "command" | "fileChange";
+      status?: string;
+      command?: string;
+      cwd?: string;
+      output?: string;
+      changes?: string[];
+    };
     approval?: {
       requestId: string | number;
       state: "pending" | "approved" | "denied";

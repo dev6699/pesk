@@ -14,6 +14,8 @@ interface RendererSettings extends PeskSettings {
   codexStatus: "idle" | "working" | "waiting";
   codexConnected: boolean;
   codexActivity: Record<string, unknown> | null;
+  codexWorkingSince?: number;
+  codexWorkedElapsed?: number;
   codexHistory: CodexMessage[];
   codexThreads: CodexThreadSummary[];
 }
@@ -52,6 +54,8 @@ function rendererSettings(): RendererSettings {
     codexActivity: state.activity,
     codexHistory: state.history,
     codexThreads: state.threads,
+    codexWorkingSince: state.workingSince,
+    codexWorkedElapsed: state.workedElapsed,
   };
 }
 

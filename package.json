@@ -56,5 +56,8 @@
       "icon": "assets/pesk.ico",
       "artifactName": "Pesk-Setup-${version}.${ext}"
     }
+  },
+  "dependencies": {
+    "marked": "^18.0.11"
   }
 }

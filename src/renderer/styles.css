@@ -197,7 +197,7 @@ body.chat-only #codex-chat {
 
 .codex-message-time {
   display: block;
-  margin-top: 4px;
+  margin-top: 0;
   color: #ffffff99;
   font-size: 9px;
   text-align: right;
@@ -208,6 +208,7 @@ body.chat-only #codex-chat {
 }
 
 #codex-history {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   padding: 8px;
@@ -218,6 +219,35 @@ body.chat-only #codex-chat {
   scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: #ffffff88 transparent;
+  scroll-padding-bottom: 28px;
+}
+
+#codex-working-status {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2;
+  width: fit-content;
+  align-self: flex-start;
+  display: flex;
+  justify-content: flex-start;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: #000000dd;
+  color: #ffffffcc;
+  font-size: 10px;
+  font-style: italic;
+}
+
+#codex-working-status[hidden] {
+  display: none;
+}
+
+#codex-working-elapsed {
+  color: #ffffff99;
+  font-variant-numeric: tabular-nums;
 }
 
 .codex-empty-history {
@@ -243,6 +273,85 @@ body.chat-only #codex-chat {
   overflow-wrap: anywhere;
 }
 
+.codex-markdown code {
+  display: inline-block;
+  max-width: 100%;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: #00000099;
+  color: #ffb347;
+  font-family: ui-monospace, monospace;
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.codex-markdown * {
+  margin: 0;
+}
+
+.codex-markdown ul,
+.codex-markdown ol {
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style-position: inside;
+  line-height: 0.7;
+}
+
+.codex-markdown li {
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 0.7;
+}
+
+.codex-markdown li > p {
+  display: inline;
+}
+
+.codex-markdown p + ul,
+.codex-markdown p + ol {
+  margin-top: -1em !important;
+}
+
+.codex-markdown ul + p,
+.codex-markdown ol + p {
+  margin-top: -1em !important;
+}
+
+.codex-markdown p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.codex-markdown pre {
+  margin: 0;
+}
+
+.codex-markdown-code {
+  margin: 0;
+  padding: 7px;
+  border: 1px solid #ffffff33;
+  border-radius: 5px;
+  overflow-x: auto;
+  background: #000000aa;
+  white-space: pre;
+}
+
+.codex-markdown-code code {
+  display: block;
+  max-width: none;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
+.codex-markdown a {
+  color: #9ecbff;
+  text-decoration: underline;
+}
+
 .codex-message-user {
   margin-left: auto;
   margin-right: 0;
@@ -265,6 +374,45 @@ body.chat-only #codex-chat {
 .codex-message-system {
   border: 1px solid #ffc15a;
   background: #000000cc;
+}
+
+.codex-message-system.codex-activity-command,
+.codex-message-system.codex-activity-fileChange {
+  max-width: calc(100% - 8px);
+}
+
+.codex-activity-command {
+  border-color: #7db7ff99;
+}
+
+.codex-activity-fileChange {
+  border-color: #b9f6c599;
+}
+
+.codex-activity-output {
+  font-family: ui-monospace, monospace;
+}
+
+.codex-command-details {
+  max-width: 100%;
+}
+
+.codex-command-details summary {
+  cursor: pointer;
+  color: #ffb347;
+  font-weight: 700;
+}
+
+.codex-activity-details {
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 7px 0 0;
+  padding: 6px;
+  border: 1px solid #ffffff33;
+  border-radius: 5px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 #codex-error {

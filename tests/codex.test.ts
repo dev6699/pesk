@@ -788,6 +788,129 @@ describe("CodexController", () => {
     ).toHaveLength(1);
   });
 
+  test("keeps working state separate from streamed assistant history", () => {
+    const { controller, socket } = connectedController();
+
+    controller.submitPrompt("hello");
+    expect(controller.getState().workingSince).toEqual(expect.any(Number));
+    expect(controller.getState().history).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ temporary: true })]),
+    );
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/agentMessage/delta",
+        params: { itemId: "assistant-1", turnId: "turn-1", delta: "answer" },
+      }),
+    );
+
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "assistant", text: "answer" }),
+      ]),
+    );
+    expect(controller.getState().workingSince).toEqual(expect.any(Number));
+
+    socket.emit("message", JSON.stringify({ method: "turn/completed", params: {} }));
+    expect(controller.getState().workingSince).toBeUndefined();
+  });
+
+  test("keeps the first prompt visible while its new thread starts", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as {
+      threadId: string | undefined;
+      threads: unknown[];
+    };
+    internal.threadId = undefined;
+    internal.threads = [];
+
+    expect(controller.submitPrompt("first prompt")).toBe(true);
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/started",
+        params: { thread: { id: "new-thread" } },
+      }),
+    );
+
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", text: "first prompt" }),
+      ]),
+    );
+  });
+
+  test("renders command and file activity as distinct history entries", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "command-1",
+            type: "commandExecution",
+            command: "npm test",
+            cwd: "/workspace",
+            status: "inProgress",
+          },
+        },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/commandExecution/outputDelta",
+        params: { itemId: "command-1", delta: "passed\n" },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            id: "command-1",
+            type: "commandExecution",
+            command: "npm test",
+            status: "completed",
+          },
+        },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            id: "file-1",
+            type: "fileChange",
+            status: "completed",
+            changes: [{ kind: "update", path: "src/app.ts" }],
+          },
+        },
+      }),
+    );
+
+    const history = controller.getState().history;
+    expect(history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemId: "command-1",
+          activity: expect.objectContaining({ output: "passed\n" }),
+        }),
+        expect.objectContaining({
+          itemId: "file-1",
+          activity: expect.objectContaining({ changes: ["update: src/app.ts"] }),
+        }),
+      ]),
+    );
+    expect(history.filter((message) => message.itemId === "command-1")).toHaveLength(1);
+  });
+
   test("requests approval and sends the selected decision", () => {
     const { controller, socket } = connectedController();
 

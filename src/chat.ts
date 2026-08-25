@@ -54,9 +54,9 @@ export class ChatWindowController {
     const { width: chatWidth, height: chatHeight } = this.size;
     this.chatWindow.setSize(chatWidth, chatHeight, false);
 
-    let chatX = petBounds.x + petBounds.width - 60;
+    let chatX = petBounds.x + petBounds.width;
     if (chatX + chatWidth > area.x + area.width) {
-      chatX = petBounds.x - chatWidth + 60;
+      chatX = petBounds.x - chatWidth;
     }
     chatX = Math.max(area.x, Math.min(chatX, area.x + area.width - chatWidth));
     const chatY = Math.max(
