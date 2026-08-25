@@ -816,6 +816,51 @@ describe("CodexController", () => {
     expect(controller.getState().workingSince).toBeUndefined();
   });
 
+  test("continues streaming after history is trimmed", () => {
+    const { controller } = connectedController();
+    const internal = controller as unknown as {
+      history: Array<{ role: "user" | "assistant"; text: string }>;
+      appendDelta: (delta: string) => void;
+    };
+    internal.history = Array.from({ length: 40 }, (_, index) => ({
+      role: "user",
+      text: `message ${index}`,
+    }));
+
+    internal.appendDelta("first");
+    internal.appendDelta(" second");
+
+    expect(controller.getState().history.at(-1)).toMatchObject({
+      role: "assistant",
+      text: "first second",
+    });
+  });
+
+  test("starts a new stream after the previous assistant item completes", () => {
+    const { controller } = connectedController();
+    const internal = controller as unknown as {
+      appendDelta: (delta: string, itemId?: string) => void;
+      completeAssistant: (text: string, itemId?: string) => void;
+    };
+
+    internal.appendDelta("first", "assistant-1");
+    internal.completeAssistant("first complete", "assistant-1");
+    internal.appendDelta("second", "assistant-2");
+
+    expect(controller.getState().history).toEqual([
+      expect.objectContaining({
+        role: "assistant",
+        text: "first complete",
+        itemId: "assistant-1",
+      }),
+      expect.objectContaining({
+        role: "assistant",
+        text: "second",
+        itemId: "assistant-2",
+      }),
+    ]);
+  });
+
   test("keeps the first prompt visible while its new thread starts", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
@@ -889,7 +934,13 @@ describe("CodexController", () => {
             id: "file-1",
             type: "fileChange",
             status: "completed",
-            changes: [{ kind: "update", path: "src/app.ts" }],
+            changes: [
+              {
+                kind: "update",
+                path: "src/app.ts",
+                diff: "@@ -1 +1 @@\n-old\n+new",
+              },
+            ],
           },
         },
       }),
@@ -904,7 +955,10 @@ describe("CodexController", () => {
         }),
         expect.objectContaining({
           itemId: "file-1",
-          activity: expect.objectContaining({ changes: ["update: src/app.ts"] }),
+          activity: expect.objectContaining({
+            changes: ["update: src/app.ts\n  @@ -1 +1 @@\n  -old\n  +new"],
+          }),
+          text: expect.stringContaining("+new"),
         }),
       ]),
     );

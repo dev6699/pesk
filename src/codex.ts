@@ -596,17 +596,15 @@ export class CodexController {
       ].includes(method)
     )
       this.hidePendingApprovals();
+    const threadStatus =
+      params.status && typeof params.status === "object"
+        ? (params.status as Record<string, unknown>)
+        : undefined;
     if (
-      [
-        "turn/started",
-        "item/started",
-        "item/agentMessage/delta",
-        "item/completed",
-        "turn/completed",
-        "thread/status/changed",
-        "item/commandExecution/requestApproval",
-        "item/fileChange/requestApproval",
-      ].includes(method)
+      method === "turn/completed" ||
+      method === "item/commandExecution/requestApproval" ||
+      method === "item/fileChange/requestApproval" ||
+      (method === "thread/status/changed" && threadStatus?.type === "idle")
     )
       this.options.showPetForUpdate();
     const thread =
@@ -841,9 +839,7 @@ export class CodexController {
     }
     if (
       this.streamingAssistant < 0 ||
-      (itemId &&
-        this.streamingAssistantItemId &&
-        itemId !== this.streamingAssistantItemId)
+      (itemId !== undefined && itemId !== this.streamingAssistantItemId)
     ) {
       this.history.push({
         role: "assistant",
@@ -855,7 +851,20 @@ export class CodexController {
       this.streamingAssistant = this.history.length - 1;
       this.streamingAssistantItemId = itemId;
     } else {
-      this.history[this.streamingAssistant].text += delta;
+      const current = this.history[this.streamingAssistant];
+      if (!current || current.role !== "assistant") {
+        this.history.push({
+          role: "assistant",
+          text: delta,
+          timestamp: Date.now(),
+          turnId,
+          itemId,
+        });
+        this.streamingAssistant = this.history.length - 1;
+        this.streamingAssistantItemId = itemId;
+      } else {
+        current.text += delta;
+      }
     }
     this.trim();
     this.options.sendSettings();
@@ -889,6 +898,7 @@ export class CodexController {
         timestamp: Date.now(),
       });
     }
+    this.streamingAssistant = -1;
     this.streamingAssistantItemId = undefined;
     this.trim();
     this.options.sendSettings();
@@ -944,7 +954,18 @@ export class CodexController {
         typeof change.path === "string" ? change.path : "unknown file";
       const changeKind =
         typeof change.kind === "string" ? `${change.kind}: ` : "";
-      return `${changeKind}${filePath}`;
+      const content = firstText(change, [
+        "diff",
+        "patch",
+        "content",
+        "newContent",
+      ]);
+      return [
+        `${changeKind}${filePath}`,
+        content ? indentActivityContent(content) : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
     });
     const activity: NonNullable<CodexMessage["activity"]> = {
       kind,
@@ -1033,7 +1054,15 @@ export class CodexController {
   /** Keeps the renderer history bounded to the most recent 40 messages. */
   private trim(): void {
     if (this.history.length > 40) {
+      const removed = this.history.length - 40;
       this.history = this.history.slice(-40);
+      if (this.streamingAssistant >= 0) {
+        this.streamingAssistant -= removed;
+        if (this.streamingAssistant < 0) {
+          this.streamingAssistant = -1;
+          this.streamingAssistantItemId = undefined;
+        }
+      }
       this.rebuildActivityIndexes();
     }
   }
@@ -1129,6 +1158,25 @@ function formatActivityText(
   if (activity.changes?.length) lines.push(...activity.changes);
   if (activity.output) lines.push(activity.output);
   return lines.join("\n");
+}
+
+function firstText(
+  value: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    if (typeof value[key] === "string" && value[key]) {
+      return value[key] as string;
+    }
+  }
+  return undefined;
+}
+
+function indentActivityContent(value: string): string {
+  return value
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n");
 }
 
 /** Converts a browser WebSocket error event into useful diagnostic text. */

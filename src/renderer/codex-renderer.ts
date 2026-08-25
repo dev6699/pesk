@@ -4,6 +4,8 @@ export class CodexRenderer {
   private settings: PetSettings;
   private historyInitialized = false;
   private workingTimer: number | undefined;
+  private workingLabelTimer: number | undefined;
+  private workingLabelSince: number | undefined;
 
   constructor(
     private readonly chat: HTMLElement,
@@ -25,9 +27,11 @@ export class CodexRenderer {
     chat.addEventListener("mousedown", (event) => event.stopPropagation());
     chat.addEventListener("wheel", (event) => event.stopPropagation());
     form.addEventListener("submit", (event) => void this.submit(event));
+    input.addEventListener("input", () => this.resizeInput());
     input.addEventListener("keydown", (event) =>
       this.handleInputKeydown(event),
     );
+    this.resizeInput();
   }
 
   handleKeydown(event: KeyboardEvent): void {
@@ -125,8 +129,27 @@ export class CodexRenderer {
       return;
     const next = await window.peskApi.submitCodexPrompt(prompt);
     this.input.value = "";
+    this.resizeInput();
     this.updateSettings(next);
     this.input.focus();
+  }
+
+  private resizeInput(): void {
+    const maxHeight = 220;
+    const wasAtBottom =
+      this.history.scrollTop + this.history.clientHeight >=
+      this.history.scrollHeight - 24;
+    this.input.style.height = "auto";
+    const height = Math.min(this.input.scrollHeight, maxHeight);
+    this.input.style.height = `${height}px`;
+    this.input.style.overflowY = this.input.scrollHeight > maxHeight
+      ? "auto"
+      : "hidden";
+    if (wasAtBottom) {
+      requestAnimationFrame(() => {
+        this.history.scrollTop = this.history.scrollHeight;
+      });
+    }
   }
 
   private handleInputKeydown(event: KeyboardEvent): void {
@@ -152,6 +175,25 @@ export class CodexRenderer {
       this.historyInitialized &&
       this.history.scrollTop + this.history.clientHeight >=
       this.history.scrollHeight - 24;
+    const openActivityKeys = new Set(
+      Array.from(
+        this.history.querySelectorAll<HTMLDetailsElement>(
+          "details[data-activity-key]",
+        ),
+      )
+        .filter((details) => details.open)
+        .map((details) => details.dataset.activityKey)
+        .filter((key): key is string => Boolean(key)),
+    );
+    const renderedActivityKeys = new Set(
+      Array.from(
+        this.history.querySelectorAll<HTMLElement>(
+          "details[data-activity-key]",
+        ),
+      )
+        .map((details) => details.dataset.activityKey)
+        .filter((key): key is string => Boolean(key)),
+    );
     this.history.replaceChildren();
     if (!history?.length) {
       const empty = document.createElement("div");
@@ -165,7 +207,7 @@ export class CodexRenderer {
         this.history.append(connected);
       }
     }
-    for (const message of history ?? []) {
+    for (const [index, message] of (history ?? []).entries()) {
       const bubble = document.createElement("div");
       bubble.className = `codex-message codex-message-${message.role}`;
       if (message.activity) {
@@ -173,7 +215,15 @@ export class CodexRenderer {
         if (message.activity.output) bubble.classList.add("codex-activity-output");
       }
       if (message.temporary) bubble.classList.add("codex-message-working");
-      bubble.append(this.renderMessageContent(message));
+      const activityKey = message.itemId ?? `history-${index}`;
+      bubble.append(
+        this.renderMessageContent(
+          message,
+          activityKey,
+          openActivityKeys,
+          renderedActivityKeys,
+        ),
+      );
       const time = document.createElement("time");
       time.className = "codex-message-time";
       time.textContent = new Date(
@@ -183,7 +233,6 @@ export class CodexRenderer {
       if (message.approval) this.renderApproval(bubble, message);
       this.history.append(bubble);
     }
-    this.history.append(this.workingStatus);
     if (!this.historyInitialized || wasAtBottom) {
       this.history.scrollTop = this.history.scrollHeight;
     }
@@ -192,18 +241,50 @@ export class CodexRenderer {
 
   private renderMessageContent(
     message: PetSettings["codexHistory"][number],
+    activityKey: string,
+    openActivityKeys: Set<string>,
+    renderedActivityKeys: Set<string>,
   ): HTMLElement {
     if (message.activity?.kind === "command") {
       const details = document.createElement("details");
       details.className = "codex-command-details";
+      details.dataset.activityKey = activityKey;
+      const status = message.activity.status?.toLowerCase();
+      const inProgress = status === "inprogress" || status === "in_progress";
+      const finished =
+        status === "completed" ||
+        status === "failed" ||
+        status === "declined";
+      details.open = inProgress
+        ? true
+        : finished
+          ? false
+          : openActivityKeys.has(activityKey);
       const summary = document.createElement("summary");
+      const command = message.activity.command
+        ?.replace(/\s+/g, " ")
+        .trim();
       summary.textContent = `Command · ${message.activity.status ?? "in progress"}`;
+      if (command) {
+        const commandLine = document.createElement("span");
+        commandLine.className = "codex-command-summary-command";
+        commandLine.textContent = `$ ${command}`;
+        summary.append(commandLine);
+      }
       details.append(summary);
       const body = document.createElement("pre");
       body.className = "codex-activity-details";
       body.textContent = formatCommandActivity(message.activity);
       details.append(body);
       return details;
+    }
+    if (message.activity?.kind === "fileChange") {
+      return this.renderFileChangeActivity(
+        message.activity,
+        activityKey,
+        openActivityKeys,
+        renderedActivityKeys,
+      );
     }
     const content = document.createElement("div");
     if (message.role === "assistant" && !message.activity) {
@@ -215,6 +296,44 @@ export class CodexRenderer {
     return content;
   }
 
+  private renderFileChangeActivity(
+    activity: NonNullable<PetSettings["codexHistory"][number]["activity"]>,
+    activityKey: string,
+    openActivityKeys: Set<string>,
+    renderedActivityKeys: Set<string>,
+  ): HTMLElement {
+    const details = document.createElement("details");
+    details.className = "codex-file-change-details";
+    details.dataset.activityKey = activityKey;
+    details.open =
+      openActivityKeys.has(activityKey) || !renderedActivityKeys.has(activityKey);
+
+    const summary = document.createElement("summary");
+    summary.textContent = `File change · ${activity.status ?? "in progress"}`;
+    details.append(summary);
+
+    for (const change of activity.changes ?? []) {
+      const lines = change.split("\n");
+      const path = document.createElement("div");
+      path.className = "codex-file-change-path";
+      path.textContent = lines.shift() ?? "unknown file";
+      details.append(path);
+
+      if (lines.length) {
+        const diff = document.createElement("pre");
+        diff.className = "codex-file-change-diff";
+        for (const line of lines) {
+          const row = document.createElement("span");
+          row.className = fileChangeLineClass(line);
+          row.textContent = line;
+          diff.append(row, "\n");
+        }
+        details.append(diff);
+      }
+    }
+    return details;
+  }
+
   private renderWorkingStatus(): void {
     if (this.workingTimer !== undefined) window.clearInterval(this.workingTimer);
     this.workingTimer = undefined;
@@ -222,11 +341,46 @@ export class CodexRenderer {
     const worked = this.settings.codexWorkedElapsed;
     this.workingStatus.hidden = since === undefined && worked === undefined;
     if (since === undefined) {
+      this.workingStatus.classList.add("codex-working-status-complete");
+      if (this.workingLabelTimer !== undefined)
+        window.clearInterval(this.workingLabelTimer);
+      this.workingLabelTimer = undefined;
+      this.workingLabelSince = undefined;
       this.workingStatus.firstElementChild!.textContent = "Worked for";
       this.workingElapsed.textContent = formatElapsed(worked ?? 0);
       return;
     }
-    this.workingStatus.firstElementChild!.textContent = "Working…";
+    this.workingStatus.classList.remove("codex-working-status-complete");
+    if (
+      this.workingLabelTimer === undefined ||
+      this.workingLabelSince !== since
+    ) {
+      if (this.workingLabelTimer !== undefined)
+        window.clearInterval(this.workingLabelTimer);
+      this.workingLabelSince = since;
+      const workingLabel = this.workingStatus.firstElementChild!;
+      const fullLabel = "Working...";
+      let characters = 0;
+      let pause = 0;
+      const updateLabel = () => {
+        if (pause > 0) {
+          pause -= 1;
+          if (pause === 0) {
+            characters = 0;
+            workingLabel.textContent = "";
+          }
+          return;
+        }
+        if (characters < fullLabel.length) {
+          characters += 1;
+          workingLabel.textContent = fullLabel.slice(0, characters);
+        } else {
+          pause = 5;
+        }
+      };
+      workingLabel.textContent = "";
+      this.workingLabelTimer = window.setInterval(updateLabel, 220);
+    }
     const update = () => {
       this.workingElapsed.textContent = formatElapsed(Date.now() - since);
     };
@@ -328,4 +482,17 @@ function formatCommandActivity(
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function fileChangeLineClass(line: string): string {
+  if (line.startsWith("  +") && !line.startsWith("  +++")) {
+    return "codex-file-change-added";
+  }
+  if (line.startsWith("  -") && !line.startsWith("  ---")) {
+    return "codex-file-change-removed";
+  }
+  if (line.startsWith("  @@")) {
+    return "codex-file-change-hunk";
+  }
+  return "codex-file-change-context";
 }
