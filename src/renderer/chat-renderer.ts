@@ -12,16 +12,22 @@ const codex = new CodexRenderer(
 );
 
 document.addEventListener("keydown", (event) => codex.handleKeydown(event));
-window.petApi.onSettingsChanged((next) => codex.updateSettings(next));
-window.petApi.onPetFocusChanged((focused) => codex.updateFocus(focused));
-window.petApi.onCodexChatVisibility((visible) => codex.setVisibility(visible));
-window.petApi.onCodexInputFocus(() => codex.focusInput());
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Tab") {
+    event.preventDefault();
+    window.peskApi.toggleCodexChat();
+  }
+});
+window.peskApi.onSettingsChanged((next) => codex.updateSettings(next));
+window.peskApi.onPetFocusChanged((focused) => codex.updateFocus(focused));
+window.peskApi.onCodexChatVisibility((visible) => codex.setVisibility(visible));
+window.peskApi.onCodexInputFocus(() => codex.focusInput());
 window.addEventListener("focus", () => codex.updateFocus(true));
 window.addEventListener("blur", () => codex.updateFocus(false));
 
-void window.petApi.getChatSize().then(({ width, height }) => {
+void window.peskApi.getChatSize().then(({ width, height }) => {
   document.documentElement.style.setProperty("--chat-width", `${width}px`);
   document.documentElement.style.setProperty("--chat-height", `${height}px`);
 });
 
-void window.petApi.getSettings().then((next) => codex.updateSettings(next));
+void window.peskApi.getSettings().then((next) => codex.updateSettings(next));

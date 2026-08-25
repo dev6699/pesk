@@ -91,6 +91,8 @@ app.whenReady().then(() => {
     saveSettings: persistSettings,
     sendSettings,
     keepPetAbove: () => pet.window?.moveTop(),
+    focusPet: () => pet.focusWindow(),
+    setPetFocus: (focused) => pet.setFocusIndicator(focused),
   });
   menu = new MenuController({
     getSettings: () => settings,

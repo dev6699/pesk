@@ -16,10 +16,17 @@ const pet = new PetRenderer({
   settings: defaultSettings(),
 });
 
-window.petApi.onSettingsChanged((next) => pet.updateSettings(next));
-window.petApi.onPetFocusChanged((focused) => pet.updateFocus(focused));
+window.peskApi.onSettingsChanged((next) => pet.updateSettings(next));
+window.peskApi.onPetFocusChanged((focused) => pet.updateFocus(focused));
 
-void window.petApi.getSettings().then(async (next) => {
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Tab") {
+    event.preventDefault();
+    window.peskApi.toggleCodexChat();
+  }
+});
+
+void window.peskApi.getSettings().then(async (next) => {
   pet.updateSettings(next);
   await pet.loadAnimations();
 });

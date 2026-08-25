@@ -33,21 +33,21 @@ export class PetRenderer {
       if (event.target !== options.pet && event.target !== options.image)
         return;
       if (this.settings.locked) return;
-      window.petApi.startDrag();
+      window.peskApi.startDrag();
       window.getSelection()?.removeAllRanges();
     });
     options.pet.addEventListener("wheel", (event) => {
       event.preventDefault();
       const currentScale = this.settings.scale || 1;
       const nextScale = currentScale + (event.deltaY < 0 ? 0.1 : -0.1);
-      window.petApi.zoomPet(nextScale);
+      window.peskApi.zoomPet(nextScale);
     });
     options.pet.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      window.petApi.showPetMenu();
+      window.peskApi.showPetMenu();
     });
-    window.addEventListener("mouseup", () => window.petApi.endDrag());
-    document.addEventListener("mouseup", () => window.petApi.endDrag());
+    window.addEventListener("mouseup", () => window.peskApi.endDrag());
+    document.addEventListener("mouseup", () => window.peskApi.endDrag());
   }
 
   get wasFocused(): boolean {
@@ -70,10 +70,12 @@ export class PetRenderer {
 
   updateFocus(focused: boolean): void {
     this.focused = focused;
+    this.options.pet.classList.toggle("focused", focused);
+    this.options.pet.setAttribute("aria-label", focused ? "Desktop pet (focused)" : "Desktop pet");
   }
 
   async loadAnimations(): Promise<void> {
-    const animations = await window.petApi.getAnimations();
+    const animations = await window.peskApi.getAnimations();
     this.availableAnimations = animations;
     const selected =
       animations.find(
@@ -109,13 +111,13 @@ export class PetRenderer {
       !this.settings.locked &&
       now - this.lastWander > 80
     ) {
-      window.petApi.movePet(this.movementSpeed, this.movementSpeed);
+      window.peskApi.movePet(this.movementSpeed, this.movementSpeed);
       this.lastWander = now;
     }
   }
 
   private async selectAnimation(name: string): Promise<void> {
-    const animations = await window.petApi.getAnimations();
+    const animations = await window.peskApi.getAnimations();
     this.availableAnimations = animations;
     const selected = animations.find((animation) => animation.name === name);
     if (!selected?.frames.length) return;

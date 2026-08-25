@@ -68,7 +68,7 @@ function showSection(index: number, focus = true): void {
 }
 
 function closeMenu(): void {
-  window.petApi.closeMenuWindow();
+  window.peskApi.closeMenuWindow();
 }
 
 function addAction(label: string, action: () => void): void {
@@ -85,12 +85,12 @@ function addAction(label: string, action: () => void): void {
 
 function renderControls(settings: MenuSettings): void {
   controls.replaceChildren();
-  addAction(settings.paused ? "Resume animation" : "Pause animation", window.petApi.togglePaused);
-  addAction(settings.wandering ? "Stop wandering" : "Start wandering", window.petApi.toggleWandering);
-  addAction(settings.locked ? "Unlock position" : "Lock position", window.petApi.toggleLocked);
-  addAction(settings.visible ? "Hide Pesk" : "Show Pesk", window.petApi.togglePetVisibility);
-  addAction("Open config folder", window.petApi.openConfigFolder);
-  addAction("Quit Pesk", window.petApi.quitPesk);
+  addAction(settings.paused ? "Resume animation" : "Pause animation", window.peskApi.togglePaused);
+  addAction(settings.wandering ? "Stop wandering" : "Start wandering", window.peskApi.toggleWandering);
+  addAction(settings.locked ? "Unlock position" : "Lock position", window.peskApi.toggleLocked);
+  addAction(settings.visible ? "Hide Pesk" : "Show Pesk", window.peskApi.togglePetVisibility);
+  addAction("Open config folder", window.peskApi.openConfigFolder);
+  addAction("Quit Pesk", window.peskApi.quitPesk);
 }
 
 function renderAnimations(items: AnimationFrames[], selected: string, animationMode: MenuSettings["animationMode"]): void {
@@ -100,7 +100,7 @@ function renderAnimations(items: AnimationFrames[], selected: string, animationM
   modeButton.textContent = "Animation mode: " + (animationMode === "shuffle" ? "Shuffle" : "Selected");
   modeButton.addEventListener("click", () => {
     rememberCurrentAction();
-    window.petApi.setAnimationMode(animationMode === "shuffle" ? "selected" : "shuffle");
+    window.peskApi.setAnimationMode(animationMode === "shuffle" ? "selected" : "shuffle");
     closeMenu();
   });
   animations.append(modeButton);
@@ -119,7 +119,7 @@ function renderAnimations(items: AnimationFrames[], selected: string, animationM
     button.className = animation.name === selected ? "selected" : "";
     button.addEventListener("click", () => {
       rememberCurrentAction();
-      window.petApi.selectAnimation(animation.name);
+      window.peskApi.selectAnimation(animation.name);
       closeMenu();
     });
     animations.append(button);
@@ -156,7 +156,7 @@ function renderPresets(items: Preset[] = allPresets, focusFirst = false): void {
     button.textContent = preset.name;
     button.addEventListener("click", () => {
       rememberCurrentAction();
-      window.petApi.runPreset(preset.name);
+      window.peskApi.runPreset(preset.name);
       closeMenu();
     });
     presetList.append(button);
@@ -174,9 +174,9 @@ presetSearch.addEventListener("input", () => renderPresets(allPresets, true));
 
 async function loadMenu(): Promise<void> {
   const [settings, animations, presets] = await Promise.all([
-    window.petApi.getSettings(),
-    window.petApi.getAnimations(),
-    window.petApi.getPresets(),
+    window.peskApi.getSettings(),
+    window.peskApi.getAnimations(),
+    window.peskApi.getPresets(),
   ]);
   renderControls(settings);
   renderAnimations(animations, settings.animation, settings.animationMode);
@@ -191,8 +191,8 @@ async function loadMenu(): Promise<void> {
 }
 
 void loadMenu();
-window.petApi.onMenuUpdated(() => void loadMenu());
-window.petApi.onMenuFocusChanged(updateFocusState);
+window.peskApi.onMenuUpdated(() => void loadMenu());
+window.peskApi.onMenuFocusChanged(updateFocusState);
 updateFocusState(document.hasFocus());
 
 for (const [index, tab] of sectionTabs.entries()) {

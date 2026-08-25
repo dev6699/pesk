@@ -35,7 +35,7 @@ interface AnimationFrames {
 }
 
 interface Window {
-  petApi: {
+  peskApi: {
     getSettings: () => Promise<PetSettings>;
     getAnimations: () => Promise<AnimationFrames[]>;
     getChatSize: () => Promise<{ width: number; height: number }>;

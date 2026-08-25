@@ -48,6 +48,11 @@ export class PetWindowController {
     return this.animationFrames;
   }
 
+  /** Updates the pet renderer's focus indicator for pet or chat focus. */
+  setFocusIndicator(focused: boolean): void {
+    this.petWindow?.webContents.send("pet-focus-changed", focused);
+  }
+
   /** Returns the configured native pet size used for window scaling. */
   getSize(): number {
     return this.animationFrames[0]?.size ?? 180;
@@ -179,7 +184,11 @@ export class PetWindowController {
 
   /** Brings the pet and Codex chat to the foreground for keyboard input. */
   focus(): void {
-    if (!this.petWindow || this.petWindow.isFocused()) return;
+    if (!this.petWindow) return;
+    if (this.petWindow.isFocused()) {
+      this.options.focusChat();
+      return;
+    }
     const settings = this.options.getSettings();
     settings.visible = true;
     this.options.hideMenu();
@@ -193,6 +202,15 @@ export class PetWindowController {
     this.petWindow.webContents.focus();
     this.petWindow.webContents.send("codex-input-focus");
     this.options.focusChat();
+  }
+
+  /** Brings only the pet window to the foreground. */
+  focusWindow(): void {
+    if (!this.petWindow || !this.petWindow.isVisible()) return;
+    this.petWindow.show();
+    this.petWindow.moveTop();
+    this.petWindow.focus();
+    this.petWindow.webContents.focus();
   }
 
   /** Moves the pet by renderer-provided deltas within its work area. */

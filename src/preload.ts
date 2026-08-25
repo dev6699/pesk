@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 
-contextBridge.exposeInMainWorld("petApi", {
+contextBridge.exposeInMainWorld("peskApi", {
   getSettings: () => ipcRenderer.invoke("get-settings"),
   getAnimations: () => ipcRenderer.invoke("get-animations"),
   getChatSize: () => ipcRenderer.invoke("get-chat-size"),

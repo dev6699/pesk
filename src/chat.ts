@@ -12,6 +12,8 @@ interface ChatWindowOptions {
   saveSettings: () => void;
   sendSettings: () => void;
   keepPetAbove: () => void;
+  focusPet: () => void;
+  setPetFocus: (focused: boolean) => void;
 }
 
 interface ChatSize {
@@ -105,7 +107,11 @@ export class ChatWindowController {
     this.chatWindow.on("closed", () => {
       this.chatWindow = null;
     });
-    this.chatWindow.on("focus", () => this.options.keepPetAbove());
+    this.chatWindow.on("focus", () => {
+      this.options.keepPetAbove();
+      this.options.setPetFocus(true);
+    });
+    this.chatWindow.on("blur", () => this.options.setPetFocus(false));
   }
 
   /** Shows chat when Codex activity requires the pet to become visible. */
@@ -148,6 +154,7 @@ export class ChatWindowController {
       this.options.keepPetAbove();
     } else {
       this.chatWindow?.hide();
+      this.options.focusPet();
     }
     this.options.saveSettings();
     this.options.sendSettings();

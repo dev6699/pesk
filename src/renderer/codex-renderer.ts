@@ -14,7 +14,7 @@ export class CodexRenderer {
     this.settings = settings;
     sessionSelect.addEventListener("change", () => {
       if (sessionSelect.value)
-        window.petApi.selectCodexThread(sessionSelect.value);
+        window.peskApi.selectCodexThread(sessionSelect.value);
     });
     chat.addEventListener("mousedown", (event) => event.stopPropagation());
     chat.addEventListener("wheel", (event) => event.stopPropagation());
@@ -116,7 +116,7 @@ export class CodexRenderer {
       this.settings.codexStatus === "waiting"
     )
       return;
-    const next = await window.petApi.submitCodexPrompt(prompt);
+    const next = await window.peskApi.submitCodexPrompt(prompt);
     this.input.value = "";
     this.updateSettings(next);
     this.input.focus();
@@ -198,7 +198,7 @@ export class CodexRenderer {
         button.dataset.decision = decision;
         button.textContent = label;
         button.addEventListener("click", () =>
-          window.petApi.respondCodexPermission(
+          window.peskApi.respondCodexPermission(
             approval.requestId ?? "",
             decision,
           ),
