@@ -23,6 +23,7 @@ interface PetWindowOptions {
   hideChat: () => void;
   hideMenu: () => void;
   focusChat: () => void;
+  isChatFocused: () => boolean;
 }
 
 /** Owns the animated pet window, movement state, and animation selection. */
@@ -50,7 +51,13 @@ export class PetWindowController {
 
   /** Updates the pet renderer's focus indicator for pet or chat focus. */
   setFocusIndicator(focused: boolean): void {
+    if (focused) this.setCodexUpdateIndicator(false);
     this.petWindow?.webContents.send("pet-focus-changed", focused);
+  }
+
+  /** Updates the indicator shown while Codex has opened chat without focus. */
+  setCodexUpdateIndicator(active: boolean): void {
+    this.petWindow?.webContents.send("pet-codex-update-changed", active);
   }
 
   /** Returns the configured native pet size used for window scaling. */
@@ -118,14 +125,16 @@ export class PetWindowController {
     });
     this.petWindow.on("moved", () => {
       this.saveWindowPosition();
-      this.options.positionChat();
+      if (!this.dragTimer) this.options.positionChat();
     });
-    this.petWindow.on("focus", () =>
-      this.petWindow?.webContents.send("pet-focus-changed", true),
-    );
-    this.petWindow.on("blur", () =>
-      this.petWindow?.webContents.send("pet-focus-changed", false),
-    );
+    this.petWindow.on("focus", () => {
+      this.petWindow?.webContents.send("pet-focus-changed", true);
+      this.options.showChat();
+    });
+    this.petWindow.on("blur", () => {
+      this.petWindow?.webContents.send("pet-focus-changed", false);
+      this.options.hideChat();
+    });
     this.petWindow.on("closed", () => {
       this.petWindow = null;
     });
@@ -148,16 +157,6 @@ export class PetWindowController {
   togglePaused(): void {
     const settings = this.options.getSettings();
     settings.paused = !settings.paused;
-    this.options.sendSettings();
-    this.options.refreshTrayMenu();
-    this.options.saveSettings();
-  }
-
-  /** Toggles wandering and unlocks the pet when wandering resumes. */
-  toggleWandering(): void {
-    const settings = this.options.getSettings();
-    settings.wandering = !settings.wandering;
-    if (settings.wandering) settings.locked = false;
     this.options.sendSettings();
     this.options.refreshTrayMenu();
     this.options.saveSettings();
@@ -189,11 +188,14 @@ export class PetWindowController {
       this.options.focusChat();
       return;
     }
+    if (this.options.isChatFocused()) {
+      this.options.focusChat();
+      return;
+    }
     const settings = this.options.getSettings();
     settings.visible = true;
     this.options.hideMenu();
     this.petWindow.setFocusable(true);
-    if (this.petWindow.isVisible()) this.petWindow.hide();
     this.petWindow.show();
     this.petWindow.setSkipTaskbar(true);
     this.petWindow.moveTop();
@@ -255,24 +257,21 @@ export class PetWindowController {
   startDragging(): void {
     const settings = this.options.getSettings();
     if (!this.petWindow || settings.locked || this.dragTimer) return;
-    settings.wandering = false;
-    this.options.saveSettings();
-    this.options.refreshTrayMenu();
-    this.options.sendSettings();
 
     const [windowX, windowY] = this.petWindow.getPosition();
     const cursor = screen.getCursorScreenPoint();
     const offsetX = cursor.x - windowX;
     const offsetY = cursor.y - windowY;
+    this.options.hideChat();
     this.dragTimer = setInterval(() => {
       if (!this.petWindow || settings.locked) return this.stopDragging();
       const current = screen.getCursorScreenPoint();
-      this.petWindow.setPosition(
-        Math.round(current.x - offsetX),
-        Math.round(current.y - offsetY),
-        false,
-      );
-      this.options.positionChat();
+      const nextX = Math.round(current.x - offsetX);
+      const nextY = Math.round(current.y - offsetY);
+      const [windowX, windowY] = this.petWindow.getPosition();
+      if (nextX !== windowX || nextY !== windowY) {
+        this.petWindow.setPosition(nextX, nextY, false);
+      }
       this.dragTick += 1;
     }, 16);
   }
@@ -282,6 +281,11 @@ export class PetWindowController {
     if (this.dragTimer) clearInterval(this.dragTimer);
     this.dragTimer = null;
     this.dragTick = 0;
+    if (this.petWindow?.isFocused()) {
+      this.options.showChat();
+    } else {
+      this.options.hideChat();
+    }
     this.saveWindowPosition();
   }
 

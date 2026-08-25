@@ -15,18 +15,8 @@ const codex = new CodexRenderer(
 );
 
 document.addEventListener("keydown", (event) => codex.handleKeydown(event));
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Tab") {
-    event.preventDefault();
-    window.peskApi.toggleCodexChat();
-  }
-});
 window.peskApi.onSettingsChanged((next) => codex.updateSettings(next));
-window.peskApi.onPetFocusChanged((focused) => codex.updateFocus(focused));
-window.peskApi.onCodexChatVisibility((visible) => codex.setVisibility(visible));
 window.peskApi.onCodexInputFocus(() => codex.focusInput());
-window.addEventListener("focus", () => codex.updateFocus(true));
-window.addEventListener("blur", () => codex.updateFocus(false));
 
 void window.peskApi.getChatSize().then(({ width, height }) => {
   document.documentElement.style.setProperty("--chat-width", `${width}px`);

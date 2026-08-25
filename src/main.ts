@@ -75,40 +75,40 @@ app.whenReady().then(() => {
     sendSettings,
     refreshTrayMenu: () => menu.refreshTrayMenu(),
     positionChat: () => chat.position(),
-    showChat: () => chat.showIfVisible(),
-    hideChat: () => chat.hide(),
+    showChat: () => chat.showForPetFocus(),
+    hideChat: () => {
+      chat.hideIfNotFocused();
+      pet.setFocusIndicator(
+        (pet.window?.isFocused() ?? false) ||
+          (chat.window?.isFocused() ?? false),
+      );
+    },
     hideMenu: () => menu.hide(),
     focusChat: () => {
-      settings.codexChatVisible = true;
       chat.create();
       chat.position();
-      persistSettings();
-      sendSettings();
       chat.window?.show();
+      chat.window?.focus();
       chat.window?.webContents.focus();
       chat.window?.webContents.send("codex-input-focus");
     },
+    isChatFocused: () => chat.window?.isFocused() ?? false,
   });
   chat = new ChatWindowController({
     getPetWindow: () => pet.window,
-    getSettings: () => settings,
-    saveSettings: persistSettings,
-    sendSettings,
     keepPetAbove: () => pet.window?.moveTop(),
-    focusPet: () => pet.focusWindow(),
     setPetFocus: (focused) => pet.setFocusIndicator(focused),
+    setCodexUpdateIndicator: (active) => pet.setCodexUpdateIndicator(active),
   });
   menu = new MenuController({
     getSettings: () => settings,
     getPetWindow: () => pet.window,
     togglePaused: () => pet.togglePaused(),
-    toggleWandering: () => pet.toggleWandering(),
     toggleLocked: () => pet.toggleLocked(),
     togglePetVisibility: () => pet.toggleVisibility(),
     showPet: () => pet.show(),
   });
   codexController = new CodexController({
-    getSettings: () => settings,
     sendSettings,
     showPetForUpdate: () => {
       settings.visible = true;
@@ -137,13 +137,11 @@ app.whenReady().then(() => {
   ipcMain.handle("get-chat-size", () => chat.getSize());
   ipcMain.handle("get-presets", () => presets.getPresets());
   ipcMain.on("toggle-paused", () => pet.togglePaused());
-  ipcMain.on("toggle-wandering", () => pet.toggleWandering());
   ipcMain.on("toggle-locked", () => pet.toggleLocked());
   ipcMain.on("toggle-pet-visibility", () => pet.toggleVisibility());
   ipcMain.on("open-config-folder", () => {
     void shell.openPath(app.getPath("userData"));
   });
-  ipcMain.on("toggle-codex-chat", () => chat.toggle());
   ipcMain.on("select-codex-thread", (_event, threadId: unknown) => {
     if (typeof threadId === "string") codexController.selectThread(threadId);
   });

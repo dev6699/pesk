@@ -5,7 +5,6 @@ interface MenuSettings {
   animationMode: "selected" | "shuffle";
   paused: boolean;
   locked: boolean;
-  wandering: boolean;
   visible: boolean;
 }
 
@@ -86,7 +85,6 @@ function addAction(label: string, action: () => void): void {
 function renderControls(settings: MenuSettings): void {
   controls.replaceChildren();
   addAction(settings.paused ? "Resume animation" : "Pause animation", window.peskApi.togglePaused);
-  addAction(settings.wandering ? "Stop wandering" : "Start wandering", window.peskApi.toggleWandering);
   addAction(settings.locked ? "Unlock position" : "Lock position", window.peskApi.toggleLocked);
   addAction(settings.visible ? "Hide Pesk" : "Show Pesk", window.peskApi.togglePetVisibility);
   addAction("Open config folder", window.peskApi.openConfigFolder);

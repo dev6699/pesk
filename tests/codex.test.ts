@@ -5,7 +5,6 @@ import {
   shouldReconcileOnIdle,
   shouldResumeOnActiveStatus,
 } from "../src/codex";
-import type { CodexSettings } from "../src/codex";
 
 class FakeWebSocket {
   static readonly OPEN = 1;
@@ -53,9 +52,8 @@ function lastMessage(socket: FakeWebSocket): Record<string, unknown> {
   >;
 }
 
-function options(settings: CodexSettings) {
+function options() {
   return {
-    getSettings: () => settings,
     sendSettings: jest.fn(),
     showPetForUpdate: jest.fn(),
     showApproval: jest.fn(),
@@ -64,8 +62,7 @@ function options(settings: CodexSettings) {
 }
 
 function connectedController(turns: unknown[] = []) {
-  const settings: CodexSettings = { codexChatVisible: true };
-  const controller = new CodexController(options(settings));
+  const controller = new CodexController(options());
   (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
     FakeWebSocket;
   (controller as unknown as { connect: () => void }).connect();
@@ -94,7 +91,7 @@ function connectedController(turns: unknown[] = []) {
     }),
   );
 
-  return { controller, settings, socket };
+  return { controller, socket };
 }
 
 beforeEach(() => {
@@ -132,8 +129,7 @@ describe("CodexController", () => {
   test("logs connection and socket errors and retries after construction fails", () => {
     jest.useFakeTimers();
     FakeWebSocket.shouldThrow = true;
-    const settings: CodexSettings = { codexChatVisible: true };
-    const callbacks = options(settings);
+    const callbacks = options();
     const controller = new CodexController(callbacks);
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
       FakeWebSocket;
@@ -150,8 +146,7 @@ describe("CodexController", () => {
   });
 
   test("handles malformed messages and socket errors", () => {
-    const settings: CodexSettings = { codexChatVisible: true };
-    const callbacks = options(settings);
+    const callbacks = options();
     const controller = new CodexController(callbacks);
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
       FakeWebSocket;
@@ -230,7 +225,7 @@ describe("CodexController", () => {
   });
 
   test("covers controller guards and failed turn paths", () => {
-    const { controller, socket, settings } = connectedController();
+    const { controller, socket } = connectedController();
     const internal = controller as unknown as Record<
       string,
       (...args: unknown[]) => unknown
@@ -322,8 +317,7 @@ describe("CodexController", () => {
   });
 
   test("starts a new session when no session is selected", () => {
-    const settings: CodexSettings = { codexChatVisible: true };
-    const controller = new CodexController(options(settings));
+    const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
       FakeWebSocket;
     (controller as unknown as { connect: () => void }).connect();
@@ -653,8 +647,7 @@ describe("CodexController", () => {
 
   test("retries after the WebSocket closes and reconnects", () => {
     jest.useFakeTimers();
-    const settings = { codexChatVisible: true };
-    const controller = new CodexController(options(settings));
+    const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
       FakeWebSocket;
 
@@ -672,8 +665,7 @@ describe("CodexController", () => {
   });
 
   test("stays healthy when connected without an active session", () => {
-    const settings = { codexChatVisible: true };
-    const controller = new CodexController(options(settings));
+    const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
       FakeWebSocket;
     (controller as unknown as { connect: () => void }).connect();
@@ -693,8 +685,7 @@ describe("CodexController", () => {
   });
 
   test("lists active sessions when no single loaded session is available", () => {
-    const settings: CodexSettings = { codexChatVisible: true };
-    const controller = new CodexController(options(settings));
+    const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
       FakeWebSocket;
     (controller as unknown as { connect: () => void }).connect();
@@ -729,7 +720,7 @@ describe("CodexController", () => {
   });
 
   test("removes a session rejected by an active writer", () => {
-    const { controller, socket, settings } = connectedController();
+    const { controller, socket } = connectedController();
 
     (controller as unknown as { resume: (id: string) => void }).resume(
       "thread-1",
@@ -748,7 +739,7 @@ describe("CodexController", () => {
   });
 
   test("clears a session that cannot accept direct input", () => {
-    const { controller, socket, settings } = connectedController();
+    const { controller, socket } = connectedController();
 
     (controller as unknown as { read: (id: string) => void }).read("thread-1");
     const readId = lastMessage(socket).id;
@@ -765,7 +756,7 @@ describe("CodexController", () => {
   });
 
   test("discovers and resumes the loaded Codex session", () => {
-    const { controller, settings, socket } = connectedController();
+    const { controller, socket } = connectedController();
 
     expect(controller.getState().threadId).toBe("thread-1");
     expect(controller.getState()).toMatchObject({

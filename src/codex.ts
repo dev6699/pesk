@@ -31,10 +31,6 @@ export interface CodexThreadSummary {
 }
 
 /** Codex-related settings persisted alongside the pet settings. */
-export interface CodexSettings {
-  codexChatVisible: boolean;
-}
-
 /** State exposed by the controller to the Electron renderer. */
 export interface CodexState {
   threadId?: string;
@@ -49,7 +45,6 @@ export interface CodexState {
 }
 
 interface Options {
-  getSettings: () => CodexSettings;
   sendSettings: () => void;
   showPetForUpdate: () => void;
   showApproval: (requestId: number, command: string, reason: string) => void;
@@ -473,7 +468,6 @@ export class CodexController {
         return;
       }
       if (text.includes("already has an active writer")) {
-        const settings = this.options.getSettings();
         this.threadId = undefined;
         this.connected = false;
         this.history = [];

@@ -67,19 +67,6 @@ export class CodexRenderer {
     }
   }
 
-  updateFocus(focused: boolean): void {
-    this.chat.hidden = !this.settings.codexChatVisible;
-    if (focused) {
-      requestAnimationFrame(() => {
-        this.history.scrollTo({
-          top: this.history.scrollHeight,
-          behavior: "auto",
-        });
-        this.input.focus();
-      });
-    }
-  }
-
   updateSettings(next: PetSettings): void {
     this.settings = next;
     this.error.hidden = !next.codexError;
@@ -106,19 +93,10 @@ export class CodexRenderer {
     this.sessionCopy.disabled = !next.codexThreadId;
     this.renderHistory(next.codexHistory, Boolean(next.codexThreadId));
     this.renderWorkingStatus();
-    this.chat.hidden = !next.codexChatVisible;
-    if (!this.chat.hidden && document.activeElement !== this.input) {
-      requestAnimationFrame(() => this.input.focus());
-    }
-  }
-
-  setVisibility(visible: boolean): void {
-    this.chat.hidden = !visible || !this.settings.codexChatVisible;
   }
 
   focusInput(): void {
-    if (this.settings.codexChatVisible)
-      requestAnimationFrame(() => this.input.focus());
+    requestAnimationFrame(() => this.input.focus());
   }
 
   private async submit(event: SubmitEvent): Promise<void> {

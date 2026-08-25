@@ -3,7 +3,6 @@ import * as path from "node:path";
 
 interface MenuSettings {
   paused: boolean;
-  wandering: boolean;
   locked: boolean;
   visible: boolean;
 }
@@ -12,7 +11,6 @@ interface MenuOptions {
   getSettings: () => MenuSettings;
   getPetWindow: () => BrowserWindow | null;
   togglePaused: () => void;
-  toggleWandering: () => void;
   toggleLocked: () => void;
   togglePetVisibility: () => void;
   showPet: () => void;
@@ -74,10 +72,6 @@ export class MenuController {
       {
         label: settings.paused ? "Resume animation" : "Pause animation",
         click: this.options.togglePaused,
-      },
-      {
-        label: settings.wandering ? "Stop wandering" : "Start wandering",
-        click: this.options.toggleWandering,
       },
       {
         label: settings.locked ? "Unlock position" : "Lock position",

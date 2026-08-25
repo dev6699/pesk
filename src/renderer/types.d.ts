@@ -4,9 +4,7 @@ interface PetSettings {
   scale: number;
   paused: boolean;
   locked: boolean;
-  wandering: boolean;
   visible: boolean;
-  codexChatVisible: boolean;
   codexStatus: "idle" | "working" | "waiting";
   codexConnected: boolean;
   codexThreadId?: string;
@@ -59,11 +57,9 @@ interface Window {
     zoomPet: (scale: number) => void;
     showPetMenu: () => void;
     togglePaused: () => void;
-    toggleWandering: () => void;
     toggleLocked: () => void;
     togglePetVisibility: () => void;
     openConfigFolder: () => void;
-    toggleCodexChat: () => void;
     selectCodexThread: (threadId: string) => void;
     selectAnimation: (name: string) => void;
     setAnimationMode: (mode: "selected" | "shuffle") => void;
@@ -79,7 +75,7 @@ interface Window {
     onMenuUpdated: (callback: () => void) => void;
     onMenuFocusChanged: (callback: (focused: boolean) => void) => void;
     onPetFocusChanged: (callback: (focused: boolean) => void) => void;
-    onCodexChatVisibility: (callback: (visible: boolean) => void) => void;
+    onPetCodexUpdateChanged: (callback: (active: boolean) => void) => void;
     onCodexInputFocus: (callback: () => void) => void;
     onSettingsChanged: (callback: (settings: PetSettings) => void) => void;
   };

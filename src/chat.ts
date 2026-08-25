@@ -2,18 +2,11 @@ import { BrowserWindow, screen } from "electron";
 import * as path from "node:path";
 import { loadRawConfig } from "./config.js";
 
-export interface ChatSettings {
-  codexChatVisible: boolean;
-}
-
 interface ChatWindowOptions {
   getPetWindow: () => BrowserWindow | null;
-  getSettings: () => ChatSettings;
-  saveSettings: () => void;
-  sendSettings: () => void;
   keepPetAbove: () => void;
-  focusPet: () => void;
   setPetFocus: (focused: boolean) => void;
+  setCodexUpdateIndicator: (active: boolean) => void;
 }
 
 interface ChatSize {
@@ -44,6 +37,26 @@ export class ChatWindowController {
     return this.size;
   }
 
+  /** Shows chat when Codex activity requires the pet to become visible. */
+  showForCodexUpdate(): void {
+    const petWindow = this.options.getPetWindow();
+    if (!petWindow) return;
+    if (!petWindow.isVisible()) petWindow.show();
+    this.create();
+    this.position();
+    this.chatWindow?.showInactive();
+    this.options.keepPetAbove();
+    this.options.setCodexUpdateIndicator(true);
+  }
+
+  /** Shows chat for a pending Codex approval request. */
+  showForApproval(): void {
+    this.create();
+    this.position();
+    this.chatWindow?.showInactive();
+    this.options.keepPetAbove();
+  }
+
   /** Places the chat window beside the pet within the active work area. */
   position(): void {
     const petWindow = this.options.getPetWindow();
@@ -52,7 +65,6 @@ export class ChatWindowController {
     const petBounds = petWindow.getBounds();
     const area = screen.getDisplayMatching(petBounds).workArea;
     const { width: chatWidth, height: chatHeight } = this.size;
-    this.chatWindow.setSize(chatWidth, chatHeight, false);
 
     let chatX = petBounds.x + petBounds.width;
     if (chatX + chatWidth > area.x + area.width) {
@@ -63,7 +75,10 @@ export class ChatWindowController {
       area.y,
       Math.min(petBounds.y, area.y + area.height - chatHeight),
     );
-    this.chatWindow.setPosition(chatX, chatY, false);
+    const [currentX, currentY] = this.chatWindow.getPosition();
+    if (currentX !== chatX || currentY !== chatY) {
+      this.chatWindow.setPosition(chatX, chatY, false);
+    }
   }
 
   /** Creates the hidden chat window and loads its renderer. */
@@ -96,9 +111,6 @@ export class ChatWindowController {
     this.chatWindow.once("ready-to-show", () => {
       this.chatWindow?.setSize(this.size.width, this.size.height, false);
       this.position();
-      if (this.options.getSettings().codexChatVisible) {
-        this.chatWindow?.showInactive();
-      }
       this.options.keepPetAbove();
       if (process.env.DESKTOP_PET_DEVTOOLS === "1") {
         this.chatWindow?.webContents.openDevTools({ mode: "detach" });
@@ -108,68 +120,37 @@ export class ChatWindowController {
       this.chatWindow = null;
     });
     this.chatWindow.on("focus", () => {
-      this.options.keepPetAbove();
       this.options.setPetFocus(true);
     });
-    this.chatWindow.on("blur", () => this.options.setPetFocus(false));
-  }
-
-  /** Shows chat when Codex activity requires the pet to become visible. */
-  showForCodexUpdate(): void {
-    const petWindow = this.options.getPetWindow();
-    if (!petWindow) return;
-
-    const settings = this.options.getSettings();
-    const chatWasHidden = !settings.codexChatVisible;
-    settings.codexChatVisible = true;
-    if (chatWasHidden) this.options.saveSettings();
-    if (!petWindow.isVisible()) petWindow.show();
-    petWindow.webContents.send("codex-chat-visibility", true);
-    this.create();
-    this.position();
-    this.chatWindow?.showInactive();
-    this.options.keepPetAbove();
-    if (chatWasHidden) this.options.sendSettings();
-  }
-
-  /** Shows chat for a pending Codex approval request. */
-  showForApproval(): void {
-    const settings = this.options.getSettings();
-    settings.codexChatVisible = true;
-    this.create();
-    this.position();
-    this.chatWindow?.showInactive();
-    this.options.keepPetAbove();
-    this.options.saveSettings();
-  }
-
-  /** Toggles the persisted chat visibility preference and window state. */
-  toggle(): void {
-    const settings = this.options.getSettings();
-    settings.codexChatVisible = !settings.codexChatVisible;
-    this.create();
-    if (settings.codexChatVisible) {
-      this.position();
-      this.chatWindow?.show();
-      this.options.keepPetAbove();
-    } else {
-      this.chatWindow?.hide();
-      this.options.focusPet();
-    }
-    this.options.saveSettings();
-    this.options.sendSettings();
-    if (settings.codexChatVisible) {
-      this.options.getPetWindow()?.webContents.send("codex-input-focus");
-    }
+    this.chatWindow.on("blur", () => {
+      setTimeout(() => {
+        if (
+          !this.options.getPetWindow()?.isFocused() &&
+          !this.chatWindow?.isFocused()
+        ) {
+          this.options.setPetFocus(false);
+          this.chatWindow?.hide();
+        }
+      }, 50);
+    });
   }
 
   /** Shows chat when its persisted visibility preference allows it. */
   showIfVisible(): void {
-    if (!this.options.getSettings().codexChatVisible) return;
+    this.showForPetFocus();
+  }
+
+  /** Shows chat when the pet window receives focus. */
+  showForPetFocus(): void {
     this.create();
-    this.position();
-    this.chatWindow?.show();
-    this.options.keepPetAbove();
+    if (!this.chatWindow?.isVisible()) this.position();
+    this.chatWindow?.showInactive();
+  }
+
+  /** Hides chat on pet blur unless chat itself owns focus. */
+  hideIfNotFocused(): void {
+    if (this.chatWindow?.isFocused()) return;
+    this.chatWindow?.hide();
   }
 
   /** Hides chat without changing its persisted visibility preference. */

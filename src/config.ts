@@ -20,9 +20,7 @@ export interface PeskSettings {
   scale: number;
   paused: boolean;
   locked: boolean;
-  wandering: boolean;
   visible: boolean;
-  codexChatVisible: boolean;
 }
 
 export interface AppConfig {
@@ -66,9 +64,7 @@ const defaultSettings: PeskSettings = {
   scale: 1,
   paused: false,
   locked: false,
-  wandering: true,
   visible: true,
-  codexChatVisible: true,
 };
 
 const defaultConfig: AppConfig = {
@@ -84,6 +80,7 @@ function settingsPath(): string {
 export function loadSettings(): PeskSettings {
   try {
     const saved = JSON.parse(fs.readFileSync(settingsPath(), "utf8"));
+    delete saved.codexChatVisible;
     delete saved.codexThreadId;
     return { ...defaultSettings, ...saved };
   } catch {

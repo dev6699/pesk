@@ -10,11 +10,9 @@ contextBridge.exposeInMainWorld("peskApi", {
   zoomPet: (scale: number) => ipcRenderer.send("zoom-pet", scale),
   showPetMenu: () => ipcRenderer.send("show-pet-menu"),
   togglePaused: () => ipcRenderer.send("toggle-paused"),
-  toggleWandering: () => ipcRenderer.send("toggle-wandering"),
   toggleLocked: () => ipcRenderer.send("toggle-locked"),
   togglePetVisibility: () => ipcRenderer.send("toggle-pet-visibility"),
   openConfigFolder: () => ipcRenderer.send("open-config-folder"),
-  toggleCodexChat: () => ipcRenderer.send("toggle-codex-chat"),
   selectCodexThread: (threadId: string) => ipcRenderer.send("select-codex-thread", threadId),
   selectAnimation: (name: string) => ipcRenderer.send("select-animation", name),
   setAnimationMode: (mode: "selected" | "shuffle") => ipcRenderer.send("set-animation-mode", mode),
@@ -34,8 +32,8 @@ contextBridge.exposeInMainWorld("peskApi", {
   onPetFocusChanged: (callback: (focused: boolean) => void) => {
     ipcRenderer.on("pet-focus-changed", (_event, focused: boolean) => callback(focused));
   },
-  onCodexChatVisibility: (callback: (visible: boolean) => void) => {
-    ipcRenderer.on("codex-chat-visibility", (_event, visible: boolean) => callback(visible));
+  onPetCodexUpdateChanged: (callback: (active: boolean) => void) => {
+    ipcRenderer.on("pet-codex-update-changed", (_event, active: boolean) => callback(active));
   },
   onCodexInputFocus: (callback: () => void) => {
     ipcRenderer.on("codex-input-focus", () => callback());

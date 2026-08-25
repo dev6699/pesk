@@ -18,13 +18,8 @@ const pet = new PetRenderer({
 
 window.peskApi.onSettingsChanged((next) => pet.updateSettings(next));
 window.peskApi.onPetFocusChanged((focused) => pet.updateFocus(focused));
+window.peskApi.onPetCodexUpdateChanged((active) => pet.updateCodexUpdate(active));
 
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Tab") {
-    event.preventDefault();
-    window.peskApi.toggleCodexChat();
-  }
-});
 
 void window.peskApi.getSettings().then(async (next) => {
   pet.updateSettings(next);

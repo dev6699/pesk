@@ -11,7 +11,6 @@ export class PetRenderer {
   private settings: PetSettings;
   private frame = 0;
   private lastFrame = performance.now();
-  private lastWander = performance.now();
   private animationFrames = [
     "../../assets/pet-idle-1.svg",
     "../../assets/pet-idle-2.svg",
@@ -19,7 +18,6 @@ export class PetRenderer {
     "../../assets/pet-idle-2.svg",
   ];
   private animationFps = 6;
-  private movementSpeed = 1.2;
   private configuredPetSize = 180;
   private availableAnimations: AnimationFrames[] = [];
   private currentAnimationName = "idle";
@@ -46,8 +44,7 @@ export class PetRenderer {
       event.preventDefault();
       window.peskApi.showPetMenu();
     });
-    window.addEventListener("mouseup", () => window.peskApi.endDrag());
-    document.addEventListener("mouseup", () => window.peskApi.endDrag());
+    options.pet.addEventListener("mouseup", () => window.peskApi.endDrag());
   }
 
   get wasFocused(): boolean {
@@ -72,6 +69,10 @@ export class PetRenderer {
     this.focused = focused;
     this.options.pet.classList.toggle("focused", focused);
     this.options.pet.setAttribute("aria-label", focused ? "Desktop pet (focused)" : "Desktop pet");
+  }
+
+  updateCodexUpdate(active: boolean): void {
+    this.options.pet.classList.toggle("codex-update", active);
   }
 
   async loadAnimations(): Promise<void> {
@@ -106,14 +107,6 @@ export class PetRenderer {
         if (next) this.applyAnimation(next);
       }
     }
-    if (
-      this.settings.wandering &&
-      !this.settings.locked &&
-      now - this.lastWander > 80
-    ) {
-      window.peskApi.movePet(this.movementSpeed, this.movementSpeed);
-      this.lastWander = now;
-    }
   }
 
   private async selectAnimation(name: string): Promise<void> {
@@ -129,7 +122,6 @@ export class PetRenderer {
     this.frame = 0;
     this.animationFrames = selected.frames;
     this.animationFps = selected.fps;
-    this.movementSpeed = selected.speed;
     this.configuredPetSize = selected.size;
     this.resizeElement();
     this.options.image.src = this.animationFrames[0];
