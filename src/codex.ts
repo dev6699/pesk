@@ -45,6 +45,13 @@ export interface CodexTokenUsage {
   modelContextWindow?: number;
 }
 
+export interface CodexModelInfo {
+  model?: string;
+  provider?: string;
+  reasoningEffort?: string;
+  serviceTier?: string;
+}
+
 /** Codex-related settings persisted alongside the pet settings. */
 /** State exposed by the controller to the Electron renderer. */
 export interface CodexState {
@@ -58,6 +65,7 @@ export interface CodexState {
   workingSince?: number;
   workedElapsed?: number;
   tokenUsage?: CodexTokenUsage;
+  modelInfo?: CodexModelInfo;
 }
 
 interface Options {
@@ -87,6 +95,7 @@ export class CodexController {
   private workingSince: number | undefined;
   private workedElapsed: number | undefined;
   private tokenUsage: CodexTokenUsage | undefined;
+  private modelInfo: CodexModelInfo | undefined;
   private streamingAssistant = -1;
   private streamingAssistantItemId: string | undefined;
   private readonly activityIndexes = new Map<string, number>();
@@ -116,6 +125,7 @@ export class CodexController {
       workingSince: this.workingSince,
       workedElapsed: this.workedElapsed,
       tokenUsage: this.tokenUsage,
+      modelInfo: this.modelInfo,
     };
   }
 
@@ -184,6 +194,7 @@ export class CodexController {
     this.requests.set(id, (message) => {
       const thread = this.resultThread(message);
       if (typeof thread?.id === "string") {
+        this.updateModelInfo(message);
         this.connected = true;
         this.options.sendSettings();
         this.rememberWorkingDirectory(thread);
@@ -220,11 +231,13 @@ export class CodexController {
       if (typeof thread?.id !== "string") {
         return;
       }
+      this.updateModelInfo(message);
       this.rememberWorkingDirectory(thread);
       this.threadId = thread.id;
       this.connected = true;
       this.history = [];
       this.tokenUsage = undefined;
+      this.modelInfo = undefined;
       this.streamingAssistant = -1;
       this.streamingAssistantItemId = undefined;
       this.workingSince = undefined;
@@ -472,6 +485,7 @@ export class CodexController {
     const id = ++this.nextId;
     this.requests.set(id, (message) => {
       if (!message.error) {
+        this.updateModelInfo(message);
         this.read(threadId);
         return;
       }
@@ -720,6 +734,17 @@ export class CodexController {
         });
         this.options.sendSettings();
       }
+    }
+    if (method === "model/rerouted" && typeof params.toModel === "string") {
+      this.modelInfo = { ...this.modelInfo, model: params.toModel };
+      this.options.sendSettings();
+    }
+    if (method === "thread/settings/updated") {
+      const threadSettings =
+        params.threadSettings && typeof params.threadSettings === "object"
+          ? (params.threadSettings as Record<string, unknown>)
+          : undefined;
+      if (threadSettings) this.updateModelInfoFromValue(threadSettings);
     }
     if (
       method === "thread/status/changed" &&
@@ -1187,6 +1212,27 @@ export class CodexController {
       Record<string, unknown> | undefined;
   }
 
+  private updateModelInfo(message: Record<string, unknown>): void {
+    const result =
+      message.result && typeof message.result === "object"
+        ? (message.result as Record<string, unknown>)
+        : undefined;
+    if (result) this.updateModelInfoFromValue(result);
+  }
+
+  private updateModelInfoFromValue(value: Record<string, unknown>): void {
+    const next: CodexModelInfo = {
+      model: stringValue(value.model),
+      provider: stringValue(value.modelProvider),
+      reasoningEffort: stringValue(value.reasoningEffort ?? value.effort),
+      serviceTier: stringValue(value.serviceTier),
+    };
+    if (Object.values(next).some((entry) => entry !== undefined)) {
+      this.modelInfo = { ...this.modelInfo, ...next };
+      this.options.sendSettings();
+    }
+  }
+
   /** Remembers the server-native directory associated with a thread. */
   private rememberWorkingDirectory(
     thread: Record<string, unknown> | undefined,
@@ -1345,6 +1391,10 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
 }
 
 export interface ThreadStatusLike {

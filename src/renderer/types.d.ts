@@ -18,6 +18,12 @@ interface PetSettings {
     lastTurn?: TokenCounts;
     modelContextWindow?: number;
   };
+  codexModelInfo?: {
+    model?: string;
+    provider?: string;
+    reasoningEffort?: string;
+    serviceTier?: string;
+  };
   codexHistory: Array<{
     role: "user" | "assistant" | "system";
     text: string;

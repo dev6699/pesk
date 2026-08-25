@@ -4,6 +4,7 @@ import type {
   CodexMessage,
   CodexThreadSummary,
   CodexTokenUsage,
+  CodexModelInfo,
 } from "./codex";
 import { ChatWindowController } from "./chat";
 import { PetWindowController } from "./pet";
@@ -23,6 +24,7 @@ interface RendererSettings extends PeskSettings {
   codexHistory: CodexMessage[];
   codexThreads: CodexThreadSummary[];
   codexTokenUsage?: CodexTokenUsage;
+  codexModelInfo?: CodexModelInfo;
 }
 
 let settings: PeskSettings;
@@ -62,6 +64,7 @@ function rendererSettings(): RendererSettings {
     codexWorkingSince: state.workingSince,
     codexWorkedElapsed: state.workedElapsed,
     codexTokenUsage: state.tokenUsage,
+    codexModelInfo: state.modelInfo,
   };
 }
 

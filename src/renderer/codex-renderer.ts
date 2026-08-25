@@ -225,31 +225,40 @@ export class CodexRenderer {
 
   private renderTokenUsage(): void {
     const usage = this.settings.codexTokenUsage;
-    if (!usage) {
+    const modelInfo = this.settings.codexModelInfo;
+    if (!usage && !modelInfo) {
       this.tokenUsage.hidden = true;
       this.tokenUsage.textContent = "";
       return;
     }
-    const total = usage.total.totalTokens;
-    const lastTurn = usage.lastTurn?.totalTokens;
-    const currentContext = usage.lastTurn?.inputTokens;
-    const context = usage.modelContextWindow;
+    const total = usage?.total.totalTokens;
+    const lastTurn = usage?.lastTurn?.totalTokens;
+    const currentContext = usage?.lastTurn?.inputTokens;
+    const context = usage?.modelContextWindow;
     const contextPercent =
       currentContext !== undefined && context
         ? Math.min(100, (currentContext / context) * 100)
         : undefined;
-    const parts = [
+    const modelParts = [
+      modelInfo?.model ?? "",
+      modelInfo?.provider ? `(${modelInfo.provider})` : "",
+      modelInfo?.reasoningEffort
+        ? `Reasoning ${modelInfo.reasoningEffort}`
+        : "",
+      modelInfo?.serviceTier ? `Tier ${modelInfo.serviceTier}` : "",
+    ].filter(Boolean);
+    const usageParts = [
       total !== undefined ? `Total ${formatTokens(total)}` : "",
-      usage.total.inputTokens !== undefined
+      usage?.total.inputTokens !== undefined
         ? `In ${formatTokens(usage.total.inputTokens)}`
         : "",
-      usage.total.outputTokens !== undefined
+      usage?.total.outputTokens !== undefined
         ? `Out ${formatTokens(usage.total.outputTokens)}`
         : "",
-      usage.total.cachedInputTokens !== undefined
+      usage?.total.cachedInputTokens !== undefined
         ? `Cached ${formatTokens(usage.total.cachedInputTokens)}`
         : "",
-      usage.total.reasoningOutputTokens !== undefined
+      usage?.total.reasoningOutputTokens !== undefined
         ? `Reasoning ${formatTokens(usage.total.reasoningOutputTokens)}`
         : "",
       lastTurn !== undefined ? `Turn ${formatTokens(lastTurn)}` : "",
@@ -259,8 +268,12 @@ export class CodexRenderer {
           ? `Context window ${formatTokens(context)}`
           : "",
     ].filter(Boolean);
-    this.tokenUsage.textContent = parts.join(" · ");
-    this.tokenUsage.hidden = parts.length === 0;
+    const lines = [modelParts.join(" · "), usageParts.join(" · ")].filter(
+      Boolean,
+    );
+    this.tokenUsage.textContent = lines.join("\n");
+    this.tokenUsage.title = [...modelParts, ...usageParts].join(" · ");
+    this.tokenUsage.hidden = lines.length === 0;
   }
 
   private selectMessage(
