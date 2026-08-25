@@ -274,6 +274,37 @@ class FakeElement {
 }
 
 describe("PetRenderer focus state", () => {
+  test("shows and refreshes working elapsed time in the pet status", () => {
+    jest.useFakeTimers();
+    (globalThis as unknown as { window: typeof globalThis }).window =
+      globalThis;
+    const now = Date.now();
+    jest.setSystemTime(now);
+    const statusLabel = { textContent: "" } as unknown as HTMLElement;
+    const renderer = new PetRenderer({
+      image: new FakeElement() as never,
+      pet: new FakeElement() as never,
+      status: new FakeElement() as never,
+      statusLabel,
+      chatOnly: false,
+      settings: defaultSettings(),
+    });
+
+    renderer.updateSettings({
+      ...defaultSettings(),
+      codexStatus: "working",
+      codexWorkingSince: now - 65000,
+    });
+    expect(statusLabel.textContent).toBe("Working · 1m 5s");
+
+    jest.advanceTimersByTime(5000);
+    expect(statusLabel.textContent).toBe("Working · 1m 10s");
+
+    renderer.updateSettings(defaultSettings());
+    expect(statusLabel.textContent).toBe("Idle");
+    jest.useRealTimers();
+  });
+
   test("uses one focused class and accessible label for pet focus", () => {
     const pet = new FakeElement();
     const image = new FakeElement();

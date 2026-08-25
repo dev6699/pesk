@@ -22,6 +22,7 @@ export class PetRenderer {
   private availableAnimations: AnimationFrames[] = [];
   private currentAnimationName = "idle";
   private focused = false;
+  private statusTimer: number | undefined;
 
   constructor(private readonly options: PetRendererOptions) {
     this.settings = options.settings;
@@ -68,7 +69,10 @@ export class PetRenderer {
   updateFocus(focused: boolean): void {
     this.focused = focused;
     this.options.pet.classList.toggle("focused", focused);
-    this.options.pet.setAttribute("aria-label", focused ? "Desktop pet (focused)" : "Desktop pet");
+    this.options.pet.setAttribute(
+      "aria-label",
+      focused ? "Desktop pet (focused)" : "Desktop pet",
+    );
   }
 
   updateCodexUpdate(active: boolean): void {
@@ -134,13 +138,47 @@ export class PetRenderer {
   }
 
   private updateStatus(next: PetSettings): void {
-    this.options.statusLabel.textContent =
-      next.codexStatus[0].toUpperCase() + next.codexStatus.slice(1);
+    if (this.statusTimer !== undefined) {
+      window.clearInterval(this.statusTimer);
+      this.statusTimer = undefined;
+    }
+    const render = (): void => {
+      const label =
+        next.codexStatus[0].toUpperCase() + next.codexStatus.slice(1);
+      const elapsed =
+        next.codexWorkingSince !== undefined
+          ? formatElapsed(Date.now() - next.codexWorkingSince)
+          : undefined;
+      this.options.statusLabel.textContent =
+        next.codexStatus === "working" && elapsed
+          ? `${label} · ${elapsed}`
+          : label;
+      this.options.status.setAttribute(
+        "aria-label",
+        this.options.statusLabel.textContent,
+      );
+    };
+    render();
+    if (
+      next.codexStatus === "working" &&
+      next.codexWorkingSince !== undefined
+    ) {
+      this.statusTimer = window.setInterval(render, 1000);
+    }
     this.options.status.className = `status-${next.codexStatus}`;
     this.options.status.title = "";
-    this.options.status.setAttribute(
-      "aria-label",
-      this.options.statusLabel.textContent,
-    );
   }
+}
+
+function formatElapsed(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  if (seconds < 60) return `${seconds}s`;
+
+  const minutes = Math.floor(seconds / 60);
+  const remainderSeconds = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainderSeconds}s`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainderMinutes = minutes % 60;
+  return `${hours}h ${remainderMinutes}m ${remainderSeconds}s`;
 }
