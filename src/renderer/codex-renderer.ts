@@ -224,6 +224,12 @@ export class CodexRenderer {
   }
 
   private renderTokenUsage(): void {
+    if (!this.settings.codexThreadId) {
+      this.tokenUsage.hidden = true;
+      this.tokenUsage.textContent = "";
+      this.tokenUsage.removeAttribute("title");
+      return;
+    }
     const usage = this.settings.codexTokenUsage;
     const modelInfo = this.settings.codexModelInfo;
     if (!usage && !modelInfo) {
