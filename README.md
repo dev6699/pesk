@@ -63,6 +63,7 @@ During development, `config.json` at the repository root provides defaults. The 
   "menuShortcut": "Ctrl+Down",
   "petFocusShortcut": "Ctrl+Up",
   "codexAppServerUrl": "ws://127.0.0.1:4500",
+  "codexStatusSound": "audio.mp3",
   "presets": [
     {
       "name": "Open Edge",
@@ -102,6 +103,8 @@ During development, `config.json` at the repository root provides defaults. The 
 ```
 
 Relative `animationsDir` paths resolve beside the active configuration file. Animation folders contain numbered PNG frames, for example:
+
+`codexStatusSound` is an optional WAV, MP3, or other browser-supported sound-file path, resolved beside the active configuration file. Pesk plays it when Codex changes from working to idle or waiting, unless the pet or chat window is focused. Leave it empty to disable the configured file; the Pet menu can also disable status sounds without changing the path.
 
 ```text
 %APPDATA%\pesk\animations\dance\001.png

@@ -6,6 +6,7 @@ interface MenuSettings {
   paused: boolean;
   locked: boolean;
   visible: boolean;
+  codexStatusSound: boolean;
 }
 
 interface Preset {
@@ -87,6 +88,10 @@ function renderControls(settings: MenuSettings): void {
   addAction(settings.paused ? "Resume animation" : "Pause animation", window.peskApi.togglePaused);
   addAction(settings.locked ? "Unlock position" : "Lock position", window.peskApi.toggleLocked);
   addAction(settings.visible ? "Hide Pesk" : "Show Pesk", window.peskApi.togglePetVisibility);
+  addAction(
+    settings.codexStatusSound ? "Disable Codex status sound" : "Enable Codex status sound",
+    window.peskApi.toggleCodexStatusSound,
+  );
   addAction("Open config folder", window.peskApi.openConfigFolder);
   addAction("Quit Pesk", window.peskApi.quitPesk);
 }

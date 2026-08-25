@@ -6,6 +6,8 @@ export function defaultSettings(): PetSettings {
     paused: false,
     locked: false,
     visible: true,
+    codexStatusSound: true,
+    codexStatusSoundUrl: "",
     codexStatus: "idle",
     codexConnected: false,
     codexActivity: null,

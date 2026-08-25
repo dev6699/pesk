@@ -26,6 +26,7 @@ interface RendererSettings extends PeskSettings {
   codexThreads: CodexThreadSummary[];
   codexTokenUsage?: CodexTokenUsage;
   codexModelInfo?: CodexModelInfo;
+  codexStatusSoundUrl: string;
 }
 
 let settings: PeskSettings;
@@ -34,6 +35,7 @@ let chat: ChatWindowController;
 let pet: PetWindowController;
 let presets: PresetController;
 let menu: MenuController;
+let codexStatusSoundUrl = "";
 
 const debug = (...values: unknown[]): void => {
   if (!app.isPackaged) console.log("[pesk]", ...values);
@@ -67,6 +69,7 @@ function rendererSettings(): RendererSettings {
     codexWorkedElapsed: state.workedElapsed,
     codexTokenUsage: state.tokenUsage,
     codexModelInfo: state.modelInfo,
+    codexStatusSoundUrl,
   };
 }
 
@@ -79,6 +82,7 @@ app.whenReady().then(() => {
   configureAutoStart();
   settings = loadSettings();
   const config = loadConfig();
+  codexStatusSoundUrl = config.codexStatusSound;
   presets = new PresetController(debug);
   pet = new PetWindowController({
     getSettings: () => settings,
@@ -117,6 +121,7 @@ app.whenReady().then(() => {
     togglePaused: () => pet.togglePaused(),
     toggleLocked: () => pet.toggleLocked(),
     togglePetVisibility: () => pet.toggleVisibility(),
+    toggleCodexStatusSound: () => pet.toggleCodexStatusSound(),
     showPet: () => pet.show(),
   });
   codexController = new CodexController({
@@ -150,6 +155,7 @@ app.whenReady().then(() => {
   ipcMain.on("toggle-paused", () => pet.togglePaused());
   ipcMain.on("toggle-locked", () => pet.toggleLocked());
   ipcMain.on("toggle-pet-visibility", () => pet.toggleVisibility());
+  ipcMain.on("toggle-codex-status-sound", () => pet.toggleCodexStatusSound());
   ipcMain.on("open-config-folder", () => {
     void shell.openPath(app.getPath("userData"));
   });

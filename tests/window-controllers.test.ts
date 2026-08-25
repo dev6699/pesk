@@ -274,6 +274,103 @@ class FakeElement {
 }
 
 describe("PetRenderer focus state", () => {
+  test("plays one notification when working becomes idle or waiting", () => {
+    (globalThis as unknown as { window: typeof globalThis }).window =
+      globalThis;
+    const sound = { volume: 0, play: jest.fn(async () => undefined) };
+    const previousAudio = window.Audio;
+    window.Audio = jest.fn(() => sound) as unknown as typeof Audio;
+
+    const renderer = new PetRenderer({
+      image: new FakeElement() as never,
+      pet: new FakeElement() as never,
+      status: new FakeElement() as never,
+      statusLabel: { textContent: "" } as unknown as HTMLElement,
+      chatOnly: false,
+      settings: defaultSettings(),
+    });
+    renderer.updateSettings({
+      ...defaultSettings(),
+      codexStatus: "working",
+      codexStatusSoundUrl: "file:///tmp/status.mp3",
+    });
+    renderer.updateSettings({
+      ...defaultSettings(),
+      codexStatus: "idle",
+      codexStatusSoundUrl: "file:///tmp/status.mp3",
+    });
+    renderer.updateCodexUpdate(true);
+    renderer.updateSettings({
+      ...defaultSettings(),
+      codexStatus: "waiting",
+      codexStatusSoundUrl: "file:///tmp/status.mp3",
+    });
+
+    expect(window.Audio).toHaveBeenCalledTimes(1);
+    expect(sound.play).toHaveBeenCalledTimes(1);
+    window.Audio = previousAudio;
+  });
+
+  test("does not play when the window is focused", () => {
+    (globalThis as unknown as { window: typeof globalThis }).window =
+      globalThis;
+    const previousAudio = window.Audio;
+    window.Audio = jest.fn() as unknown as typeof Audio;
+    const renderer = new PetRenderer({
+      image: new FakeElement() as never,
+      pet: new FakeElement() as never,
+      status: new FakeElement() as never,
+      statusLabel: { textContent: "" } as unknown as HTMLElement,
+      chatOnly: false,
+      settings: defaultSettings(),
+    });
+
+    renderer.updateFocus(true);
+    renderer.updateSettings({
+      ...defaultSettings(),
+      codexStatus: "working",
+      codexStatusSoundUrl: "file:///tmp/status.mp3",
+    });
+    renderer.updateSettings({
+      ...defaultSettings(),
+      codexStatus: "idle",
+      codexStatusSoundUrl: "file:///tmp/status.mp3",
+    });
+    renderer.updateCodexUpdate(true);
+
+    expect(window.Audio).not.toHaveBeenCalled();
+    window.Audio = previousAudio;
+  });
+
+  test("does not play the notification when disabled", () => {
+    (globalThis as unknown as { window: typeof globalThis }).window =
+      globalThis;
+    const previousAudio = window.Audio;
+    window.Audio = jest.fn() as unknown as typeof Audio;
+    const renderer = new PetRenderer({
+      image: new FakeElement() as never,
+      pet: new FakeElement() as never,
+      status: new FakeElement() as never,
+      statusLabel: { textContent: "" } as unknown as HTMLElement,
+      chatOnly: false,
+      settings: { ...defaultSettings(), codexStatusSound: false },
+    });
+
+    renderer.updateSettings({
+      ...defaultSettings(),
+      codexStatusSound: false,
+      codexStatus: "working",
+    });
+    renderer.updateSettings({
+      ...defaultSettings(),
+      codexStatusSound: false,
+      codexStatus: "idle",
+    });
+
+    expect(window.Audio).not.toHaveBeenCalled();
+    window.Audio = previousAudio;
+  });
+
   test("shows and refreshes working elapsed time in the pet status", () => {
     jest.useFakeTimers();
     (globalThis as unknown as { window: typeof globalThis }).window =

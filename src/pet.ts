@@ -162,6 +162,15 @@ export class PetWindowController {
     this.options.saveSettings();
   }
 
+  /** Toggles the notification sound for Codex status transitions. */
+  toggleCodexStatusSound(): void {
+    const settings = this.options.getSettings();
+    settings.codexStatusSound = !settings.codexStatusSound;
+    this.options.sendSettings();
+    this.options.refreshTrayMenu();
+    this.options.saveSettings();
+  }
+
   /** Toggles the pet position lock. */
   toggleLocked(): void {
     const settings = this.options.getSettings();

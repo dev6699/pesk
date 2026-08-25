@@ -22,10 +22,14 @@ export class PetRenderer {
   private availableAnimations: AnimationFrames[] = [];
   private currentAnimationName = "idle";
   private focused = false;
+  private codexUpdateActive = false;
+  private pendingStatusSound = false;
   private statusTimer: number | undefined;
+  private previousStatus: PetSettings["codexStatus"];
 
   constructor(private readonly options: PetRendererOptions) {
     this.settings = options.settings;
+    this.previousStatus = options.settings.codexStatus;
     this.updateStatus(this.settings);
     options.pet.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
@@ -68,6 +72,8 @@ export class PetRenderer {
 
   updateFocus(focused: boolean): void {
     this.focused = focused;
+    if (focused) this.pendingStatusSound = false;
+    else this.maybePlayPendingStatusSound();
     this.options.pet.classList.toggle("focused", focused);
     this.options.pet.setAttribute(
       "aria-label",
@@ -76,6 +82,9 @@ export class PetRenderer {
   }
 
   updateCodexUpdate(active: boolean): void {
+    this.codexUpdateActive = active;
+    if (!active) this.pendingStatusSound = false;
+    else this.maybePlayPendingStatusSound();
     this.options.pet.classList.toggle("codex-update", active);
   }
 
@@ -138,6 +147,14 @@ export class PetRenderer {
   }
 
   private updateStatus(next: PetSettings): void {
+    if (
+      this.previousStatus === "working" &&
+      (next.codexStatus === "idle" || next.codexStatus === "waiting")
+    ) {
+      this.pendingStatusSound = true;
+    }
+    this.previousStatus = next.codexStatus;
+    this.maybePlayPendingStatusSound();
     if (this.statusTimer !== undefined) {
       window.clearInterval(this.statusTimer);
       this.statusTimer = undefined;
@@ -167,6 +184,24 @@ export class PetRenderer {
     }
     this.options.status.className = `status-${next.codexStatus}`;
     this.options.status.title = "";
+  }
+
+  /** Plays a short notification when Codex finishes or needs attention. */
+  private maybePlayPendingStatusSound(): void {
+    if (!this.pendingStatusSound || !this.codexUpdateActive || this.focused) {
+      return;
+    }
+    this.pendingStatusSound = false;
+    this.playStatusChangeSound();
+  }
+
+  private playStatusChangeSound(): void {
+    if (!this.settings.codexStatusSound) return;
+    if (!this.settings.codexStatusSoundUrl) return;
+
+    const sound = new Audio(this.settings.codexStatusSoundUrl);
+    sound.volume = 1;
+    void sound.play().catch(() => undefined);
   }
 }
 

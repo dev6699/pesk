@@ -13,6 +13,7 @@ interface MenuOptions {
   togglePaused: () => void;
   toggleLocked: () => void;
   togglePetVisibility: () => void;
+  toggleCodexStatusSound: () => void;
   showPet: () => void;
 }
 

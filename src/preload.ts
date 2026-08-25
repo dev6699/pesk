@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("peskApi", {
   togglePaused: () => ipcRenderer.send("toggle-paused"),
   toggleLocked: () => ipcRenderer.send("toggle-locked"),
   togglePetVisibility: () => ipcRenderer.send("toggle-pet-visibility"),
+  toggleCodexStatusSound: () => ipcRenderer.send("toggle-codex-status-sound"),
   openConfigFolder: () => ipcRenderer.send("open-config-folder"),
   selectCodexThread: (threadId: string) => ipcRenderer.send("select-codex-thread", threadId),
   selectAnimation: (name: string) => ipcRenderer.send("select-animation", name),

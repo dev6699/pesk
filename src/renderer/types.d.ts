@@ -5,6 +5,8 @@ interface PetSettings {
   paused: boolean;
   locked: boolean;
   visible: boolean;
+  codexStatusSound: boolean;
+  codexStatusSoundUrl: string;
   codexStatus: "idle" | "working" | "waiting";
   codexConnected: boolean;
   codexThreadId?: string;
@@ -80,6 +82,7 @@ interface Window {
     togglePaused: () => void;
     toggleLocked: () => void;
     togglePetVisibility: () => void;
+    toggleCodexStatusSound: () => void;
     openConfigFolder: () => void;
     selectCodexThread: (threadId: string) => void;
     selectAnimation: (name: string) => void;
