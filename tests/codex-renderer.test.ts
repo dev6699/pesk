@@ -69,6 +69,7 @@ function makeRenderer(settings: Settings = defaultSettings()): {
   window.peskApi = {
     ...window.peskApi,
     selectCodexThread: jest.fn(),
+    interruptCodexTurn: jest.fn(async () => true),
     submitCodexPrompt: jest.fn(async () => settings),
     respondCodexPermission: jest.fn(),
   };
@@ -201,6 +202,16 @@ test("submits a prompt, rejects empty or working input, and handles input shortc
   expect(shiftEnter.defaultPrevented).toBe(true);
 
   renderer.updateSettings({ ...next, codexStatus: "working" });
+  const interrupt = window.peskApi.interruptCodexTurn as jest.Mock;
+  const interruptEvent = new KeyboardEvent("keydown", {
+    key: "c",
+    ctrlKey: true,
+    cancelable: true,
+  });
+  elements.input.dispatchEvent(interruptEvent);
+  expect(interruptEvent.defaultPrevented).toBe(true);
+  expect(interrupt).toHaveBeenCalledTimes(1);
+
   elements.input.value = "blocked";
   elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
   await Promise.resolve();
@@ -254,6 +265,30 @@ test("handles approval keyboard shortcuts and completed approval states", () => 
   expect(elements.history.textContent).toContain("Approved");
 });
 
+test("blurs the input when selecting a message with Alt+Up", () => {
+  const { renderer, elements } = makeRenderer({
+    ...defaultSettings(),
+    codexHistory: [{ role: "user", text: "copy this" }],
+  });
+  renderer.updateSettings({
+    ...defaultSettings(),
+    codexHistory: [{ role: "user", text: "copy this" }],
+  });
+  elements.input.focus();
+  (elements.history.querySelector(".codex-message") as HTMLElement).scrollIntoView =
+    jest.fn();
+
+  const event = new KeyboardEvent("keydown", {
+    key: "ArrowUp",
+    altKey: true,
+    cancelable: true,
+  });
+  renderer.handleKeydown(event);
+
+  expect(event.defaultPrevented).toBe(true);
+  expect(document.activeElement).not.toBe(elements.input);
+});
+
 test("renders working and completed elapsed states", () => {
   jest.useFakeTimers();
   const { renderer, elements } = makeRenderer();
@@ -272,4 +307,14 @@ test("renders working and completed elapsed states", () => {
   });
   expect(elements.workingStatus.textContent).toContain("Worked for");
   expect(elements.workingElapsed.textContent).toBe("1h 1m 1s");
+
+  renderer.updateSettings({
+    ...defaultSettings(),
+    codexWorkedElapsed: 1000,
+    codexInterrupted: true,
+  });
+  expect(elements.workingStatus.textContent).toContain(
+    "Conversation interrupted",
+  );
+  expect(elements.workingStatus.classList.contains("codex-working-status-interrupted")).toBe(true);
 });

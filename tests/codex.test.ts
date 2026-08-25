@@ -1113,6 +1113,42 @@ describe("CodexController", () => {
     ).toHaveLength(1);
   });
 
+  test("interrupts the active turn with its thread and turn ids", () => {
+    const { controller, socket } = connectedController();
+
+    controller.submitPrompt("stop this");
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "turn/started",
+        params: { turn: { id: "turn-interrupt" } },
+      }),
+    );
+
+    expect(controller.interruptTurn()).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "turn/interrupt",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-interrupt",
+      },
+    });
+  });
+
+  test("marks an interrupted turn in controller state", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "turn/completed",
+        params: { turn: { status: "interrupted" } },
+      }),
+    );
+
+    expect(controller.getState().interrupted).toBe(true);
+  });
+
   test("keeps working state separate from streamed assistant history", () => {
     const { controller, socket } = connectedController();
 

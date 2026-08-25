@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("peskApi", {
   toggleCodexStatusSound: () => ipcRenderer.send("toggle-codex-status-sound"),
   openConfigFolder: () => ipcRenderer.send("open-config-folder"),
   selectCodexThread: (threadId: string) => ipcRenderer.send("select-codex-thread", threadId),
+  interruptCodexTurn: () => ipcRenderer.invoke("interrupt-codex-turn"),
   selectAnimation: (name: string) => ipcRenderer.send("select-animation", name),
   setAnimationMode: (mode: "selected" | "shuffle") => ipcRenderer.send("set-animation-mode", mode),
   quitPesk: () => ipcRenderer.send("quit-pesk"),

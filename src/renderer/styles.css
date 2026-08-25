@@ -366,6 +366,14 @@ body.chat-only #codex-chat {
   color: #ffb347;
 }
 
+#codex-working-status.codex-working-status-interrupted {
+  color: #ff4d4f;
+}
+
+#codex-working-status.codex-working-status-interrupted #codex-working-elapsed {
+  color: #ff4d4f;
+}
+
 .codex-empty-history {
   padding: 12px 4px;
   color: #ffffffaa;

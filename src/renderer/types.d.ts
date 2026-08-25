@@ -16,6 +16,7 @@ interface PetSettings {
   codexActivity: Record<string, unknown> | null;
   codexWorkingSince?: number;
   codexWorkedElapsed?: number;
+  codexInterrupted?: boolean;
   codexTokenUsage?: {
     total: TokenCounts;
     lastTurn?: TokenCounts;
@@ -85,6 +86,7 @@ interface Window {
     toggleCodexStatusSound: () => void;
     openConfigFolder: () => void;
     selectCodexThread: (threadId: string) => void;
+    interruptCodexTurn: () => Promise<boolean>;
     selectAnimation: (name: string) => void;
     setAnimationMode: (mode: "selected" | "shuffle") => void;
     quitPesk: () => void;

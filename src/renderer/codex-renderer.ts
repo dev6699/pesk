@@ -45,6 +45,9 @@ export class CodexRenderer {
       (event.ctrlKey || event.metaKey) &&
       !event.shiftKey &&
       !event.altKey &&
+      !(event.target === this.input &&
+        (this.settings.codexStatus === "working" ||
+          this.settings.codexStatus === "waiting")) &&
       this.selectedMessageIndex >= 0 &&
       !this.hasHighlightedText()
     ) {
@@ -321,6 +324,7 @@ export class CodexRenderer {
       )
       .map(({ index }) => index);
     if (!candidateIndices.length) return;
+    this.input.blur();
     const visibleIndices = this.visibleMessageIndices(
       messages,
       candidateIndices,
@@ -451,6 +455,19 @@ export class CodexRenderer {
   }
 
   private handleInputKeydown(event: KeyboardEvent): void {
+    if (
+      event.key.toLowerCase() === "c" &&
+      event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      (this.settings.codexStatus === "working" ||
+        this.settings.codexStatus === "waiting")
+    ) {
+      event.preventDefault();
+      void window.peskApi.interruptCodexTurn();
+      return;
+    }
     if (event.key !== "Enter") return;
     if (
       event.ctrlKey &&
@@ -667,11 +684,17 @@ export class CodexRenderer {
         window.clearInterval(this.workingLabelTimer);
       this.workingLabelTimer = undefined;
       this.workingLabelSince = undefined;
-      this.workingStatus.firstElementChild!.textContent = "Worked for";
+      this.workingStatus.classList.toggle(
+        "codex-working-status-interrupted",
+        Boolean(this.settings.codexInterrupted),
+      );
+      this.workingStatus.firstElementChild!.textContent =
+        this.settings.codexInterrupted ? "Conversation interrupted" : "Worked for";
       this.workingElapsed.textContent = formatElapsed(worked ?? 0);
       return;
     }
     this.workingStatus.classList.remove("codex-working-status-complete");
+    this.workingStatus.classList.remove("codex-working-status-interrupted");
     if (
       this.workingLabelTimer === undefined ||
       this.workingLabelSince !== since

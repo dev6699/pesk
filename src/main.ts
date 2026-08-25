@@ -22,6 +22,7 @@ interface RendererSettings extends PeskSettings {
   codexActivity: Record<string, unknown> | null;
   codexWorkingSince?: number;
   codexWorkedElapsed?: number;
+  codexInterrupted?: boolean;
   codexHistory: CodexMessage[];
   codexThreads: CodexThreadSummary[];
   codexTokenUsage?: CodexTokenUsage;
@@ -67,6 +68,7 @@ function rendererSettings(): RendererSettings {
     codexThreads: state.threads,
     codexWorkingSince: state.workingSince,
     codexWorkedElapsed: state.workedElapsed,
+    codexInterrupted: state.interrupted,
     codexTokenUsage: state.tokenUsage,
     codexModelInfo: state.modelInfo,
     codexStatusSoundUrl,
@@ -189,6 +191,9 @@ app.whenReady().then(() => {
     codexController.submitPrompt(prompt);
     return rendererSettings();
   });
+  ipcMain.handle("interrupt-codex-turn", () =>
+    codexController.interruptTurn(),
+  );
   ipcMain.on("move-pet", (_event, dx: number, dy: number) => pet.move(dx, dy));
   ipcMain.on("drag-start", () => pet.startDragging());
   ipcMain.on("drag-end", () => pet.stopDragging());

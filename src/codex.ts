@@ -65,6 +65,7 @@ export interface CodexState {
   threads: CodexThreadSummary[];
   workingSince?: number;
   workedElapsed?: number;
+  interrupted?: boolean;
   tokenUsage?: CodexTokenUsage;
   modelInfo?: CodexModelInfo;
 }
@@ -87,6 +88,7 @@ export class CodexController {
   private url = "ws://127.0.0.1:4500";
   private workingDirectory = process.cwd();
   private threadId: string | undefined;
+  private activeTurnId: string | undefined;
   private status: CodexState["status"] = "idle";
   private connected = false;
   private activity: Record<string, unknown> | null = null;
@@ -95,6 +97,7 @@ export class CodexController {
   private threads: CodexThreadSummary[] = [];
   private workingSince: number | undefined;
   private workedElapsed: number | undefined;
+  private interrupted = false;
   private tokenUsage: CodexTokenUsage | undefined;
   private startingNewThread = false;
   private modelInfo: CodexModelInfo | undefined;
@@ -129,6 +132,7 @@ export class CodexController {
       threads: this.threads,
       workingSince: this.workingSince,
       workedElapsed: this.workedElapsed,
+      interrupted: this.interrupted,
       tokenUsage: this.tokenUsage,
       modelInfo: this.modelInfo,
     };
@@ -157,6 +161,28 @@ export class CodexController {
     this.switchThread(id);
   }
 
+  /** Requests cancellation of the currently running turn. */
+  interruptTurn(): boolean {
+    if (
+      !this.initialized ||
+      this.socket?.readyState !== WebSocket.OPEN ||
+      !this.threadId ||
+      !this.activeTurnId
+    ) {
+      return false;
+    }
+    const id = ++this.nextId;
+    this.send({
+      method: "turn/interrupt",
+      id,
+      params: {
+        threadId: this.threadId,
+        turnId: this.activeTurnId,
+      },
+    });
+    return true;
+  }
+
   /** Starts a prompt turn when the controller is initialized and idle. */
   submitPrompt(value: unknown): boolean {
     if (
@@ -169,6 +195,7 @@ export class CodexController {
     const prompt = value.trim();
     this.workingSince = undefined;
     this.workedElapsed = undefined;
+    this.interrupted = false;
     const newThreadMatch = prompt.match(/^\/new(?:\s+(.+))?$/);
     if (newThreadMatch) {
       return this.startNewThread(newThreadMatch[1]);
@@ -253,6 +280,7 @@ export class CodexController {
       this.streamingAssistantItemId = undefined;
       this.workingSince = undefined;
       this.workedElapsed = undefined;
+      this.interrupted = false;
       this.activityIndexes.clear();
       this.threads = [
         { id: thread.id, status: "idle" },
@@ -322,6 +350,7 @@ export class CodexController {
         this.initialized = true;
         this.connected = false;
         this.threadId = undefined;
+        this.activeTurnId = undefined;
         this.pendingThreadResumeId = undefined;
         this.options.sendSettings();
         this.discover();
@@ -361,6 +390,7 @@ export class CodexController {
       this.initialized = false;
       this.connected = false;
       this.threadId = undefined;
+      this.activeTurnId = undefined;
       this.threads = [];
       this.pendingThreadStarts = 0;
       this.pendingThreadResumeId = undefined;
@@ -488,12 +518,14 @@ export class CodexController {
       return;
     }
     this.threadId = id;
+    this.activeTurnId = undefined;
     this.tokenUsage = undefined;
     if (!preserveHistory) this.history = [];
     this.streamingAssistant = -1;
     this.streamingAssistantItemId = undefined;
     this.workingSince = undefined;
     this.workedElapsed = undefined;
+    this.interrupted = false;
     this.activityIndexes.clear();
     this.options.sendSettings();
     if (resume) {
@@ -734,6 +766,7 @@ export class CodexController {
           ? (params.turn as Record<string, unknown>)
           : undefined;
       const turnId = typeof turn?.id === "string" ? turn.id : undefined;
+      this.activeTurnId = turnId;
       const last = [...this.history]
         .reverse()
         .find((item) => item.role === "user" && !item.turnId);
@@ -765,6 +798,12 @@ export class CodexController {
       }
     }
     if (method === "turn/completed") {
+      this.activeTurnId = undefined;
+      const completedTurn =
+        params.turn && typeof params.turn === "object"
+          ? (params.turn as Record<string, unknown>)
+          : undefined;
+      this.interrupted = completedTurn?.status === "interrupted";
       this.activity = message;
       this.setStatus("idle");
       const turn =
@@ -912,6 +951,14 @@ export class CodexController {
     this.ensureWorking();
     const id = ++this.nextId;
     this.requests.set(id, (message) => {
+      const turn =
+        message.result && typeof message.result === "object"
+          ? (message.result as Record<string, unknown>).turn
+          : undefined;
+      if (turn && typeof turn === "object") {
+        const turnId = (turn as Record<string, unknown>).id;
+        if (typeof turnId === "string") this.activeTurnId = turnId;
+      }
       if (message.error) {
         this.setStatus("idle");
       }
