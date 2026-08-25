@@ -729,9 +729,15 @@ function activityLabel(
 
 function formatElapsed(milliseconds: number): string {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  if (seconds < 60) return `${seconds}s`;
+
   const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+  const remainderSeconds = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainderSeconds}s`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainderMinutes = minutes % 60;
+  return `${hours}h ${remainderMinutes}m ${remainderSeconds}s`;
 }
 
 function renderMarkdown(value: string): string {
