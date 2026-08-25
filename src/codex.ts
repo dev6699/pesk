@@ -104,14 +104,16 @@ export class CodexController {
   private initialized = false;
   private nextId = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
-  private resumeTimer: NodeJS.Timeout | null = null;
   private discoveryPending = false;
+  private pendingThreadStarts = 0;
+  private pendingThreadResumeId: string | undefined;
+  private readonly locallyStartedThreads = new Set<string>();
   private readonly requests = new Map<
     number,
     (message: Record<string, unknown>) => void
   >();
   private readonly prompts = new Map<string, number>();
-  constructor(private readonly options: Options) {}
+  constructor(private readonly options: Options) { }
 
   /** Returns the current state snapshot for renderer IPC responses. */
   getState(): CodexState {
@@ -144,9 +146,6 @@ export class CodexController {
   stop(): void {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
-    }
-    if (this.resumeTimer) {
-      clearTimeout(this.resumeTimer);
     }
     this.socket?.close();
   }
@@ -192,9 +191,11 @@ export class CodexController {
         serviceName: "pesk",
       },
     });
+    this.pendingThreadStarts += 1;
     this.requests.set(id, (message) => {
       const thread = this.resultThread(message);
       if (typeof thread?.id === "string") {
+        this.noteThreadStartResponse(thread.id);
         this.updateModelInfo(message);
         this.connected = true;
         this.options.sendSettings();
@@ -230,6 +231,7 @@ export class CodexController {
         serviceName: "pesk",
       },
     });
+    this.pendingThreadStarts += 1;
     this.requests.set(id, (message) => {
       const thread = this.resultThread(message);
       if (typeof thread?.id !== "string") {
@@ -237,13 +239,14 @@ export class CodexController {
         return;
       }
       this.startingNewThread = false;
-      this.updateModelInfo(message);
+      this.noteThreadStartResponse(thread.id);
       this.rememberWorkingDirectory(thread);
       this.threadId = thread.id;
       this.connected = true;
       this.history = [];
       this.tokenUsage = undefined;
       this.modelInfo = undefined;
+      this.updateModelInfo(message);
       this.streamingAssistant = -1;
       this.streamingAssistantItemId = undefined;
       this.workingSince = undefined;
@@ -284,6 +287,7 @@ export class CodexController {
 
   /** Sends one newline-delimited JSON-RPC message to the app server. */
   private send(message: Record<string, unknown>): void {
+    console.log('send->', message)
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(`${JSON.stringify(message)}\n`);
     }
@@ -316,6 +320,7 @@ export class CodexController {
         this.initialized = true;
         this.connected = false;
         this.threadId = undefined;
+        this.pendingThreadResumeId = undefined;
         this.options.sendSettings();
         this.discover();
       });
@@ -355,6 +360,9 @@ export class CodexController {
       this.connected = false;
       this.threadId = undefined;
       this.threads = [];
+      this.pendingThreadStarts = 0;
+      this.pendingThreadResumeId = undefined;
+      this.locallyStartedThreads.clear();
       this.streamingAssistant = -1;
       this.activity = null;
       this.options.sendSettings();
@@ -450,6 +458,7 @@ export class CodexController {
     this.send({
       method: "thread/loaded/list",
       id,
+      params: {},
     });
   }
 
@@ -467,6 +476,9 @@ export class CodexController {
       return;
     }
     if (this.threadId === id) {
+      if (resume && !this.connected) {
+        this.resume(id);
+      }
       this.options.sendSettings();
       return;
     }
@@ -484,8 +496,30 @@ export class CodexController {
     }
   }
 
-  /** Resumes a thread, retrying briefly while its rollout is being created. */
-  private resume(threadId: string, attempt = 0): void {
+  /** Tracks the response/notification pair for a locally created thread. */
+  private noteThreadStartResponse(threadId: string): void {
+    if (this.locallyStartedThreads.delete(threadId)) {
+      return;
+    }
+    this.pendingThreadStarts = Math.max(0, this.pendingThreadStarts - 1);
+    this.locallyStartedThreads.add(threadId);
+  }
+
+  /** Returns whether a thread/started notification belongs to local start. */
+  private consumeLocalThreadStarted(threadId: string): boolean {
+    if (this.locallyStartedThreads.delete(threadId)) {
+      return true;
+    }
+    if (this.pendingThreadStarts > 0) {
+      this.pendingThreadStarts -= 1;
+      this.locallyStartedThreads.add(threadId);
+      return true;
+    }
+    return false;
+  }
+
+  /** Resumes a thread after the app server has announced it is active. */
+  private resume(threadId: string): void {
     if (!this.initialized) {
       return;
     }
@@ -500,13 +534,6 @@ export class CodexController {
         typeof (message.error as Record<string, unknown>).message === "string"
           ? ((message.error as Record<string, unknown>).message as string)
           : "";
-      if (text.includes("no rollout found") && attempt < 3) {
-        this.resumeTimer = setTimeout(
-          () => this.resume(threadId, attempt + 1),
-          500,
-        );
-        return;
-      }
       if (text.includes("already has an active writer")) {
         this.threadId = undefined;
         this.connected = false;
@@ -539,8 +566,22 @@ export class CodexController {
       this.rememberWorkingDirectory(thread);
       this.connected = true;
       this.setStatusFromThread(thread);
+      const turns = this.records(thread?.turns);
+      const restoredTokenUsage =
+        parseTokenUsageValue(thread?.tokenUsage) ??
+        [...turns]
+          .reverse()
+          .map((turn) =>
+            parseTokenUsageValue(turn.tokenUsage ?? turn.usage),
+          )
+          .find((usage): usage is CodexTokenUsage => usage !== undefined);
+      // A live usage notification can arrive while the history read is in
+      // flight. Do not erase it when the read response has no persisted usage.
+      if (restoredTokenUsage) {
+        this.tokenUsage = restoredTokenUsage;
+      }
       const restored: CodexMessage[] = [];
-      for (const turn of this.records(thread?.turns)) {
+      for (const turn of turns) {
         const timestamp =
           typeof turn.createdAt === "number"
             ? turn.createdAt < 10_000_000_000
@@ -564,10 +605,10 @@ export class CodexController {
               typeof item.text === "string"
                 ? item.text
                 : this.records(item.content)
-                    .map((part) =>
-                      typeof part.text === "string" ? part.text : "",
-                    )
-                    .join("");
+                  .map((part) =>
+                    typeof part.text === "string" ? part.text : "",
+                  )
+                  .join("");
             if (text.trim()) {
               restored.push({
                 role: "assistant",
@@ -621,6 +662,10 @@ export class CodexController {
       }
     }
     const method = typeof message.method === "string" ? message.method : "";
+    if (!method.startsWith('item')) {
+      this.options.debug(message)
+    }
+
     const params =
       message.params && typeof message.params === "object"
         ? (message.params as Record<string, unknown>)
@@ -661,6 +706,12 @@ export class CodexController {
             status: "active",
           },
         ];
+      }
+      const locallyStarted =
+        method === "thread/started" &&
+        this.consumeLocalThreadStarted(thread.id);
+      if (method === "thread/started") {
+        this.pendingThreadResumeId = locallyStarted ? undefined : thread.id;
       }
       const preservePendingPrompt =
         method === "thread/started" &&
@@ -771,7 +822,13 @@ export class CodexController {
         this.needsReconcile = false;
         this.read(params.threadId as string);
       }
-      if (shouldResumeOnActiveStatus(this.connected, status)) {
+      if (
+        status?.type === "active" &&
+        this.pendingThreadResumeId === params.threadId
+      ) {
+        this.pendingThreadResumeId = undefined;
+        this.resume(params.threadId as string);
+      } else if (shouldResumeOnActiveStatus(this.connected, status)) {
         this.resume(params.threadId as string);
       }
     }
@@ -1241,7 +1298,12 @@ export class CodexController {
       message.result && typeof message.result === "object"
         ? (message.result as Record<string, unknown>)
         : undefined;
-    if (result) this.updateModelInfoFromValue(result);
+    if (!result) return;
+
+    this.updateModelInfoFromValue(result);
+    if (result.thread && typeof result.thread === "object") {
+      this.updateModelInfoFromValue(result.thread as Record<string, unknown>);
+    }
   }
 
   private updateModelInfoFromValue(value: Record<string, unknown>): void {
@@ -1251,8 +1313,11 @@ export class CodexController {
       reasoningEffort: stringValue(value.reasoningEffort ?? value.effort),
       serviceTier: stringValue(value.serviceTier),
     };
-    if (Object.values(next).some((entry) => entry !== undefined)) {
-      this.modelInfo = { ...this.modelInfo, ...next };
+    const defined = Object.fromEntries(
+      Object.entries(next).filter(([, entry]) => entry !== undefined),
+    ) as CodexModelInfo;
+    if (Object.keys(defined).length > 0) {
+      this.modelInfo = { ...this.modelInfo, ...defined };
       this.options.sendSettings();
     }
   }

@@ -263,13 +263,14 @@ describe("CodexController", () => {
     expect(controller.getState().threadId).toBe("thread-1");
   });
 
-  test("retries a resume when the rollout is not ready", () => {
+  test("waits for active status when the rollout is not ready", () => {
     jest.useFakeTimers();
     const { controller, socket } = connectedController();
     const internal = controller as unknown as Record<
       string,
       (...args: unknown[]) => unknown
     >;
+    (controller as unknown as { connected: boolean }).connected = false;
 
     internal.resume("thread-1");
     const resumeId = lastMessage(socket).id;
@@ -280,7 +281,20 @@ describe("CodexController", () => {
         error: { message: "no rollout found" },
       }),
     );
-    jest.advanceTimersByTime(500);
+    jest.advanceTimersByTime(3000);
+
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/resume",
+      params: { threadId: "thread-1" },
+    });
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thread-1", status: { type: "active" } },
+      }),
+    );
 
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/resume",
@@ -450,6 +464,9 @@ describe("CodexController", () => {
     const { controller } = connectedController([
       {
         createdAt: 1_700_000_000,
+        tokenUsage: {
+          total: { totalTokens: 1650 },
+        },
         items: [
           {
             type: "userMessage",
@@ -467,6 +484,7 @@ describe("CodexController", () => {
       expect.objectContaining({ role: "user", text: "Remember this" }),
       expect.objectContaining({ role: "assistant", text: "I remember it" }),
     ]);
+    expect(controller.getState().tokenUsage?.total.totalTokens).toBe(1650);
   });
 
   test("keeps generic activity after idle history reconciliation", () => {
@@ -659,6 +677,89 @@ describe("CodexController", () => {
     );
   });
 
+  test("waits for active status before resuming an externally announced thread", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/started",
+        params: { thread: { id: "external-thread" } },
+      }),
+    );
+
+    expect(lastMessage(socket).method).not.toBe("thread/resume");
+    expect(controller.getState().threadId).toBe("external-thread");
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: {
+          threadId: "external-thread",
+          status: { type: "active", activeFlags: [] },
+        },
+      }),
+    );
+
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/resume",
+      params: { threadId: "external-thread" },
+    });
+  });
+
+  test("does not resume a thread created by the local thread/start request", () => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.startNewThread()).toBe(true);
+    const startId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({ id: startId, result: { thread: { id: "local-thread" } } }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/started",
+        params: { thread: { id: "local-thread" } },
+      }),
+    );
+
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/start",
+      params: { serviceName: "pesk" },
+    });
+  });
+
+  test("exposes model information nested in the thread/start response", () => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.startNewThread()).toBe(true);
+    const startId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: startId,
+        result: {
+          thread: {
+            id: "model-thread",
+            modelProvider: "openai",
+          },
+          model: "gpt-5",
+          reasoningEffort: "high",
+          serviceTier: "fast",
+        },
+      }),
+    );
+
+    expect(controller.getState().modelInfo).toEqual({
+      model: "gpt-5",
+      provider: "openai",
+      reasoningEffort: "high",
+      serviceTier: "fast",
+    });
+  });
+
   test("stores thread token usage updates for the renderer", () => {
     const { controller, socket } = connectedController();
 
@@ -720,6 +821,33 @@ describe("CodexController", () => {
 
     expect(controller.getState().tokenUsage?.total.totalTokens).toBe(2100);
     expect(controller.getState().tokenUsage?.modelContextWindow).toBe(128000);
+  });
+
+  test("does not clear live token usage when history has no persisted usage", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/tokenUsage/updated",
+        params: {
+          threadId: "thread-1",
+          tokenUsage: { total: { totalTokens: 3200 } },
+        },
+      }),
+    );
+
+    (controller as unknown as { read: (id: string) => void }).read("thread-1");
+    const readId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: readId,
+        result: { thread: { canAcceptDirectInput: true, turns: [] } },
+      }),
+    );
+
+    expect(controller.getState().tokenUsage?.total.totalTokens).toBe(3200);
   });
 
   test("accepts the current app-server token usage shape", () => {
@@ -893,6 +1021,7 @@ describe("CodexController", () => {
     expect(controller.getState().threadId).toBeUndefined();
     expect(controller.getState().connected).toBe(false);
   });
+
 
   test("clears a session that cannot accept direct input", () => {
     const { controller, socket } = connectedController();
