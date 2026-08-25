@@ -620,6 +620,123 @@ describe("CodexController", () => {
     );
   });
 
+  test("stores thread token usage updates for the renderer", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/tokenUsage/updated",
+        params: {
+          tokenUsage: {
+            totalTokenUsage: {
+              inputTokens: 1200,
+              cachedInputTokens: 300,
+              outputTokens: 450,
+              totalTokens: 1650,
+            },
+            lastTurnUsage: { totalTokens: 900 },
+            modelContextWindow: 128000,
+          },
+        },
+      }),
+    );
+
+    expect(controller.getState().tokenUsage).toEqual({
+      total: {
+        inputTokens: 1200,
+        cachedInputTokens: 300,
+        outputTokens: 450,
+        reasoningOutputTokens: undefined,
+        totalTokens: 1650,
+      },
+      lastTurn: {
+        inputTokens: undefined,
+        cachedInputTokens: undefined,
+        outputTokens: undefined,
+        reasoningOutputTokens: undefined,
+        totalTokens: 900,
+      },
+      modelContextWindow: 128000,
+    });
+  });
+
+  test("stores token usage included in turn completion", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          turn: {
+            tokenUsage: {
+              totalTokenUsage: { totalTokens: 2100 },
+              modelContextWindow: 128000,
+            },
+          },
+        },
+      }),
+    );
+
+    expect(controller.getState().tokenUsage?.total.totalTokens).toBe(2100);
+    expect(controller.getState().tokenUsage?.modelContextWindow).toBe(128000);
+  });
+
+  test("accepts the current app-server token usage shape", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/tokenUsage/updated",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          tokenUsage: {
+            total: {
+              totalTokens: 3200,
+              inputTokens: 2000,
+              cachedInputTokens: 500,
+              cacheWriteInputTokens: 100,
+              outputTokens: 1200,
+              reasoningOutputTokens: 300,
+            },
+            last: {
+              totalTokens: 1600,
+              inputTokens: 1000,
+              cachedInputTokens: 200,
+              cacheWriteInputTokens: 50,
+              outputTokens: 600,
+              reasoningOutputTokens: 150,
+            },
+            modelContextWindow: 128000,
+          },
+        },
+      }),
+    );
+
+    expect(controller.getState().tokenUsage).toEqual({
+      total: {
+        totalTokens: 3200,
+        inputTokens: 2000,
+        cachedInputTokens: 500,
+        cacheWriteInputTokens: 100,
+        outputTokens: 1200,
+        reasoningOutputTokens: 300,
+      },
+      lastTurn: {
+        totalTokens: 1600,
+        inputTokens: 1000,
+        cachedInputTokens: 200,
+        cacheWriteInputTokens: 50,
+        outputTokens: 600,
+        reasoningOutputTokens: 150,
+      },
+      modelContextWindow: 128000,
+    });
+  });
+
   test("uses waiting status for approval-active sessions", () => {
     const { controller, socket } = connectedController();
 

@@ -703,6 +703,23 @@ body.chat-only #codex-chat {
   margin-top: 7px;
 }
 
+#codex-token-usage {
+  min-height: 12px;
+  margin: 6px 4px 0;
+  color: #1687d9;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.35;
+  padding: 4px 0;
+  text-align: left;
+  text-shadow: 0 1px 2px #fff8;
+}
+
+#codex-token-usage[hidden] {
+  display: none;
+}
+
 #codex-chat-input {
   min-width: 0;
   flex: 1 1 auto;

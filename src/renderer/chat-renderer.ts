@@ -9,6 +9,7 @@ const codex = new CodexRenderer(
   document.getElementById("codex-history") as HTMLElement,
   document.getElementById("codex-working-status") as HTMLElement,
   document.getElementById("codex-working-elapsed") as HTMLElement,
+  document.getElementById("codex-token-usage") as HTMLElement,
   document.getElementById("codex-chat-form") as HTMLFormElement,
   document.getElementById("codex-chat-input") as HTMLTextAreaElement,
   defaultSettings(),

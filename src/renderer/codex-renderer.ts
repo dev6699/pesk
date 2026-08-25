@@ -16,6 +16,7 @@ export class CodexRenderer {
     private readonly history: HTMLElement,
     private readonly workingStatus: HTMLElement,
     private readonly workingElapsed: HTMLElement,
+    private readonly tokenUsage: HTMLElement,
     private readonly form: HTMLFormElement,
     private readonly input: HTMLTextAreaElement,
     settings: PetSettings,
@@ -160,6 +161,7 @@ export class CodexRenderer {
     this.sessionCopy.disabled = !next.codexThreadId;
     this.renderHistory(next.codexHistory, Boolean(next.codexThreadId));
     this.renderWorkingStatus();
+    this.renderTokenUsage();
   }
 
   focusInput(): void {
@@ -219,6 +221,46 @@ export class CodexRenderer {
         this.history.scrollTop = this.history.scrollHeight;
       });
     }
+  }
+
+  private renderTokenUsage(): void {
+    const usage = this.settings.codexTokenUsage;
+    if (!usage) {
+      this.tokenUsage.hidden = true;
+      this.tokenUsage.textContent = "";
+      return;
+    }
+    const total = usage.total.totalTokens;
+    const lastTurn = usage.lastTurn?.totalTokens;
+    const currentContext = usage.lastTurn?.inputTokens;
+    const context = usage.modelContextWindow;
+    const contextPercent =
+      currentContext !== undefined && context
+        ? Math.min(100, (currentContext / context) * 100)
+        : undefined;
+    const parts = [
+      total !== undefined ? `Total ${formatTokens(total)}` : "",
+      usage.total.inputTokens !== undefined
+        ? `In ${formatTokens(usage.total.inputTokens)}`
+        : "",
+      usage.total.outputTokens !== undefined
+        ? `Out ${formatTokens(usage.total.outputTokens)}`
+        : "",
+      usage.total.cachedInputTokens !== undefined
+        ? `Cached ${formatTokens(usage.total.cachedInputTokens)}`
+        : "",
+      usage.total.reasoningOutputTokens !== undefined
+        ? `Reasoning ${formatTokens(usage.total.reasoningOutputTokens)}`
+        : "",
+      lastTurn !== undefined ? `Turn ${formatTokens(lastTurn)}` : "",
+      contextPercent !== undefined && currentContext !== undefined
+        ? `Context ${contextPercent.toFixed(1)}% (${formatTokens(currentContext)} / ${formatTokens(context!)})`
+        : context !== undefined
+          ? `Context window ${formatTokens(context)}`
+          : "",
+    ].filter(Boolean);
+    this.tokenUsage.textContent = parts.join(" · ");
+    this.tokenUsage.hidden = parts.length === 0;
   }
 
   private selectMessage(
@@ -758,4 +800,10 @@ function fileChangeLineClass(line: string): string {
     return "codex-file-change-hunk";
   }
   return "codex-file-change-context";
+}
+
+function formatTokens(value: number): string {
+  if (value < 1000) return String(value);
+  if (value < 1_000_000) return `${(value / 1000).toFixed(1)}k`;
+  return `${(value / 1_000_000).toFixed(2)}m`;
 }

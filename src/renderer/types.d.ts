@@ -13,6 +13,11 @@ interface PetSettings {
   codexActivity: Record<string, unknown> | null;
   codexWorkingSince?: number;
   codexWorkedElapsed?: number;
+  codexTokenUsage?: {
+    total: TokenCounts;
+    lastTurn?: TokenCounts;
+    modelContextWindow?: number;
+  };
   codexHistory: Array<{
     role: "user" | "assistant" | "system";
     text: string;
@@ -36,6 +41,15 @@ interface PetSettings {
       state: "pending" | "approved" | "denied";
     };
   }>;
+}
+
+interface TokenCounts {
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  outputTokens?: number;
+  reasoningOutputTokens?: number;
+  totalTokens?: number;
 }
 
 interface AnimationFrames {

@@ -1,6 +1,10 @@
 import { app, globalShortcut, ipcMain, shell } from "electron";
 import { CodexController } from "./codex";
-import type { CodexMessage, CodexThreadSummary } from "./codex";
+import type {
+  CodexMessage,
+  CodexThreadSummary,
+  CodexTokenUsage,
+} from "./codex";
 import { ChatWindowController } from "./chat";
 import { PetWindowController } from "./pet";
 import { loadConfig, loadSettings, saveSettings } from "./config";
@@ -18,6 +22,7 @@ interface RendererSettings extends PeskSettings {
   codexWorkedElapsed?: number;
   codexHistory: CodexMessage[];
   codexThreads: CodexThreadSummary[];
+  codexTokenUsage?: CodexTokenUsage;
 }
 
 let settings: PeskSettings;
@@ -56,6 +61,7 @@ function rendererSettings(): RendererSettings {
     codexThreads: state.threads,
     codexWorkingSince: state.workingSince,
     codexWorkedElapsed: state.workedElapsed,
+    codexTokenUsage: state.tokenUsage,
   };
 }
 

@@ -30,6 +30,21 @@ export interface CodexThreadSummary {
   status?: string;
 }
 
+export interface CodexTokenCounts {
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  outputTokens?: number;
+  reasoningOutputTokens?: number;
+  totalTokens?: number;
+}
+
+export interface CodexTokenUsage {
+  total: CodexTokenCounts;
+  lastTurn?: CodexTokenCounts;
+  modelContextWindow?: number;
+}
+
 /** Codex-related settings persisted alongside the pet settings. */
 /** State exposed by the controller to the Electron renderer. */
 export interface CodexState {
@@ -42,6 +57,7 @@ export interface CodexState {
   threads: CodexThreadSummary[];
   workingSince?: number;
   workedElapsed?: number;
+  tokenUsage?: CodexTokenUsage;
 }
 
 interface Options {
@@ -70,6 +86,7 @@ export class CodexController {
   private threads: CodexThreadSummary[] = [];
   private workingSince: number | undefined;
   private workedElapsed: number | undefined;
+  private tokenUsage: CodexTokenUsage | undefined;
   private streamingAssistant = -1;
   private streamingAssistantItemId: string | undefined;
   private readonly activityIndexes = new Map<string, number>();
@@ -98,6 +115,7 @@ export class CodexController {
       threads: this.threads,
       workingSince: this.workingSince,
       workedElapsed: this.workedElapsed,
+      tokenUsage: this.tokenUsage,
     };
   }
 
@@ -206,6 +224,7 @@ export class CodexController {
       this.threadId = thread.id;
       this.connected = true;
       this.history = [];
+      this.tokenUsage = undefined;
       this.streamingAssistant = -1;
       this.streamingAssistantItemId = undefined;
       this.workingSince = undefined;
@@ -673,6 +692,34 @@ export class CodexController {
     if (method === "turn/completed") {
       this.activity = message;
       this.setStatus("idle");
+      const turn =
+        params.turn && typeof params.turn === "object"
+          ? (params.turn as Record<string, unknown>)
+          : undefined;
+      const usage = parseTokenUsageValue(
+        turn?.tokenUsage ?? turn?.usage ?? params.tokenUsage,
+      );
+      if (usage) {
+        this.tokenUsage = usage;
+        this.options.debug("Pesk Codex token usage", {
+          source: "turn/completed",
+          usage,
+        });
+        this.options.sendSettings();
+      }
+    }
+    if (method === "thread/tokenUsage/updated") {
+      const usage = parseTokenUsageValue(params.tokenUsage);
+      if (usage) {
+        this.tokenUsage = usage;
+        this.options.debug("Pesk Codex token usage", {
+          source: "thread/tokenUsage/updated",
+          threadId: params.threadId,
+          turnId: params.turnId,
+          usage,
+        });
+        this.options.sendSettings();
+      }
     }
     if (
       method === "thread/status/changed" &&
@@ -1264,6 +1311,40 @@ function describeSocketError(error: unknown, url: string): string {
     return details.join("; ");
   }
   return `url=${url}; error=${String(error)}`;
+}
+
+function parseTokenUsageValue(value: unknown): CodexTokenUsage | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const usage = value as Record<string, unknown>;
+  const total = parseTokenCounts(usage.total ?? usage.totalTokenUsage);
+  if (!total) return undefined;
+  return {
+    total,
+    lastTurn: parseTokenCounts(usage.last ?? usage.lastTurnUsage),
+    modelContextWindow: numberValue(usage.modelContextWindow),
+  };
+}
+
+function parseTokenCounts(value: unknown): CodexTokenCounts | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const counts = value as Record<string, unknown>;
+  const parsed: CodexTokenCounts = {
+    inputTokens: numberValue(counts.inputTokens),
+    cachedInputTokens: numberValue(counts.cachedInputTokens),
+    cacheWriteInputTokens: numberValue(counts.cacheWriteInputTokens),
+    outputTokens: numberValue(counts.outputTokens),
+    reasoningOutputTokens: numberValue(counts.reasoningOutputTokens),
+    totalTokens: numberValue(counts.totalTokens),
+  };
+  return Object.values(parsed).some((entry) => entry !== undefined)
+    ? parsed
+    : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 export interface ThreadStatusLike {
