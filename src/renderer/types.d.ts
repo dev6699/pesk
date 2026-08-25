@@ -23,12 +23,15 @@ interface PetSettings {
     turnId?: string;
     itemId?: string;
     activity?: {
-      kind: "command" | "fileChange";
+      kind: "command" | "fileChange" | "webSearch" | "tool" | "other";
+      label?: string;
       status?: string;
       command?: string;
       cwd?: string;
+      summary?: string;
       output?: string;
       changes?: string[];
+      details?: string;
     };
     approval?: {
       requestId: string | number;

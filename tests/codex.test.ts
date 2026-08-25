@@ -436,6 +436,49 @@ describe("CodexController", () => {
     ]);
   });
 
+  test("keeps generic activity after idle history reconciliation", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as {
+      read: (threadId: string) => void;
+    };
+
+    internal.read("thread-1");
+    const readId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: readId,
+        result: {
+          thread: {
+            canAcceptDirectInput: true,
+            status: { type: "idle" },
+            turns: [
+              {
+                items: [
+                  {
+                    id: "search-1",
+                    type: "webSearch",
+                    status: "completed",
+                    query: "weather today",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemId: "search-1",
+          activity: expect.objectContaining({ kind: "webSearch" }),
+        }),
+      ]),
+    );
+  });
+
   test("preserves repeated user messages from separate turns", () => {
     const { controller } = connectedController([
       {
@@ -678,6 +721,11 @@ describe("CodexController", () => {
       { id: "active-1", preview: "Active", status: "active" },
       { id: "idle-1", status: "idle" },
     ]);
+    expect(controller.getState().threadId).toBe("active-1");
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/resume",
+      params: { threadId: "active-1" },
+    });
   });
 
   test("removes a session rejected by an active writer", () => {
@@ -812,7 +860,10 @@ describe("CodexController", () => {
     );
     expect(controller.getState().workingSince).toEqual(expect.any(Number));
 
-    socket.emit("message", JSON.stringify({ method: "turn/completed", params: {} }));
+    socket.emit(
+      "message",
+      JSON.stringify({ method: "turn/completed", params: {} }),
+    );
     expect(controller.getState().workingSince).toBeUndefined();
   });
 
@@ -962,7 +1013,102 @@ describe("CodexController", () => {
         }),
       ]),
     );
-    expect(history.filter((message) => message.itemId === "command-1")).toHaveLength(1);
+    expect(
+      history.filter((message) => message.itemId === "command-1"),
+    ).toHaveLength(1);
+  });
+
+  test("renders web search and unknown activity items", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "search-1",
+            type: "webSearch",
+            query: "Kuala Lumpur weather today",
+            status: "inProgress",
+          },
+        },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            id: "search-1",
+            type: "webSearch",
+            query: "Kuala Lumpur weather today",
+            status: "completed",
+            results: [{ title: "Weather forecast" }],
+          },
+        },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            id: "custom-1",
+            type: "customToolCall",
+            status: "completed",
+            input: { value: "visible" },
+          },
+        },
+      }),
+    );
+
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemId: "search-1",
+          activity: expect.objectContaining({ kind: "webSearch" }),
+          text: expect.stringContaining("Kuala Lumpur weather today"),
+        }),
+        expect.objectContaining({
+          itemId: "custom-1",
+          activity: expect.objectContaining({ kind: "tool" }),
+          text: expect.stringContaining("visible"),
+        }),
+      ]),
+    );
+    expect(
+      controller
+        .getState()
+        .history.filter((message) => message.itemId === "search-1"),
+    ).toHaveLength(1);
+  });
+
+  test("does not render reasoning items as activity", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            id: "reasoning-1",
+            type: "reasoning",
+            status: "completed",
+            summary: ["internal reasoning"],
+          },
+        },
+      }),
+    );
+
+    expect(controller.getState().history).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ itemId: "reasoning-1" }),
+      ]),
+    );
   });
 
   test("requests approval and sends the selected decision", () => {

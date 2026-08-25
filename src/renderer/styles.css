@@ -27,7 +27,13 @@ body {
   z-index: 0;
   border-radius: 50%;
   background:
-    radial-gradient(ellipse at 50% 76%, #fff7ed 0 8%, #fde68a 18%, #fbbf2466 38%, transparent 70%),
+    radial-gradient(
+      ellipse at 50% 76%,
+      #fff7ed 0 8%,
+      #fde68a 18%,
+      #fbbf2466 38%,
+      transparent 70%
+    ),
     conic-gradient(
       from 180deg at 50% 76%,
       transparent 0deg 10deg,
@@ -92,7 +98,6 @@ body.chat-only #codex-chat {
 }
 
 @keyframes petFocusStage {
-
   0%,
   100% {
     opacity: 0.72;
@@ -199,6 +204,24 @@ body.chat-only #codex-chat {
   font:
     10px/1.2 system-ui,
     sans-serif;
+}
+
+#codex-session-copy {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid #ffffff88;
+  border-radius: 6px;
+  background: #000000cc;
+  color: #fff;
+  cursor: pointer;
+  font:
+    10px/1.2 system-ui,
+    sans-serif;
+}
+
+#codex-session-copy:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 #codex-connection {
@@ -414,7 +437,10 @@ body.chat-only #codex-chat {
 }
 
 .codex-message-system.codex-activity-command,
-.codex-message-system.codex-activity-fileChange {
+.codex-message-system.codex-activity-fileChange,
+.codex-message-system.codex-activity-webSearch,
+.codex-message-system.codex-activity-tool,
+.codex-message-system.codex-activity-other {
   max-width: calc(100% - 8px);
 }
 
@@ -424,6 +450,15 @@ body.chat-only #codex-chat {
 
 .codex-activity-fileChange {
   border-color: #b9f6c599;
+}
+
+.codex-activity-webSearch {
+  border-color: #d6a7ff99;
+}
+
+.codex-activity-tool,
+.codex-activity-other {
+  border-color: #ffffff55;
 }
 
 .codex-activity-output {
@@ -447,7 +482,9 @@ body.chat-only #codex-chat {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #fff;
-  font: 10px/1.35 ui-monospace, monospace;
+  font:
+    10px/1.35 ui-monospace,
+    monospace;
   font-weight: 400;
 }
 
@@ -461,12 +498,37 @@ body.chat-only #codex-chat {
   font-weight: 700;
 }
 
+.codex-activity-details-block {
+  max-width: 100%;
+}
+
+.codex-activity-details-block summary {
+  display: block;
+  cursor: pointer;
+  color: #d6a7ff;
+  font-weight: 700;
+}
+
+.codex-activity-summary-detail {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  font:
+    10px/1.35 ui-monospace,
+    monospace;
+  font-weight: 400;
+}
+
 .codex-file-change-path {
   margin-top: 7px;
   padding: 4px 6px;
   border-left: 3px solid #b9f6c5;
   color: #e5ffe9;
-  font: 700 11px/1.3 ui-monospace, monospace;
+  font:
+    700 11px/1.3 ui-monospace,
+    monospace;
   overflow-wrap: anywhere;
 }
 
@@ -480,7 +542,9 @@ body.chat-only #codex-chat {
   background: #050b08;
   overflow-x: auto;
   white-space: pre;
-  font: 10px/1.45 ui-monospace, monospace;
+  font:
+    10px/1.45 ui-monospace,
+    monospace;
 }
 
 .codex-file-change-diff span {

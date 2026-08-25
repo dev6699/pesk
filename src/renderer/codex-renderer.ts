@@ -10,6 +10,7 @@ export class CodexRenderer {
   constructor(
     private readonly chat: HTMLElement,
     private readonly sessionSelect: HTMLSelectElement,
+    private readonly sessionCopy: HTMLButtonElement,
     private readonly error: HTMLElement,
     private readonly history: HTMLElement,
     private readonly workingStatus: HTMLElement,
@@ -24,6 +25,7 @@ export class CodexRenderer {
       if (sessionSelect.value)
         window.peskApi.selectCodexThread(sessionSelect.value);
     });
+    sessionCopy.addEventListener("click", () => void this.copySessionId());
     chat.addEventListener("mousedown", (event) => event.stopPropagation());
     chat.addEventListener("wheel", (event) => event.stopPropagation());
     form.addEventListener("submit", (event) => void this.submit(event));
@@ -101,6 +103,7 @@ export class CodexRenderer {
       this.sessionSelect.value = next.codexThreadId ?? "";
     }
     this.sessionSelect.disabled = !next.codexThreads.length;
+    this.sessionCopy.disabled = !next.codexThreadId;
     this.renderHistory(next.codexHistory, Boolean(next.codexThreadId));
     this.renderWorkingStatus();
     this.chat.hidden = !next.codexChatVisible;
@@ -134,6 +137,28 @@ export class CodexRenderer {
     this.input.focus();
   }
 
+  private async copySessionId(): Promise<void> {
+    const sessionId = this.sessionSelect.value;
+    if (!sessionId) return;
+    try {
+      await navigator.clipboard.writeText(sessionId);
+    } catch {
+      const copyTarget = document.createElement("textarea");
+      copyTarget.value = sessionId;
+      copyTarget.style.position = "fixed";
+      copyTarget.style.opacity = "0";
+      document.body.append(copyTarget);
+      copyTarget.select();
+      document.execCommand("copy");
+      copyTarget.remove();
+    }
+    const originalLabel = this.sessionCopy.textContent;
+    this.sessionCopy.textContent = "Copied";
+    window.setTimeout(() => {
+      this.sessionCopy.textContent = originalLabel ?? "Copy";
+    }, 1200);
+  }
+
   private resizeInput(): void {
     const maxHeight = 220;
     const wasAtBottom =
@@ -142,9 +167,8 @@ export class CodexRenderer {
     this.input.style.height = "auto";
     const height = Math.min(this.input.scrollHeight, maxHeight);
     this.input.style.height = `${height}px`;
-    this.input.style.overflowY = this.input.scrollHeight > maxHeight
-      ? "auto"
-      : "hidden";
+    this.input.style.overflowY =
+      this.input.scrollHeight > maxHeight ? "auto" : "hidden";
     if (wasAtBottom) {
       requestAnimationFrame(() => {
         this.history.scrollTop = this.history.scrollHeight;
@@ -161,6 +185,7 @@ export class CodexRenderer {
       this.input.value = `${this.input.value.slice(0, start)}\n${this.input.value.slice(end)}`;
       this.input.selectionStart = start + 1;
       this.input.selectionEnd = start + 1;
+      this.resizeInput();
     } else if (!event.shiftKey) {
       event.preventDefault();
       this.form.requestSubmit();
@@ -174,7 +199,7 @@ export class CodexRenderer {
     const wasAtBottom =
       this.historyInitialized &&
       this.history.scrollTop + this.history.clientHeight >=
-      this.history.scrollHeight - 24;
+        this.history.scrollHeight - 24;
     const openActivityKeys = new Set(
       Array.from(
         this.history.querySelectorAll<HTMLDetailsElement>(
@@ -212,7 +237,8 @@ export class CodexRenderer {
       bubble.className = `codex-message codex-message-${message.role}`;
       if (message.activity) {
         bubble.classList.add(`codex-activity-${message.activity.kind}`);
-        if (message.activity.output) bubble.classList.add("codex-activity-output");
+        if (message.activity.output)
+          bubble.classList.add("codex-activity-output");
       }
       if (message.temporary) bubble.classList.add("codex-message-working");
       const activityKey = message.itemId ?? `history-${index}`;
@@ -249,21 +275,9 @@ export class CodexRenderer {
       const details = document.createElement("details");
       details.className = "codex-command-details";
       details.dataset.activityKey = activityKey;
-      const status = message.activity.status?.toLowerCase();
-      const inProgress = status === "inprogress" || status === "in_progress";
-      const finished =
-        status === "completed" ||
-        status === "failed" ||
-        status === "declined";
-      details.open = inProgress
-        ? true
-        : finished
-          ? false
-          : openActivityKeys.has(activityKey);
+      details.open = openActivityKeys.has(activityKey);
       const summary = document.createElement("summary");
-      const command = message.activity.command
-        ?.replace(/\s+/g, " ")
-        .trim();
+      const command = message.activity.command?.replace(/\s+/g, " ").trim();
       summary.textContent = `Command · ${message.activity.status ?? "in progress"}`;
       if (command) {
         const commandLine = document.createElement("span");
@@ -286,6 +300,29 @@ export class CodexRenderer {
         renderedActivityKeys,
       );
     }
+    if (message.activity) {
+      const details = document.createElement("details");
+      details.className = "codex-activity-details-block";
+      details.dataset.activityKey = activityKey;
+      details.open = openActivityKeys.has(activityKey);
+      const summary = document.createElement("summary");
+      const label = activityLabel(message.activity.kind);
+      summary.textContent = `${label} · ${message.activity.status ?? "in progress"}`;
+      if (message.activity.summary) {
+        const query = document.createElement("span");
+        query.className = "codex-activity-summary-detail";
+        query.textContent = message.activity.summary
+          .replace(/\s+/g, " ")
+          .trim();
+        summary.append(query);
+      }
+      details.append(summary);
+      const body = document.createElement("pre");
+      body.className = "codex-activity-details";
+      body.textContent = message.text;
+      details.append(body);
+      return details;
+    }
     const content = document.createElement("div");
     if (message.role === "assistant" && !message.activity) {
       content.className = "codex-markdown";
@@ -306,7 +343,8 @@ export class CodexRenderer {
     details.className = "codex-file-change-details";
     details.dataset.activityKey = activityKey;
     details.open =
-      openActivityKeys.has(activityKey) || !renderedActivityKeys.has(activityKey);
+      openActivityKeys.has(activityKey) ||
+      !renderedActivityKeys.has(activityKey);
 
     const summary = document.createElement("summary");
     summary.textContent = `File change · ${activity.status ?? "in progress"}`;
@@ -335,7 +373,8 @@ export class CodexRenderer {
   }
 
   private renderWorkingStatus(): void {
-    if (this.workingTimer !== undefined) window.clearInterval(this.workingTimer);
+    if (this.workingTimer !== undefined)
+      window.clearInterval(this.workingTimer);
     this.workingTimer = undefined;
     const since = this.settings.codexWorkingSince;
     const worked = this.settings.codexWorkedElapsed;
@@ -426,6 +465,21 @@ export class CodexRenderer {
   }
 }
 
+function activityLabel(
+  kind: NonNullable<PetSettings["codexHistory"][number]["activity"]>["kind"],
+): string {
+  switch (kind) {
+    case "webSearch":
+      return "Web search";
+    case "tool":
+      return "Tool";
+    case "other":
+      return "Activity";
+    default:
+      return kind === "fileChange" ? "File change" : "Command";
+  }
+}
+
 function formatElapsed(milliseconds: number): string {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
   const minutes = Math.floor(seconds / 60);
@@ -442,8 +496,25 @@ function sanitizeMarkdownHtml(html: string): string {
   const template = document.createElement("template");
   template.innerHTML = html;
   const allowed = new Set([
-    "A", "BLOCKQUOTE", "BR", "CODE", "DEL", "EM", "H1", "H2", "H3",
-    "H4", "H5", "H6", "HR", "LI", "OL", "P", "PRE", "STRONG", "UL",
+    "A",
+    "BLOCKQUOTE",
+    "BR",
+    "CODE",
+    "DEL",
+    "EM",
+    "H1",
+    "H2",
+    "H3",
+    "H4",
+    "H5",
+    "H6",
+    "HR",
+    "LI",
+    "OL",
+    "P",
+    "PRE",
+    "STRONG",
+    "UL",
   ]);
   const visit = (element: Element): void => {
     for (const child of [...element.children]) {

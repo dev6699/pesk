@@ -4,6 +4,7 @@ import { defaultSettings } from "./default-settings.js";
 const codex = new CodexRenderer(
   document.getElementById("codex-chat") as HTMLElement,
   document.getElementById("codex-session-select") as HTMLSelectElement,
+  document.getElementById("codex-session-copy") as HTMLButtonElement,
   document.getElementById("codex-error") as HTMLElement,
   document.getElementById("codex-history") as HTMLElement,
   document.getElementById("codex-working-status") as HTMLElement,

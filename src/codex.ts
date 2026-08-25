@@ -7,12 +7,15 @@ export interface CodexMessage {
   turnId?: string;
   itemId?: string;
   activity?: {
-    kind: "command" | "fileChange";
+    kind: "command" | "fileChange" | "webSearch" | "tool" | "other";
+    label?: string;
     status?: string;
     command?: string;
     cwd?: string;
+    summary?: string;
     output?: string;
     changes?: string[];
+    details?: string;
   };
   approval?: {
     requestId: string | number;
@@ -86,7 +89,7 @@ export class CodexController {
     (message: Record<string, unknown>) => void
   >();
   private readonly prompts = new Map<string, number>();
-  constructor(private readonly options: Options) { }
+  constructor(private readonly options: Options) {}
 
   /** Returns the current state snapshot for renderer IPC responses. */
   getState(): CodexState {
@@ -336,7 +339,7 @@ export class CodexController {
     });
   }
 
-  /** Finds the loaded or uniquely active Codex session after initialization. */
+  /** Finds the loaded or most recent active Codex session after initialization. */
   private discover(): void {
     if (!this.initialized || this.discoveryPending) {
       return;
@@ -381,8 +384,11 @@ export class CodexController {
           this.activity = null;
         }
         this.options.sendSettings();
-        if (active.length === 1) {
-          choose(active[0].id as string);
+        const firstSession = active.find(
+          (session) => typeof session.id === "string",
+        );
+        if (firstSession) {
+          choose(firstSession.id as string);
         }
       });
       this.send({
@@ -524,10 +530,10 @@ export class CodexController {
               typeof item.text === "string"
                 ? item.text
                 : this.records(item.content)
-                  .map((part) =>
-                    typeof part.text === "string" ? part.text : "",
-                  )
-                  .join("");
+                    .map((part) =>
+                      typeof part.text === "string" ? part.text : "",
+                    )
+                    .join("");
             if (text.trim()) {
               restored.push({
                 role: "assistant",
@@ -536,7 +542,7 @@ export class CodexController {
               });
             }
           }
-          if (item.type === "commandExecution" || item.type === "fileChange") {
+          if (this.isActivityItem(item)) {
             restored.push(this.activityMessage(item, timestamp));
           }
         }
@@ -663,7 +669,7 @@ export class CodexController {
           );
         }
       }
-      if (item?.type === "commandExecution" || item?.type === "fileChange") {
+      if (item && this.isActivityItem(item)) {
         this.addOrUpdateActivity(
           item,
           typeof item.id === "string" ? item.id : undefined,
@@ -718,7 +724,7 @@ export class CodexController {
           item.text,
           typeof item.id === "string" ? item.id : undefined,
         );
-      } else if (item?.type === "commandExecution" || item?.type === "fileChange") {
+      } else if (item && this.isActivityItem(item)) {
         this.addOrUpdateActivity(
           item,
           typeof item.id === "string" ? item.id : undefined,
@@ -931,8 +937,22 @@ export class CodexController {
     this.options.sendSettings();
   }
 
+  /** Returns true for non-message items that should be visible in the activity feed. */
+  private isActivityItem(item: Record<string, unknown> | undefined): boolean {
+    const type = typeof item?.type === "string" ? item.type : "";
+    return (
+      Boolean(type) &&
+      type !== "userMessage" &&
+      type !== "agentMessage" &&
+      !/reasoning/i.test(type)
+    );
+  }
+
   /** Appends streamed command output to its activity history entry. */
-  private appendActivityOutput(itemId: string | undefined, delta: string): void {
+  private appendActivityOutput(
+    itemId: string | undefined,
+    delta: string,
+  ): void {
     if (!itemId || !delta) return;
     const index = this.activityIndexes.get(itemId);
     if (index === undefined) return;
@@ -948,7 +968,17 @@ export class CodexController {
     item: Record<string, unknown>,
     timestamp: number,
   ): CodexMessage {
-    const kind = item.type === "commandExecution" ? "command" : "fileChange";
+    const type = typeof item.type === "string" ? item.type : "unknown";
+    const kind: NonNullable<CodexMessage["activity"]>["kind"] =
+      type === "commandExecution"
+        ? "command"
+        : type === "fileChange"
+          ? "fileChange"
+          : /search/i.test(type)
+            ? "webSearch"
+            : /tool|mcp/i.test(type)
+              ? "tool"
+              : "other";
     const changes = this.records(item.changes).map((change) => {
       const filePath =
         typeof change.path === "string" ? change.path : "unknown file";
@@ -969,14 +999,20 @@ export class CodexController {
     });
     const activity: NonNullable<CodexMessage["activity"]> = {
       kind,
+      label: type,
       status: typeof item.status === "string" ? item.status : undefined,
       command: typeof item.command === "string" ? item.command : undefined,
       cwd: typeof item.cwd === "string" ? item.cwd : undefined,
+      summary: firstText(item, ["query", "title", "name", "url", "message"]),
       output:
         typeof item.aggregatedOutput === "string"
           ? item.aggregatedOutput
           : undefined,
       changes,
+      details:
+        kind === "command" || kind === "fileChange"
+          ? undefined
+          : summarizeActivity(item),
     };
     return {
       role: "system",
@@ -1151,13 +1187,50 @@ export class CodexController {
 function formatActivityText(
   activity: NonNullable<CodexMessage["activity"]>,
 ): string {
-  const title = activity.kind === "command" ? "Command" : "File change";
+  const title =
+    activity.kind === "command"
+      ? "Command"
+      : activity.kind === "fileChange"
+        ? "File change"
+        : activity.kind === "webSearch"
+          ? "Web search"
+          : activity.kind === "tool"
+            ? "Tool"
+            : "Activity";
   const lines = [`${title}${activity.status ? ` · ${activity.status}` : ""}`];
+  if (
+    activity.label &&
+    !["commandExecution", "fileChange"].includes(activity.label)
+  ) {
+    lines.push(`type: ${activity.label}`);
+  }
   if (activity.command) lines.push(`$ ${activity.command}`);
   if (activity.cwd) lines.push(`cwd: ${activity.cwd}`);
+  if (activity.summary) lines.push(activity.summary);
   if (activity.changes?.length) lines.push(...activity.changes);
   if (activity.output) lines.push(activity.output);
+  if (activity.details) lines.push(activity.details);
   return lines.join("\n");
+}
+
+function summarizeActivity(item: Record<string, unknown>): string | undefined {
+  const details = Object.entries(item)
+    .filter(
+      ([key]) => !["id", "type", "status", "command", "cwd"].includes(key),
+    )
+    .map(([key, value]) => `${key}: ${formatActivityValue(value)}`)
+    .filter((line) => line.length > 0)
+    .join("\n");
+  return details ? details.slice(0, 4000) : undefined;
+}
+
+function formatActivityValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function firstText(
