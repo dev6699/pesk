@@ -83,8 +83,8 @@ export class CodexRenderer {
     if (
       !this.chat.hidden &&
       event.key === "Enter" &&
-      event.altKey &&
-      !event.shiftKey &&
+      event.shiftKey &&
+      !event.altKey &&
       !event.ctrlKey &&
       !event.metaKey &&
       this.toggleSelectedMessage()
@@ -430,7 +430,12 @@ export class CodexRenderer {
 
   private handleInputKeydown(event: KeyboardEvent): void {
     if (event.key !== "Enter") return;
-    if (event.ctrlKey || event.metaKey) {
+    if (
+      event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.metaKey
+    ) {
       event.preventDefault();
       const start = this.input.selectionStart;
       const end = this.input.selectionEnd;
@@ -438,7 +443,9 @@ export class CodexRenderer {
       this.input.selectionStart = start + 1;
       this.input.selectionEnd = start + 1;
       this.resizeInput();
-    } else if (!event.shiftKey) {
+    } else if (event.shiftKey) {
+      event.preventDefault();
+    } else if (!event.altKey && !event.metaKey) {
       event.preventDefault();
       this.form.requestSubmit();
     }
