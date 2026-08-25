@@ -1047,6 +1047,7 @@ describe("CodexController", () => {
     expect(controller.getState()).toMatchObject({
       connected: true,
       status: "idle",
+      threads: [{ id: "thread-1" }],
     });
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/read",

@@ -477,6 +477,9 @@ export class CodexController {
     ) {
       return;
     }
+    if (!this.threads.some((thread) => thread.id === id)) {
+      this.threads = [{ id }, ...this.threads];
+    }
     if (this.threadId === id) {
       if (resume && !this.connected) {
         this.resume(id);
