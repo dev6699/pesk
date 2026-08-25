@@ -23,19 +23,38 @@ body {
 #pet::after {
   content: "";
   position: absolute;
-  inset: 28px;
+  inset: 6% 4% 4%;
   z-index: 0;
-  border: 3px solid #fb923c;
   border-radius: 50%;
-  background: #f9731640;
-  box-shadow: 0 0 14px #f97316cc;
+  background:
+    radial-gradient(ellipse at 50% 76%, #fff7ed 0 8%, #fde68a 18%, #fbbf2466 38%, transparent 70%),
+    conic-gradient(
+      from 180deg at 50% 76%,
+      transparent 0deg 10deg,
+      #fff7ed66 10deg 17deg,
+      transparent 17deg 29deg,
+      #fed7aa55 29deg 36deg,
+      transparent 36deg 52deg,
+      #fff7ed66 52deg 59deg,
+      transparent 59deg 121deg,
+      #fff7ed66 121deg 128deg,
+      transparent 128deg 144deg,
+      #fed7aa55 144deg 151deg,
+      transparent 151deg 163deg,
+      #fff7ed66 163deg 170deg,
+      transparent 170deg 180deg
+    );
+  box-shadow:
+    0 0 18px #fbbf24cc,
+    0 0 38px #fb923c88;
+  filter: blur(1px);
   opacity: 0;
   pointer-events: none;
 }
 
 #pet.focused::after {
   opacity: 1;
-  animation: petFocusPulse 5s ease-in-out infinite;
+  animation: petFocusStage 2.8s ease-in-out infinite;
 }
 
 body:not(.chat-only) #codex-chat {
@@ -72,17 +91,17 @@ body.chat-only #codex-chat {
   image-rendering: auto;
 }
 
-@keyframes petFocusPulse {
+@keyframes petFocusStage {
 
   0%,
   100% {
-    opacity: 0.65;
-    transform: scale(0.9);
+    opacity: 0.72;
+    transform: scale(0.94);
   }
 
   50% {
     opacity: 1;
-    transform: scale(1.1);
+    transform: scale(1.02);
   }
 }
 
