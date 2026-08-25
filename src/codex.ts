@@ -95,6 +95,7 @@ export class CodexController {
   private workingSince: number | undefined;
   private workedElapsed: number | undefined;
   private tokenUsage: CodexTokenUsage | undefined;
+  private startingNewThread = false;
   private modelInfo: CodexModelInfo | undefined;
   private streamingAssistant = -1;
   private streamingAssistantItemId: string | undefined;
@@ -213,6 +214,9 @@ export class CodexController {
     if (!cwd) {
       return false;
     }
+    this.startingNewThread = true;
+    this.tokenUsage = undefined;
+    this.options.sendSettings();
     const id = ++this.nextId;
     this.options.debug("Pesk starting new Codex thread", {
       cwd,
@@ -229,8 +233,10 @@ export class CodexController {
     this.requests.set(id, (message) => {
       const thread = this.resultThread(message);
       if (typeof thread?.id !== "string") {
+        this.startingNewThread = false;
         return;
       }
+      this.startingNewThread = false;
       this.updateModelInfo(message);
       this.rememberWorkingDirectory(thread);
       this.threadId = thread.id;
@@ -465,6 +471,7 @@ export class CodexController {
       return;
     }
     this.threadId = id;
+    this.tokenUsage = undefined;
     if (!preserveHistory) this.history = [];
     this.streamingAssistant = -1;
     this.streamingAssistantItemId = undefined;
@@ -713,7 +720,7 @@ export class CodexController {
       const usage = parseTokenUsageValue(
         turn?.tokenUsage ?? turn?.usage ?? params.tokenUsage,
       );
-      if (usage) {
+      if (usage && !this.startingNewThread && this.matchesCurrentThread(params)) {
         this.tokenUsage = usage;
         this.options.debug("Pesk Codex token usage", {
           source: "turn/completed",
@@ -724,7 +731,11 @@ export class CodexController {
     }
     if (method === "thread/tokenUsage/updated") {
       const usage = parseTokenUsageValue(params.tokenUsage);
-      if (usage) {
+      if (
+        usage &&
+        !this.startingNewThread &&
+        this.matchesCurrentThread(params)
+      ) {
         this.tokenUsage = usage;
         this.options.debug("Pesk Codex token usage", {
           source: "thread/tokenUsage/updated",
@@ -818,6 +829,12 @@ export class CodexController {
       );
       this.setStatus("waiting");
     }
+  }
+
+  private matchesCurrentThread(params: Record<string, unknown>): boolean {
+    return (
+      typeof params.threadId !== "string" || params.threadId === this.threadId
+    );
   }
 
   /** Starts a text turn and creates a temporary working message. */

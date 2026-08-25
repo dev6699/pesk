@@ -352,7 +352,33 @@ describe("CodexController", () => {
       },
     ]);
 
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/tokenUsage/updated",
+        params: {
+          tokenUsage: {
+            total: { totalTokens: 1650 },
+          },
+        },
+      }),
+    );
+    expect(controller.getState().tokenUsage?.total.totalTokens).toBe(1650);
+
     expect(controller.submitPrompt("/new")).toBe(true);
+    expect(controller.getState().tokenUsage).toBeUndefined();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/tokenUsage/updated",
+        params: {
+          threadId: "thread-1",
+          tokenUsage: { total: { totalTokens: 2200 } },
+        },
+      }),
+    );
+    expect(controller.getState().tokenUsage).toBeUndefined();
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/start",
       params: { serviceName: "pesk" },
@@ -362,6 +388,18 @@ describe("CodexController", () => {
       "message",
       JSON.stringify({ id: 5, result: { thread: { id: "new-thread" } } }),
     );
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/tokenUsage/updated",
+        params: {
+          threadId: "thread-1",
+          tokenUsage: { total: { totalTokens: 2300 } },
+        },
+      }),
+    );
+    expect(controller.getState().tokenUsage).toBeUndefined();
 
     expect(controller.getState()).toMatchObject({
       threadId: "new-thread",
