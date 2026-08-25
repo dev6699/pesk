@@ -56,6 +56,7 @@ export interface CodexModelInfo {
 /** State exposed by the controller to the Electron renderer. */
 export interface CodexState {
   threadId?: string;
+  cwd?: string;
   error?: string;
   status: "idle" | "working" | "waiting";
   connected: boolean;
@@ -119,6 +120,7 @@ export class CodexController {
   getState(): CodexState {
     return {
       threadId: this.threadId,
+      cwd: this.workingDirectory,
       error: this.connectionError,
       status: this.status,
       connected: this.connected,
@@ -187,7 +189,7 @@ export class CodexController {
       method: "thread/start",
       id,
       params: {
-        cwd: process.cwd(),
+        cwd: ".",
         serviceName: "pesk",
       },
     });

@@ -721,6 +721,27 @@ body.chat-only #codex-chat {
   text-shadow: 0 1px 2px #fff8;
 }
 
+.codex-model-line {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.codex-model-line > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-cwd {
+  flex: 0 1 auto;
+  color: #222;
+  font-weight: 600;
+  text-align: right;
+}
+
 #codex-token-usage[hidden] {
   display: none;
 }

@@ -274,12 +274,34 @@ export class CodexRenderer {
           ? `Context window ${formatTokens(context)}`
           : "",
     ].filter(Boolean);
-    const lines = [modelParts.join(" · "), usageParts.join(" · ")].filter(
-      Boolean,
-    );
-    this.tokenUsage.textContent = lines.join("\n");
-    this.tokenUsage.title = [...modelParts, ...usageParts].join(" · ");
-    this.tokenUsage.hidden = lines.length === 0;
+    const modelLine = modelParts.join(" · ");
+    const cwd = this.settings.codexCwd;
+    const lines = [modelLine, usageParts.join(" · ")].filter(Boolean);
+    this.tokenUsage.replaceChildren();
+    if (modelLine || cwd) {
+      const modelRow = document.createElement("div");
+      modelRow.className = "codex-model-line";
+      const modelLabel = document.createElement("span");
+      modelLabel.textContent = modelLine;
+      modelRow.append(modelLabel);
+      if (cwd) {
+        const cwdLabel = document.createElement("span");
+        cwdLabel.className = "codex-cwd";
+        cwdLabel.textContent = cwd;
+        cwdLabel.title = cwd;
+        modelRow.append(cwdLabel);
+      }
+      this.tokenUsage.append(modelRow);
+    }
+    if (usageParts.length > 0) {
+      const usageLine = document.createElement("div");
+      usageLine.textContent = usageParts.join(" · ");
+      this.tokenUsage.append(usageLine);
+    }
+    this.tokenUsage.title = [...modelParts, cwd ?? "", ...usageParts]
+      .filter(Boolean)
+      .join(" · ");
+    this.tokenUsage.hidden = lines.length === 0 && !cwd;
   }
 
   private selectMessage(

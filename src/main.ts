@@ -15,6 +15,7 @@ import { MenuController } from "./menu";
 
 interface RendererSettings extends PeskSettings {
   codexThreadId?: string;
+  codexCwd?: string;
   codexError?: string;
   codexStatus: "idle" | "working" | "waiting";
   codexConnected: boolean;
@@ -55,6 +56,7 @@ function rendererSettings(): RendererSettings {
   return {
     ...settings,
     codexThreadId: state.threadId,
+    codexCwd: state.cwd,
     codexError: state.error,
     codexStatus: state.status,
     codexConnected: state.connected,

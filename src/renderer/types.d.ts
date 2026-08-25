@@ -8,6 +8,7 @@ interface PetSettings {
   codexStatus: "idle" | "working" | "waiting";
   codexConnected: boolean;
   codexThreadId?: string;
+  codexCwd?: string;
   codexError?: string;
   codexThreads: Array<{ id: string; preview?: string; status?: string }>;
   codexActivity: Record<string, unknown> | null;
