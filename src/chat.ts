@@ -41,12 +41,13 @@ export class ChatWindowController {
   showForCodexUpdate(): void {
     const petWindow = this.options.getPetWindow();
     if (!petWindow) return;
+    const chatWasVisible = this.chatWindow?.isVisible() ?? false;
     if (!petWindow.isVisible()) petWindow.show();
     this.create();
     this.position();
     this.chatWindow?.showInactive();
     this.options.keepPetAbove();
-    this.options.setCodexUpdateIndicator(true);
+    if (!chatWasVisible) this.options.setCodexUpdateIndicator(true);
   }
 
   /** Shows chat for a pending Codex approval request. */
