@@ -8,6 +8,7 @@ jest.mock("electron", () => ({
   },
   BrowserWindow: jest.fn(),
   screen: {
+    getCursorScreenPoint: jest.fn(),
     getDisplayMatching: jest.fn(),
     getAllDisplays: jest.fn(),
     getPrimaryDisplay: jest.fn(),
@@ -105,6 +106,7 @@ function petOptions() {
     positionChat: jest.fn(),
     showChat: jest.fn(),
     hideChat: jest.fn(),
+    hideChatImmediately: jest.fn(),
     hideMenu: jest.fn(),
     focusChat: jest.fn(),
     isChatFocused: jest.fn(() => false),
@@ -272,6 +274,24 @@ describe("PetWindowController", () => {
     controller.focus();
 
     expect(options.focusChat).toHaveBeenCalled();
+  });
+
+  test("hides chat during dragging and focuses it after drag ends", () => {
+    const { windows } = createWindowFactory();
+    (screen.getCursorScreenPoint as jest.Mock).mockReturnValue({
+      x: 120,
+      y: 140,
+    });
+    const options = petOptions();
+    const controller = new PetWindowController(options);
+    controller.create();
+
+    controller.startDragging();
+    expect(options.hideChatImmediately).toHaveBeenCalled();
+
+    controller.stopDragging();
+    expect(options.focusChat).toHaveBeenCalled();
+    expect(windows[0].setPosition).not.toHaveBeenCalled();
   });
 });
 

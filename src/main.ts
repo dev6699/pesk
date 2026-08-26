@@ -96,6 +96,7 @@ app.whenReady().then(() => {
           (chat.window?.isFocused() ?? false),
       );
     },
+    hideChatImmediately: () => chat.hide(),
     hideMenu: () => menu.hide(),
     focusChat: () => {
       chat.create();
@@ -211,6 +212,7 @@ app.whenReady().then(() => {
   ipcMain.on("move-pet", (_event, dx: number, dy: number) => pet.move(dx, dy));
   ipcMain.on("drag-start", () => pet.startDragging());
   ipcMain.on("drag-end", () => pet.stopDragging());
+  ipcMain.on("focus-pet", () => pet.focus());
   ipcMain.on("zoom-pet", (_event, scale: number) => pet.resize(scale));
   ipcMain.on("show-pet-menu", () => menu.showPetMenu());
   ipcMain.on("run-preset", (_event, name: string) => {

@@ -21,6 +21,7 @@ interface PetWindowOptions {
   positionChat: () => void;
   showChat: () => void;
   hideChat: () => void;
+  hideChatImmediately: () => void;
   hideMenu: () => void;
   focusChat: () => void;
   isChatFocused: () => boolean;
@@ -272,7 +273,7 @@ export class PetWindowController {
     const cursor = screen.getCursorScreenPoint();
     const offsetX = cursor.x - windowX;
     const offsetY = cursor.y - windowY;
-    this.options.hideChat();
+    this.options.hideChatImmediately();
     this.dragTimer = setInterval(() => {
       if (!this.petWindow || settings.locked) return this.stopDragging();
       const current = screen.getCursorScreenPoint();
@@ -288,14 +289,11 @@ export class PetWindowController {
 
   /** Stops cursor tracking and persists the final pet position. */
   stopDragging(): void {
+    const wasDragging = this.dragTimer !== null;
     if (this.dragTimer) clearInterval(this.dragTimer);
     this.dragTimer = null;
     this.dragTick = 0;
-    if (this.petWindow?.isFocused()) {
-      this.options.showChat();
-    } else {
-      this.options.hideChat();
-    }
+    if (wasDragging) this.options.focusChat();
     this.saveWindowPosition();
   }
 
@@ -395,10 +393,10 @@ function loadAnimations(): AnimationFrames[] {
       : null;
   const animationPaths = configuredAnimationsDir
     ? [
-      path.isAbsolute(configuredAnimationsDir)
-        ? configuredAnimationsDir
-        : path.resolve(getConfigDirectory(), configuredAnimationsDir),
-    ]
+        path.isAbsolute(configuredAnimationsDir)
+          ? configuredAnimationsDir
+          : path.resolve(getConfigDirectory(), configuredAnimationsDir),
+      ]
     : [path.join(app.getPath("userData"), "animations")];
   const existingAnimationPaths = animationPaths.filter((directory) =>
     fs.existsSync(directory),

@@ -51,6 +51,12 @@ export class PetRenderer {
       event.preventDefault();
       window.peskApi.showPetMenu();
     });
+    options.pet.addEventListener("click", (event) => {
+      if (event.button !== 0) return;
+      if (event.target !== options.pet && event.target !== options.image)
+        return;
+      window.peskApi.focusPet();
+    });
     options.pet.addEventListener("mouseup", () => window.peskApi.endDrag());
   }
 

@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("peskApi", {
   movePet: (dx: number, dy: number) => ipcRenderer.send("move-pet", dx, dy),
   startDrag: () => ipcRenderer.send("drag-start"),
   endDrag: () => ipcRenderer.send("drag-end"),
+  focusPet: () => ipcRenderer.send("focus-pet"),
   zoomPet: (scale: number) => ipcRenderer.send("zoom-pet", scale),
   showPetMenu: () => ipcRenderer.send("show-pet-menu"),
   togglePaused: () => ipcRenderer.send("toggle-paused"),

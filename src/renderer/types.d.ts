@@ -90,6 +90,7 @@ interface Window {
     movePet: (dx: number, dy: number) => void;
     startDrag: () => void;
     endDrag: () => void;
+    focusPet: () => void;
     zoomPet: (scale: number) => void;
     showPetMenu: () => void;
     togglePaused: () => void;
