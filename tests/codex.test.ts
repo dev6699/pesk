@@ -58,6 +58,7 @@ function options() {
     showPetForUpdate: jest.fn(),
     focusUserInput: jest.fn(),
     showApproval: jest.fn(),
+    clearApproval: jest.fn(),
     debug: jest.fn(),
   };
 }
@@ -1714,6 +1715,7 @@ describe("CodexController", () => {
       id: 88,
       result: { decision: "accept" },
     });
+    expect(controllerOptions.clearApproval).toHaveBeenCalledTimes(1);
     expect(controller.getState().status).toBe("working");
   });
 

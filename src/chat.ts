@@ -52,11 +52,14 @@ export class ChatWindowController {
 
   /** Shows chat for a pending Codex approval request. */
   showForApproval(): void {
+    const petWindow = this.options.getPetWindow();
+    const alreadyFocused =
+      petWindow?.isFocused() || this.chatWindow?.isFocused() || false;
     this.create();
     this.position();
     this.chatWindow?.showInactive();
     this.options.keepPetAbove();
-    this.options.setCodexUpdateIndicator(true);
+    if (!alreadyFocused) this.options.setCodexUpdateIndicator(true);
   }
 
   /** Focuses the chat window and asks its renderer to focus pending options. */

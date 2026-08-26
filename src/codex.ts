@@ -107,6 +107,7 @@ interface Options {
   showPetForUpdate: () => void;
   focusUserInput: () => void;
   showApproval: (requestId: RequestId, command: string, reason: string) => void;
+  clearApproval?: () => void;
   debug: (...values: unknown[]) => void;
 }
 
@@ -646,6 +647,7 @@ export class CodexController {
     });
     this.trim();
     this.options.publishRendererState();
+    this.options.clearApproval?.();
     this.pendingApprovals.delete(key);
     this.setStatus("working");
   }

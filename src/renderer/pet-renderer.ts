@@ -67,9 +67,17 @@ export class PetRenderer {
   updateSettings(next: PeskSettings): void {
     const animationChanged = next.animation !== this.settings.animation;
     const modeChanged = next.animationMode !== this.settings.animationMode;
+    const approvalStarted =
+      !this.settings.codexPendingApproval && next.codexPendingApproval;
     this.settings = next;
     this.updateStatusSound(next.codexStatusSoundUrl);
     this.updateStatus(next);
+    if (approvalStarted) {
+      this.pendingStatusSound = false;
+      if (this.codexUpdateActive && !this.focused) {
+        this.playStatusChangeSound();
+      }
+    }
     if (
       animationChanged ||
       (modeChanged && next.animationMode === "selected")
@@ -92,8 +100,12 @@ export class PetRenderer {
 
   updateCodexUpdate(active: boolean): void {
     this.codexUpdateActive = active;
-    if (!active) this.pendingStatusSound = false;
-    else this.maybePlayPendingStatusSound();
+    if (!active) {
+      this.pendingStatusSound = false;
+      this.stopStatusSound();
+    } else {
+      this.maybePlayPendingStatusSound();
+    }
     this.options.pet.classList.toggle("codex-update", active);
   }
 
@@ -211,6 +223,11 @@ export class PetRenderer {
     sound.currentTime = 0;
     sound.volume = 1;
     void sound.play().catch(() => undefined);
+  }
+
+  private stopStatusSound(): void {
+    this.options.statusSound.pause();
+    this.options.statusSound.currentTime = 0;
   }
 
   private updateStatusSound(url: string): void {

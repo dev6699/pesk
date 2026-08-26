@@ -143,6 +143,7 @@ app.whenReady().then(() => {
     },
     focusUserInput: () => chat.focusForUserInput(),
     showApproval: () => chat.showForApproval(),
+    clearApproval: () => pet.setCodexUpdateIndicator(false),
     debug,
   });
   codexController.setSocketUrl(config.codexAppServerUrl);

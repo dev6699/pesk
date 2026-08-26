@@ -164,6 +164,24 @@ describe("ChatWindowController", () => {
     expect(windows[0].focus).not.toHaveBeenCalled();
   });
 
+  test("keeps the focused pet ring when an approval request is shown", () => {
+    const { windows } = createWindowFactory();
+    const pet = new FakeWindow();
+    pet.focused = true;
+    const options = {
+      getPetWindow: () => pet as never,
+      keepPetAbove: jest.fn(),
+      setPetFocus: jest.fn(),
+      setCodexUpdateIndicator: jest.fn(),
+    };
+    const controller = new ChatWindowController(options);
+
+    controller.showForApproval();
+
+    expect(windows[0].showInactive).toHaveBeenCalled();
+    expect(options.setCodexUpdateIndicator).not.toHaveBeenCalled();
+  });
+
   test("keeps chat visible when blur occurs while the pet owns focus", () => {
     jest.useFakeTimers();
     const { windows } = createWindowFactory();
@@ -330,6 +348,7 @@ describe("PetRenderer focus state", () => {
       volume: 0,
       src: "",
       load: jest.fn(),
+      pause: jest.fn(),
       play: jest.fn(async () => undefined),
     }) as unknown as HTMLAudioElement;
 
@@ -397,6 +416,36 @@ describe("PetRenderer focus state", () => {
     renderer.updateCodexUpdate(true);
 
     expect(sound.play).not.toHaveBeenCalled();
+  });
+
+  test("plays the approval notification when the blue indicator activates", () => {
+    (globalThis as unknown as { window: typeof globalThis }).window =
+      globalThis;
+    const sound = createStatusSound();
+    const pet = new FakeElement();
+    const renderer = new PetRenderer({
+      image: new FakeElement() as never,
+      pet: pet as never,
+      status: new FakeElement() as never,
+      statusLabel: { textContent: "" } as unknown as HTMLElement,
+      statusSound: sound,
+      chatOnly: false,
+      settings: defaultSettings(),
+    });
+
+    renderer.updateCodexUpdate(true);
+    renderer.updateSettings({
+      ...defaultSettings(),
+      codexPendingApproval: {
+        requestId: 1,
+        command: "echo hi",
+        reason: "Needs approval",
+        options: [],
+      },
+    });
+
+    expect(pet.classList.contains("codex-update")).toBe(true);
+    expect(sound.play).toHaveBeenCalledTimes(1);
   });
 
   test("does not play the notification when disabled", () => {
