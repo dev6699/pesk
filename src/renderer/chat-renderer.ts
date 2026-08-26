@@ -14,6 +14,7 @@ const codex = new CodexRenderer(
   document.getElementById("codex-chat-input") as HTMLTextAreaElement,
   defaultSettings(),
   document.getElementById("codex-rate-limit") as HTMLElement,
+  document.getElementById("codex-file-suggestions") as HTMLElement,
 );
 
 document.addEventListener(

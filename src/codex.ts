@@ -22,6 +22,10 @@ import type {
   GetAccountRateLimitsResponse,
   RateLimitSnapshot,
 } from "./codex-schema/v2";
+import type {
+  FuzzyFileSearchResponse,
+  FuzzyFileSearchResult,
+} from "./codex-schema";
 
 const MAX_HISTORY = 100;
 
@@ -127,6 +131,7 @@ type ThreadReadRequest = RequestOf<"thread/read">;
 type TurnStartRequest = RequestOf<"turn/start">;
 type AccountRateLimitsRequest = RequestOf<"account/rateLimits/read">;
 type TurnInterruptRequest = RequestOf<"turn/interrupt">;
+type FuzzyFileSearchRequest = RequestOf<"fuzzyFileSearch">;
 
 type OutgoingMessage = ClientRequest | ClientNotification | JsonRpcResponse;
 
@@ -267,6 +272,45 @@ export class CodexController {
       id,
       params: undefined,
     } satisfies AccountRateLimitsRequest);
+  }
+
+  /** Searches files below the requested roots for the renderer's picker. */
+  fuzzyFileSearch(
+    query: string,
+    roots: string[],
+  ): Promise<FuzzyFileSearchResult[]> {
+    if (
+      !this.initialized ||
+      this.socket?.readyState !== WebSocket.OPEN ||
+      !roots.length
+    ) {
+      return Promise.resolve([]);
+    }
+    const id = ++this.nextId;
+    return new Promise((resolve) => {
+      this.setRequest<FuzzyFileSearchResponse>(id, (message) => {
+        if (message.error) {
+          this.options.debug("Fuzzy file search failed", message.error);
+        } else {
+          this.options.debug("Fuzzy file search completed", {
+            query,
+            roots,
+            count: message.result?.files.length ?? 0,
+          });
+        }
+        resolve(message.result?.files ?? []);
+      });
+      this.options.debug("Fuzzy file search requested", { query, roots });
+      this.send({
+        method: "fuzzyFileSearch",
+        id,
+        params: {
+          query,
+          roots,
+          cancellationToken: null,
+        },
+      } satisfies FuzzyFileSearchRequest);
+    });
   }
 
   /** Requests cancellation of the currently running turn. */
@@ -476,7 +520,10 @@ export class CodexController {
             title: "Pesk",
             version: "0.1.0",
           },
-          capabilities: null,
+          capabilities: {
+            experimentalApi: true,
+            requestAttestation: false,
+          },
         },
       } satisfies InitializeRequest);
     });

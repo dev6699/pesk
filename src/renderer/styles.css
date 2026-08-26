@@ -284,15 +284,25 @@ body.chat-only #codex-chat {
   border-radius: 6px;
   background: #000000cc;
   color: #fff;
-  font: 700 10px/14px system-ui, sans-serif;
+  font:
+    700 10px/14px system-ui,
+    sans-serif;
   white-space: normal;
   text-shadow: 0 1px 2px #000;
 }
 
-.codex-rate-limit-ok { color: #b9f6c5 !important; }
-.codex-rate-limit-warning { color: #ffd166 !important; }
-.codex-rate-limit-reached { color: #ff8c8c !important; }
-.codex-rate-limit-unavailable { opacity: 0.65; }
+.codex-rate-limit-ok {
+  color: #b9f6c5 !important;
+}
+.codex-rate-limit-warning {
+  color: #ffd166 !important;
+}
+.codex-rate-limit-reached {
+  color: #ff8c8c !important;
+}
+.codex-rate-limit-unavailable {
+  opacity: 0.65;
+}
 
 #codex-connection {
   font-size: 10px;
@@ -741,6 +751,7 @@ body.chat-only #codex-chat {
 }
 
 #codex-chat-form {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   min-width: 0;
@@ -816,6 +827,71 @@ body.chat-only #codex-chat {
   border-color: #7db7ff;
   outline: none;
   background: #000000ee;
+}
+
+#codex-file-suggestions {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 5;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid #ffffff55;
+  border-radius: 8px;
+  background: #111d;
+  box-shadow: 0 4px 16px #0008;
+}
+
+#codex-file-suggestions[hidden] {
+  display: none;
+}
+
+.codex-file-suggestion {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  overflow: hidden;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  text-align: left;
+}
+
+.codex-file-suggestion-name {
+  flex: 0 1 auto;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-file-suggestion-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #ffffffaa;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-file-suggestion-type {
+  min-width: 0;
+  color: #ffd8a8;
+  font-size: 10px;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.codex-file-suggestion[aria-selected="true"],
+.codex-file-suggestion:hover {
+  background: #d97706e6;
 }
 
 #codex-chat-send {

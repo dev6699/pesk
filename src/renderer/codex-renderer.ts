@@ -8,6 +8,10 @@ export class CodexRenderer {
   private workingLabelSince: number | undefined;
   private selectedMessageIndex = -1;
   private readonly rateLimit: HTMLElement;
+  private readonly fileSuggestions: HTMLElement;
+  private fileSearchSerial = 0;
+  private fileSuggestionResults: FuzzyFileSearchResult[] = [];
+  private fileSuggestionIndex = -1;
 
   constructor(
     private readonly chat: HTMLElement,
@@ -22,9 +26,11 @@ export class CodexRenderer {
     private readonly input: HTMLTextAreaElement,
     settings: PeskSettings,
     rateLimit?: HTMLElement,
+    fileSuggestions?: HTMLElement,
   ) {
     this.settings = settings;
     this.rateLimit = rateLimit ?? document.createElement("div");
+    this.fileSuggestions = fileSuggestions ?? document.createElement("div");
     this.renderWorkingStatus();
     sessionSelect.addEventListener("change", () => {
       if (sessionSelect.value)
@@ -34,7 +40,10 @@ export class CodexRenderer {
     chat.addEventListener("mousedown", (event) => event.stopPropagation());
     chat.addEventListener("wheel", (event) => event.stopPropagation());
     form.addEventListener("submit", (event) => void this.submit(event));
-    input.addEventListener("input", () => this.resizeInput());
+    input.addEventListener("input", () => {
+      this.resizeInput();
+      void this.updateFileSuggestions();
+    });
     input.addEventListener("keydown", (event) =>
       this.handleInputKeydown(event),
     );
@@ -48,9 +57,11 @@ export class CodexRenderer {
       (event.ctrlKey || event.metaKey) &&
       !event.shiftKey &&
       !event.altKey &&
-      !(event.target === this.input &&
+      !(
+        event.target === this.input &&
         (this.settings.codexStatus === "working" ||
-          this.settings.codexStatus === "waiting")) &&
+          this.settings.codexStatus === "waiting")
+      ) &&
       this.selectedMessageIndex >= 0 &&
       !this.hasHighlightedText()
     ) {
@@ -177,6 +188,10 @@ export class CodexRenderer {
 
   private async submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
+    if (this.fileSuggestionResults.length) {
+      this.selectFileSuggestion(this.fileSuggestionIndex);
+      return;
+    }
     const prompt = this.input.value.trim();
     if (
       !prompt ||
@@ -364,17 +379,17 @@ export class CodexRenderer {
     );
     const nextIndex = selectionIsVisible
       ? candidateIndices[
-      Math.max(
-        0,
-        Math.min(
-          candidateIndices.length - 1,
-          currentCandidateIndex + direction,
-        ),
-      )
-      ]
+          Math.max(
+            0,
+            Math.min(
+              candidateIndices.length - 1,
+              currentCandidateIndex + direction,
+            ),
+          )
+        ]
       : ((direction < 0
-        ? visibleIndices[visibleIndices.length - 1]
-        : visibleIndices[0]) ??
+          ? visibleIndices[visibleIndices.length - 1]
+          : visibleIndices[0]) ??
         (direction < 0
           ? candidateIndices[candidateIndices.length - 1]
           : candidateIndices[0]));
@@ -419,7 +434,7 @@ export class CodexRenderer {
     if (this.selectedMessageIndex < 0) return false;
     const message =
       this.history.querySelectorAll<HTMLElement>(".codex-message")[
-      this.selectedMessageIndex
+        this.selectedMessageIndex
       ];
     const details = message?.querySelector<HTMLDetailsElement>("details");
     if (!details) return false;
@@ -457,7 +472,7 @@ export class CodexRenderer {
     if (this.selectedMessageIndex < 0) return undefined;
     const message =
       this.history.querySelectorAll<HTMLElement>(".codex-message")[
-      this.selectedMessageIndex
+        this.selectedMessageIndex
       ];
     if (!message) return undefined;
     const content = message.cloneNode(true) as HTMLElement;
@@ -482,6 +497,35 @@ export class CodexRenderer {
   }
 
   private handleInputKeydown(event: KeyboardEvent): void {
+    if (!this.fileSuggestions.hidden) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        this.fileSuggestionIndex =
+          (this.fileSuggestionIndex +
+            direction +
+            this.fileSuggestionResults.length) %
+          this.fileSuggestionResults.length;
+        this.renderFileSuggestions();
+        return;
+      }
+      if (
+        event.key === "Enter" &&
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault();
+        this.selectFileSuggestion(this.fileSuggestionIndex);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.hideFileSuggestions();
+        return;
+      }
+    }
     if (
       event.key.toLowerCase() === "c" &&
       event.ctrlKey &&
@@ -496,12 +540,7 @@ export class CodexRenderer {
       return;
     }
     if (event.key !== "Enter") return;
-    if (
-      event.ctrlKey &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !event.metaKey
-    ) {
+    if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
       event.preventDefault();
       const start = this.input.selectionStart;
       const end = this.input.selectionEnd;
@@ -517,6 +556,95 @@ export class CodexRenderer {
     }
   }
 
+  private async updateFileSuggestions(): Promise<void> {
+    const cursor = this.input.selectionStart ?? this.input.value.length;
+    const beforeCursor = this.input.value.slice(0, cursor);
+    const match = beforeCursor.match(/(?:^|\s)@([^\s]*)$/);
+    if (!match) {
+      this.hideFileSuggestions();
+      return;
+    }
+    const query = match[1];
+    if (!query) {
+      this.hideFileSuggestions();
+      return;
+    }
+    const serial = ++this.fileSearchSerial;
+    const results = await window.peskApi.fuzzyFileSearch(
+      query,
+      this.settings.codexCwd ? [this.settings.codexCwd] : [],
+    );
+    if (serial !== this.fileSearchSerial) return;
+    this.fileSuggestionResults = results.slice(0, 8);
+    this.fileSuggestionIndex = this.fileSuggestionResults.length ? 0 : -1;
+    this.renderFileSuggestions();
+  }
+
+  private renderFileSuggestions(): void {
+    this.fileSuggestions.replaceChildren();
+    this.fileSuggestions.hidden = !this.fileSuggestionResults.length;
+    this.fileSuggestionResults.forEach((result, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "codex-file-suggestion";
+      button.setAttribute("role", "option");
+      button.setAttribute(
+        "aria-selected",
+        String(index === this.fileSuggestionIndex),
+      );
+      const name = document.createElement("span");
+      name.className = "codex-file-suggestion-name";
+      name.textContent = result.file_name;
+      const separatorIndex = Math.max(
+        result.path.lastIndexOf("/"),
+        result.path.lastIndexOf("\\"),
+      );
+      const parentPath = document.createElement("span");
+      parentPath.className = "codex-file-suggestion-path";
+      parentPath.textContent =
+        separatorIndex >= 0 ? result.path.slice(0, separatorIndex) : ".";
+      const matchType = document.createElement("span");
+      matchType.className = "codex-file-suggestion-type";
+      matchType.textContent = result.match_type;
+      button.append(name, parentPath, matchType);
+      button.title = result.path;
+      button.addEventListener("mousedown", (event) => event.preventDefault());
+      button.addEventListener("click", () => this.selectFileSuggestion(index));
+      this.fileSuggestions.append(button);
+      if (index === this.fileSuggestionIndex) {
+        button.scrollIntoView?.({ block: "nearest" });
+      }
+    });
+  }
+
+  private selectFileSuggestion(index: number): void {
+    const result = this.fileSuggestionResults[index];
+    if (!result) return;
+    const cursor = this.input.selectionStart ?? this.input.value.length;
+    const beforeCursor = this.input.value.slice(0, cursor);
+    const match = beforeCursor.match(/(?:^|\s)@([^\s]*)$/);
+    if (!match) {
+      this.hideFileSuggestions();
+      return;
+    }
+    const tokenStart = cursor - match[1].length - 1;
+    this.input.value = `${this.input.value.slice(0, tokenStart)}${result.path} ${this.input.value.slice(cursor)}`;
+    const nextCursor = tokenStart + result.path.length + 1;
+    this.input.selectionStart = nextCursor;
+    this.input.selectionEnd = nextCursor;
+    this.hideFileSuggestions();
+    this.resizeInput();
+    this.input.focus();
+  }
+
+  private hideFileSuggestions(): void {
+    this.fileSearchSerial += 1;
+    this.fileSuggestionResults = [];
+    this.fileSuggestionIndex = -1;
+    this.fileSuggestions.hidden = true;
+    this.fileSuggestions.replaceChildren();
+  }
+
   private renderHistory(
     history: PeskSettings["codexHistory"],
     sessionConnected = false,
@@ -524,7 +652,7 @@ export class CodexRenderer {
     const wasAtBottom =
       this.historyInitialized &&
       this.history.scrollTop + this.history.clientHeight >=
-      this.history.scrollHeight - 24;
+        this.history.scrollHeight - 24;
     const openActivityKeys = new Set(
       Array.from(
         this.history.querySelectorAll<HTMLDetailsElement>(
@@ -715,8 +843,10 @@ export class CodexRenderer {
         "codex-working-status-interrupted",
         Boolean(this.settings.codexInterrupted),
       );
-      this.workingStatus.firstElementChild!.textContent =
-        this.settings.codexInterrupted ? "Conversation interrupted" : "Worked for";
+      this.workingStatus.firstElementChild!.textContent = this.settings
+        .codexInterrupted
+        ? "Conversation interrupted"
+        : "Worked for";
       this.workingElapsed.textContent = formatElapsed(worked ?? 0);
       return;
     }
@@ -935,15 +1065,22 @@ function formatReset(timestamp: number): string {
 }
 
 function formatPlan(plan: string): string {
-  return plan.replaceAll("_", " ").replace(/(^| )\S/g, (letter) => letter.toUpperCase());
+  return plan
+    .replaceAll("_", " ")
+    .replace(/(^| )\S/g, (letter) => letter.toUpperCase());
 }
 
 function formatRateLimitDetails(
   limits: NonNullable<PeskSettings["codexRateLimits"]>,
 ): string[] {
-  const formatWindow = (label: string, window: typeof limits.primary): string => {
+  const formatWindow = (
+    label: string,
+    window: typeof limits.primary,
+  ): string => {
     if (!window) return `${label}: unavailable`;
-    const reset = window.resetsAt ? ` · resets ${formatReset(window.resetsAt)}` : "";
+    const reset = window.resetsAt
+      ? ` · resets ${formatReset(window.resetsAt)}`
+      : "";
     return `${label}: ${Math.round(window.usedPercent)}% used${reset}`;
   };
   return [

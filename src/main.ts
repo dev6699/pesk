@@ -1,9 +1,6 @@
 import { app, globalShortcut, ipcMain, shell } from "electron";
 import { CodexController } from "./codex";
-import type {
-  CodexMessage,
-  CodexModelInfo,
-} from "./codex";
+import type { CodexMessage, CodexModelInfo } from "./codex";
 import type { Thread, ThreadTokenUsage } from "./codex-schema/v2";
 import { ChatWindowController } from "./chat";
 import { PetWindowController } from "./pet";
@@ -200,9 +197,17 @@ app.whenReady().then(() => {
     }
     return rendererSettings();
   });
-  ipcMain.handle("interrupt-codex-turn", () =>
-    codexController.interruptTurn(),
+  ipcMain.handle(
+    "fuzzy-file-search",
+    (_event, query: unknown, roots: unknown) => {
+      if (typeof query !== "string" || !Array.isArray(roots)) return [];
+      const validRoots = roots.filter(
+        (root): root is string => typeof root === "string",
+      );
+      return codexController.fuzzyFileSearch(query, validRoots);
+    },
   );
+  ipcMain.handle("interrupt-codex-turn", () => codexController.interruptTurn());
   ipcMain.on("move-pet", (_event, dx: number, dy: number) => pet.move(dx, dy));
   ipcMain.on("drag-start", () => pet.startDragging());
   ipcMain.on("drag-end", () => pet.stopDragging());

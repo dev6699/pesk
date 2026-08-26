@@ -32,6 +32,7 @@ function makeRenderer(settings: Settings = defaultSettings()): {
     tokenUsage: HTMLElement;
     form: HTMLFormElement;
     input: HTMLTextAreaElement;
+    suggestions: HTMLElement;
   };
 } {
   document.body.innerHTML = `
@@ -42,7 +43,10 @@ function makeRenderer(settings: Settings = defaultSettings()): {
     <div id="history"></div>
     <div id="working"><span></span><span id="elapsed"></span></div>
     <div id="usage"></div>
-    <form id="form"><textarea id="input"></textarea></form>
+    <form id="form">
+      <textarea id="input"></textarea>
+      <div id="suggestions"></div>
+    </form>
   `;
   const elements = {
     chat: document.querySelector("#chat") as HTMLElement,
@@ -55,6 +59,7 @@ function makeRenderer(settings: Settings = defaultSettings()): {
     tokenUsage: document.querySelector("#usage") as HTMLElement,
     form: document.querySelector("#form") as HTMLFormElement,
     input: document.querySelector("#input") as HTMLTextAreaElement,
+    suggestions: document.querySelector("#suggestions") as HTMLElement,
   };
   Object.defineProperties(elements.history, {
     clientHeight: { configurable: true, value: 300 },
@@ -64,6 +69,7 @@ function makeRenderer(settings: Settings = defaultSettings()): {
     configurable: true,
     value: 40,
   });
+  HTMLElement.prototype.scrollIntoView = jest.fn();
   elements.history.scrollTo = jest.fn();
   elements.history.scrollBy = jest.fn();
   window.peskApi = {
@@ -71,6 +77,24 @@ function makeRenderer(settings: Settings = defaultSettings()): {
     selectCodexThread: jest.fn(),
     interruptCodexTurn: jest.fn(async () => true),
     submitCodexPrompt: jest.fn(async () => settings),
+    fuzzyFileSearch: jest.fn(async (): Promise<FuzzyFileSearchResult[]> => [
+      {
+        root: "/tmp/project",
+        path: "src/codex.ts",
+        match_type: "file",
+        file_name: "codex.ts",
+        score: 1,
+        indices: [0],
+      },
+      {
+        root: "/tmp/project",
+        path: "src/config.ts",
+        match_type: "file",
+        file_name: "config.ts",
+        score: 0.8,
+        indices: [0],
+      },
+    ]),
     respondCodexPermission: jest.fn(),
   };
   window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
@@ -89,6 +113,8 @@ function makeRenderer(settings: Settings = defaultSettings()): {
     elements.form,
     elements.input,
     settings,
+    undefined,
+    elements.suggestions,
   );
   return { renderer, elements };
 }
@@ -173,6 +199,31 @@ test("renders session state, history, activities, approvals, and token usage", (
   ).not.toBeNull();
   expect(elements.tokenUsage.textContent).toContain("12.5k");
   expect(elements.tokenUsage.textContent).toContain("gpt-test");
+});
+
+test("searches and selects a file with the @ picker", async () => {
+  const settings = {
+    ...defaultSettings(),
+    codexCwd: "/tmp/project",
+  };
+  const { elements } = makeRenderer(settings);
+  elements.input.value = "Inspect @cod";
+  elements.input.dispatchEvent(new Event("input", { bubbles: true }));
+  await Promise.resolve();
+
+  expect(elements.suggestions.hidden).toBe(false);
+  expect(elements.suggestions.querySelectorAll("button")).toHaveLength(2);
+
+  elements.input.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+  );
+  elements.input.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+  );
+
+  expect(elements.input.value).toBe("Inspect src/config.ts ");
+  expect(elements.suggestions.hidden).toBe(true);
+  expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
 });
 
 test("submits a prompt, rejects empty or working input, and handles input shortcuts", async () => {
@@ -275,8 +326,9 @@ test("blurs the input when selecting a message with Alt+Up", () => {
     codexHistory: [{ role: "user", text: "copy this" }],
   });
   elements.input.focus();
-  (elements.history.querySelector(".codex-message") as HTMLElement).scrollIntoView =
-    jest.fn();
+  (
+    elements.history.querySelector(".codex-message") as HTMLElement
+  ).scrollIntoView = jest.fn();
 
   const event = new KeyboardEvent("keydown", {
     key: "ArrowUp",
@@ -316,5 +368,9 @@ test("renders working and completed elapsed states", () => {
   expect(elements.workingStatus.textContent).toContain(
     "Conversation interrupted",
   );
-  expect(elements.workingStatus.classList.contains("codex-working-status-interrupted")).toBe(true);
+  expect(
+    elements.workingStatus.classList.contains(
+      "codex-working-status-interrupted",
+    ),
+  ).toBe(true);
 });

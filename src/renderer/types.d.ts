@@ -107,6 +107,10 @@ interface Window {
       decision: "allow" | "deny",
     ) => void;
     submitCodexPrompt: (prompt: string) => Promise<PeskSettings>;
+    fuzzyFileSearch: (
+      query: string,
+      roots: string[],
+    ) => Promise<FuzzyFileSearchResult[]>;
     getPresets: () => Promise<{ name: string }[]>;
     runPreset: (name: string) => void;
     closeMenuWindow: () => void;
@@ -117,6 +121,15 @@ interface Window {
     onCodexInputFocus: (callback: () => void) => void;
     onSettingsChanged: (callback: (settings: PeskSettings) => void) => void;
   };
+}
+
+interface FuzzyFileSearchResult {
+  root: string;
+  path: string;
+  match_type: "file" | "directory";
+  file_name: string;
+  score: number;
+  indices: number[] | null;
 }
 
 type PeskSettings = SavedPeskSettings & CodexRuntimeState;
