@@ -324,18 +324,26 @@ class FakeElement {
 }
 
 describe("PetRenderer focus state", () => {
+  const createStatusSound = () =>
+    ({
+      currentTime: 0,
+      volume: 0,
+      src: "",
+      load: jest.fn(),
+      play: jest.fn(async () => undefined),
+    }) as unknown as HTMLAudioElement;
+
   test("plays one notification when working becomes idle or waiting", () => {
     (globalThis as unknown as { window: typeof globalThis }).window =
       globalThis;
-    const sound = { volume: 0, play: jest.fn(async () => undefined) };
-    const previousAudio = window.Audio;
-    window.Audio = jest.fn(() => sound) as unknown as typeof Audio;
+    const sound = createStatusSound();
 
     const renderer = new PetRenderer({
       image: new FakeElement() as never,
       pet: new FakeElement() as never,
       status: new FakeElement() as never,
       statusLabel: { textContent: "" } as unknown as HTMLElement,
+      statusSound: sound,
       chatOnly: false,
       settings: defaultSettings(),
     });
@@ -356,22 +364,21 @@ describe("PetRenderer focus state", () => {
       codexStatusSoundUrl: "file:///tmp/status.mp3",
     });
 
-    expect(window.Audio).toHaveBeenCalledTimes(1);
+    expect(sound.src).toBe("file:///tmp/status.mp3");
+    expect(sound.load).toHaveBeenCalledTimes(1);
     expect(sound.play).toHaveBeenCalledTimes(1);
-    window.Audio = previousAudio;
   });
 
   test("does not play when the window is focused", () => {
     (globalThis as unknown as { window: typeof globalThis }).window =
       globalThis;
-    const previousAudio = window.Audio;
-    const sound = { volume: 0, play: jest.fn(async () => undefined) };
-    window.Audio = jest.fn(() => sound) as unknown as typeof Audio;
+    const sound = createStatusSound();
     const renderer = new PetRenderer({
       image: new FakeElement() as never,
       pet: new FakeElement() as never,
       status: new FakeElement() as never,
       statusLabel: { textContent: "" } as unknown as HTMLElement,
+      statusSound: sound,
       chatOnly: false,
       settings: defaultSettings(),
     });
@@ -390,19 +397,18 @@ describe("PetRenderer focus state", () => {
     renderer.updateCodexUpdate(true);
 
     expect(sound.play).not.toHaveBeenCalled();
-    window.Audio = previousAudio;
   });
 
   test("does not play the notification when disabled", () => {
     (globalThis as unknown as { window: typeof globalThis }).window =
       globalThis;
-    const previousAudio = window.Audio;
-    window.Audio = jest.fn() as unknown as typeof Audio;
+    const sound = createStatusSound();
     const renderer = new PetRenderer({
       image: new FakeElement() as never,
       pet: new FakeElement() as never,
       status: new FakeElement() as never,
       statusLabel: { textContent: "" } as unknown as HTMLElement,
+      statusSound: sound,
       chatOnly: false,
       settings: { ...defaultSettings(), codexStatusSound: false },
     });
@@ -418,8 +424,7 @@ describe("PetRenderer focus state", () => {
       codexStatus: "idle",
     });
 
-    expect(window.Audio).not.toHaveBeenCalled();
-    window.Audio = previousAudio;
+    expect(sound.play).not.toHaveBeenCalled();
   });
 
   test("shows and refreshes working elapsed time in the pet status", () => {
@@ -434,6 +439,7 @@ describe("PetRenderer focus state", () => {
       pet: new FakeElement() as never,
       status: new FakeElement() as never,
       statusLabel,
+      statusSound: createStatusSound(),
       chatOnly: false,
       settings: defaultSettings(),
     });
@@ -463,6 +469,7 @@ describe("PetRenderer focus state", () => {
       pet: pet as never,
       status: status as never,
       statusLabel,
+      statusSound: createStatusSound(),
       chatOnly: false,
       settings: defaultSettings(),
     });
@@ -484,6 +491,7 @@ describe("PetRenderer focus state", () => {
       pet: pet as never,
       status: new FakeElement() as never,
       statusLabel: { textContent: "" } as unknown as HTMLElement,
+      statusSound: createStatusSound(),
       chatOnly: false,
       settings: defaultSettings(),
     });

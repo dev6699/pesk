@@ -7,11 +7,15 @@ const status = document.getElementById("codex-status") as HTMLElement;
 const statusLabel = document.getElementById(
   "codex-status-label",
 ) as HTMLElement;
+const statusSound = document.getElementById(
+  "codex-status-sound",
+) as HTMLAudioElement;
 const pet = new PetRenderer({
   image,
   pet: petElement,
   status,
   statusLabel,
+  statusSound,
   chatOnly: false,
   settings: defaultSettings(),
 });

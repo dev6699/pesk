@@ -3,6 +3,7 @@ interface PetRendererOptions {
   pet: HTMLElement;
   status: HTMLElement;
   statusLabel: HTMLElement;
+  statusSound: HTMLAudioElement;
   chatOnly: boolean;
   settings: PeskSettings;
 }
@@ -26,7 +27,6 @@ export class PetRenderer {
   private pendingStatusSound = false;
   private statusTimer: number | undefined;
   private previousStatus: PeskSettings["codexStatus"];
-  private statusSound: HTMLAudioElement | undefined;
   private statusSoundUrl = "";
 
   constructor(private readonly options: PetRendererOptions) {
@@ -206,9 +206,8 @@ export class PetRenderer {
 
   private playStatusChangeSound(): void {
     if (!this.settings.codexStatusSound) return;
-    if (!this.statusSound) return;
 
-    const sound = this.statusSound;
+    const sound = this.options.statusSound;
     sound.currentTime = 0;
     sound.volume = 1;
     void sound.play().catch(() => undefined);
@@ -217,8 +216,8 @@ export class PetRenderer {
   private updateStatusSound(url: string): void {
     if (url === this.statusSoundUrl) return;
     this.statusSoundUrl = url;
-    this.statusSound = url ? new Audio(url) : undefined;
-    if (this.statusSound) this.statusSound.preload = "auto";
+    this.options.statusSound.src = url;
+    if (url) this.options.statusSound.load();
   }
 }
 
