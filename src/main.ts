@@ -1,6 +1,10 @@
 import { app, globalShortcut, ipcMain, shell } from "electron";
 import { CodexController } from "./codex";
-import type { CodexMessage, CodexModelInfo } from "./codex";
+import type {
+  CodexMessage,
+  CodexModelInfo,
+  CodexPendingUserInput,
+} from "./codex";
 import type { Thread, ThreadTokenUsage } from "./codex-schema/v2";
 import { ChatWindowController } from "./chat";
 import { PetWindowController } from "./pet";
@@ -8,6 +12,7 @@ import { loadConfig, loadSettings, saveSettings } from "./config";
 import type { PeskSettings } from "./config";
 import { PresetController } from "./preset";
 import { MenuController } from "./menu";
+import { routePetFocusShortcut } from "./focus-shortcut";
 
 interface RendererSettings extends PeskSettings {
   codexThreadId?: string;
@@ -23,6 +28,8 @@ interface RendererSettings extends PeskSettings {
   codexTokenUsage?: ThreadTokenUsage;
   codexModelInfo?: CodexModelInfo;
   codexRateLimits?: import("./codex-schema/v2").RateLimitSnapshot;
+  codexCollaborationMode: "default" | "plan";
+  codexPendingUserInput?: CodexPendingUserInput;
   codexStatusSoundUrl: string;
 }
 
@@ -67,6 +74,8 @@ function rendererSettings(): RendererSettings {
     codexTokenUsage: state.tokenUsage,
     codexModelInfo: state.modelInfo,
     codexRateLimits: state.rateLimits,
+    codexCollaborationMode: state.collaborationMode,
+    codexPendingUserInput: state.pendingUserInput,
     codexStatusSoundUrl,
   };
 }
@@ -129,6 +138,7 @@ app.whenReady().then(() => {
       settings.visible = true;
       chat.showForCodexUpdate();
     },
+    focusUserInput: () => chat.focusForUserInput(),
     showApproval: () => chat.showForApproval(),
     debug,
   });
@@ -167,6 +177,44 @@ app.whenReady().then(() => {
   ipcMain.on("select-codex-thread", (_event, threadId: unknown) => {
     if (typeof threadId === "string") codexController.selectThread(threadId);
   });
+  ipcMain.on("set-codex-collaboration-mode", (_event, mode: unknown) => {
+    if (mode === "default" || mode === "plan") {
+      codexController.setCollaborationMode(mode);
+    }
+  });
+  ipcMain.on("focus-codex-input", () => chat.focusInput());
+  ipcMain.handle(
+    "implement-codex-plan",
+    (_event, planText: unknown, clearContext: unknown) => {
+      if (typeof planText !== "string" || typeof clearContext !== "boolean") {
+        return rendererSettings();
+      }
+      codexController.implementPlan(planText, clearContext);
+      return rendererSettings();
+    },
+  );
+  ipcMain.on(
+    "respond-codex-user-input",
+    (_event, requestId: unknown, answers: unknown) => {
+      if (
+        (typeof requestId !== "string" && typeof requestId !== "number") ||
+        !answers ||
+        typeof answers !== "object"
+      ) {
+        return;
+      }
+      const normalized = Object.fromEntries(
+        Object.entries(answers).flatMap(([questionId, value]) => {
+          if (!Array.isArray(value)) return [];
+          const selected = value.filter(
+            (answer): answer is string => typeof answer === "string",
+          );
+          return [[questionId, selected]];
+        }),
+      );
+      codexController.respondUserInput(normalized);
+    },
+  );
   ipcMain.on("select-animation", (_event, name: string) =>
     pet.selectAnimation(name),
   );
@@ -180,7 +228,9 @@ app.whenReady().then(() => {
   ipcMain.on(
     "respond-codex-permission",
     (_event, requestId: unknown, decision: unknown) => {
-      if (typeof requestId !== "number") return;
+      if (typeof requestId !== "string" && typeof requestId !== "number") {
+        return;
+      }
       const normalizedDecision =
         decision === "allow"
           ? "accept"
@@ -228,7 +278,12 @@ app.whenReady().then(() => {
   });
   const petFocusShortcutRegistered = globalShortcut.register(
     config.petFocusShortcut,
-    () => pet.focus(),
+    () =>
+      routePetFocusShortcut(
+        chat,
+        pet,
+        Boolean(codexController.getState().pendingUserInput),
+      ),
   );
   debug("pet focus shortcut", {
     shortcut: config.petFocusShortcut,

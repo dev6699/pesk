@@ -18,6 +18,15 @@ contextBridge.exposeInMainWorld("peskApi", {
   openConfigFolder: () => ipcRenderer.send("open-config-folder"),
   selectCodexThread: (threadId: string) =>
     ipcRenderer.send("select-codex-thread", threadId),
+  setCodexCollaborationMode: (mode: "default" | "plan") =>
+    ipcRenderer.send("set-codex-collaboration-mode", mode),
+  focusCodexInput: () => ipcRenderer.send("focus-codex-input"),
+  implementCodexPlan: (planText: string, clearContext: boolean) =>
+    ipcRenderer.invoke("implement-codex-plan", planText, clearContext),
+  respondCodexUserInput: (
+    requestId: string | number,
+    answers: Record<string, string[]>,
+  ) => ipcRenderer.send("respond-codex-user-input", requestId, answers),
   interruptCodexTurn: () => ipcRenderer.invoke("interrupt-codex-turn"),
   selectAnimation: (name: string) => ipcRenderer.send("select-animation", name),
   setAnimationMode: (mode: "selected" | "shuffle") =>
@@ -54,6 +63,9 @@ contextBridge.exposeInMainWorld("peskApi", {
   },
   onCodexInputFocus: (callback: () => void) => {
     ipcRenderer.on("codex-input-focus", () => callback());
+  },
+  onCodexUserInputFocus: (callback: () => void) => {
+    ipcRenderer.on("codex-user-input-focus", () => callback());
   },
   onSettingsChanged: (callback: (settings: unknown) => void) => {
     ipcRenderer.on("settings-changed", (_event, settings) =>

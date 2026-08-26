@@ -17,6 +17,7 @@ export function defaultCodexRuntimeState(): CodexRuntimeState {
     codexConnected: false,
     codexHistory: [],
     codexThreads: [],
+    codexCollaborationMode: "default",
   };
 }
 

@@ -48,6 +48,22 @@ interface CodexRuntimeState {
     planType: string | null;
     rateLimitReachedType: string | null;
   };
+  codexCollaborationMode: "default" | "plan";
+  codexPendingUserInput?: {
+    requestId: string | number;
+    threadId: string;
+    turnId: string;
+    itemId: string;
+    questions: Array<{
+      id: string;
+      header: string;
+      question: string;
+      isOther: boolean;
+      isSecret: boolean;
+      options: Array<{ label: string; description: string }> | null;
+    }>;
+    isBlocking: boolean;
+  };
   codexHistory: Array<{
     role: "user" | "assistant" | "system";
     text: string;
@@ -56,7 +72,7 @@ interface CodexRuntimeState {
     turnId?: string;
     itemId?: string;
     activity?: {
-      kind: "command" | "fileChange" | "webSearch" | "tool" | "other";
+      kind: "command" | "fileChange" | "webSearch" | "tool" | "plan" | "other";
       label?: string;
       status?: string;
       command?: string;
@@ -99,6 +115,16 @@ interface Window {
     toggleCodexStatusSound: () => void;
     openConfigFolder: () => void;
     selectCodexThread: (threadId: string) => void;
+    setCodexCollaborationMode: (mode: "default" | "plan") => void;
+    focusCodexInput: () => void;
+    implementCodexPlan: (
+      planText: string,
+      clearContext: boolean,
+    ) => Promise<PeskSettings>;
+    respondCodexUserInput: (
+      requestId: string | number,
+      answers: Record<string, string[]>,
+    ) => void;
     interruptCodexTurn: () => Promise<boolean>;
     selectAnimation: (name: string) => void;
     setAnimationMode: (mode: "selected" | "shuffle") => void;
@@ -120,6 +146,7 @@ interface Window {
     onPetFocusChanged: (callback: (focused: boolean) => void) => void;
     onPetCodexUpdateChanged: (callback: (active: boolean) => void) => void;
     onCodexInputFocus: (callback: () => void) => void;
+    onCodexUserInputFocus: (callback: () => void) => void;
     onSettingsChanged: (callback: (settings: PeskSettings) => void) => void;
   };
 }

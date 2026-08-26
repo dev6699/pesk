@@ -1,5 +1,11 @@
 import { marked } from "./vendor/marked.js";
 
+const slashCommands = [
+  { command: "/plan", description: "Switch to Plan mode" },
+  { command: "/default", description: "Switch to Default mode" },
+  { command: "/new", description: "Start a new Codex session" },
+];
+
 export class CodexRenderer {
   private settings: PeskSettings;
   private historyInitialized = false;
@@ -11,7 +17,25 @@ export class CodexRenderer {
   private readonly fileSuggestions: HTMLElement;
   private fileSearchSerial = 0;
   private fileSuggestionResults: FuzzyFileSearchResult[] = [];
+  private slashCommandResults: typeof slashCommands = [];
+  private suggestionKind: "file" | "command" | undefined;
   private fileSuggestionIndex = -1;
+  private renderedUserInputRequestId: string | number | undefined;
+  private activeUserInputQuestionId: string | undefined;
+  private userInputQuestionIndex = 0;
+  private userInputAnswers: Record<string, string[]> = {};
+  private readonly dismissedPlanConfirmations = new Set<string>();
+  private activePlanConfirmation: { key: string; planText: string } | undefined;
+  private renderedHistoryStructureKey = "";
+  private renderedPlanDetails = new Map<string, string>();
+  private planRenderTimer: number | undefined;
+  private pendingPlanHistory: PeskSettings["codexHistory"] | undefined;
+
+  private suggestionCount(): number {
+    return this.suggestionKind === "command"
+      ? this.slashCommandResults.length
+      : this.fileSuggestionResults.length;
+  }
 
   constructor(
     private readonly chat: HTMLElement,
@@ -27,6 +51,8 @@ export class CodexRenderer {
     settings: PeskSettings,
     rateLimit?: HTMLElement,
     fileSuggestions?: HTMLElement,
+    private readonly modeToggle?: HTMLButtonElement,
+    private readonly userInput?: HTMLElement,
   ) {
     this.settings = settings;
     this.rateLimit = rateLimit ?? document.createElement("div");
@@ -37,12 +63,17 @@ export class CodexRenderer {
         window.peskApi.selectCodexThread(sessionSelect.value);
     });
     sessionCopy.addEventListener("click", () => void this.copySessionId());
+    this.modeToggle?.addEventListener("click", () => {
+      const mode =
+        this.settings.codexCollaborationMode === "plan" ? "default" : "plan";
+      window.peskApi.setCodexCollaborationMode(mode);
+    });
     chat.addEventListener("mousedown", (event) => event.stopPropagation());
     chat.addEventListener("wheel", (event) => event.stopPropagation());
     form.addEventListener("submit", (event) => void this.submit(event));
     input.addEventListener("input", () => {
       this.resizeInput();
-      void this.updateFileSuggestions();
+      void this.updateSuggestions();
     });
     input.addEventListener("keydown", (event) =>
       this.handleInputKeydown(event),
@@ -51,6 +82,18 @@ export class CodexRenderer {
   }
 
   handleKeydown(event: KeyboardEvent): void {
+    if (
+      !this.userInput?.hidden &&
+      event.key === "ArrowUp" &&
+      event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.metaKey
+    ) {
+      event.preventDefault();
+      this.focusUserInputOption();
+      return;
+    }
     if (
       !this.chat.hidden &&
       event.key.toLowerCase() === "c" &&
@@ -134,6 +177,7 @@ export class CodexRenderer {
         return;
       }
     }
+    if (this.userInput?.contains(event.target as Node)) return;
     const pendingApproval = this.history.querySelector<HTMLElement>(
       ".codex-approval-pending",
     );
@@ -180,16 +224,33 @@ export class CodexRenderer {
     this.renderWorkingStatus();
     this.renderTokenUsage();
     this.renderRateLimit();
+    this.renderUserInput();
+    this.form.hidden = Boolean(
+      next.codexPendingUserInput || this.activePlanConfirmation,
+    );
+    if (this.modeToggle) {
+      const plan = next.codexCollaborationMode === "plan";
+      this.modeToggle.textContent = plan ? "Plan" : "Default";
+      this.modeToggle.classList.toggle("codex-mode-plan", plan);
+      this.modeToggle.title = plan
+        ? "Plan mode enabled for the next turn"
+        : "Default mode enabled for the next turn";
+    }
   }
 
   focusInput(): void {
     requestAnimationFrame(() => this.input.focus());
   }
 
+  private focusChatInput(): void {
+    window.peskApi.focusCodexInput();
+    this.focusInput();
+  }
+
   private async submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    if (this.fileSuggestionResults.length) {
-      this.selectFileSuggestion(this.fileSuggestionIndex);
+    if (this.suggestionCount()) {
+      this.selectSuggestion(this.fileSuggestionIndex);
       return;
     }
     const prompt = this.input.value.trim();
@@ -204,6 +265,289 @@ export class CodexRenderer {
     this.resizeInput();
     this.updateSettings(next);
     this.input.focus();
+  }
+
+  private renderUserInput(force = false): void {
+    const container = this.userInput;
+    const pending = this.settings.codexPendingUserInput;
+    const planConfirmation = this.activePlanConfirmation;
+    if (!container) return;
+    if (!pending && !planConfirmation) {
+      container.replaceChildren();
+      container.hidden = true;
+      this.renderedUserInputRequestId = undefined;
+      this.activeUserInputQuestionId = undefined;
+      this.userInputQuestionIndex = 0;
+      this.userInputAnswers = {};
+      return;
+    }
+    if (!pending && planConfirmation) {
+      const existing = container.querySelector<HTMLElement>(
+        ".codex-plan-implementation-prompt",
+      );
+      if (
+        !force &&
+        existing?.dataset.planConfirmationKey === planConfirmation.key
+      ) {
+        return;
+      }
+      container.replaceChildren();
+      container.hidden = false;
+      this.renderedUserInputRequestId = undefined;
+      this.activeUserInputQuestionId = undefined;
+      this.userInputQuestionIndex = 0;
+      this.userInputAnswers = {};
+      container.append(
+        this.renderPlanImplementationPrompt(
+          planConfirmation.key,
+          planConfirmation.planText,
+        ),
+      );
+      requestAnimationFrame(() => {
+        this.history.scrollTop = this.history.scrollHeight;
+      });
+      return;
+    }
+    if (!pending) return;
+
+    const requestChanged =
+      this.renderedUserInputRequestId !== pending.requestId;
+    if (requestChanged) {
+      this.renderedUserInputRequestId = pending.requestId;
+      this.userInputQuestionIndex = 0;
+      this.userInputAnswers = {};
+      this.activeUserInputQuestionId = pending.questions[0]?.id;
+    }
+    const question = pending.questions[this.userInputQuestionIndex];
+    if (!question) return;
+    if (!force && !requestChanged && container.querySelector("form")) return;
+    container.replaceChildren();
+    container.hidden = false;
+
+    const title = document.createElement("strong");
+    title.textContent = "Codex needs your input";
+    container.append(title);
+
+    const instructions = document.createElement("small");
+    instructions.className = "codex-user-input-instructions";
+    instructions.textContent =
+      "Use ↑/↓ to select, Tab to add a note, and Enter to submit.";
+    container.append(instructions);
+
+    const form = document.createElement("form");
+    form.className = "codex-user-input-form";
+    const fieldset = document.createElement("fieldset");
+    fieldset.dataset.questionId = question.id;
+    const legend = document.createElement("legend");
+    legend.textContent = question.header || question.question;
+    fieldset.append(legend);
+    if (question.header && question.question !== question.header) {
+      const prompt = document.createElement("div");
+      prompt.className = "codex-user-input-question";
+      prompt.textContent = question.question;
+      fieldset.append(prompt);
+    }
+    const options = [...(question.options ?? [])];
+    if (question.isOther && options.length) {
+      options.push({ label: "Other", description: "" });
+    }
+    for (const [optionIndex, option] of options.entries()) {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = `question-${question.id}`;
+      input.value = option.label;
+      input.tabIndex = optionIndex === 0 ? 0 : -1;
+      input.dataset.questionId = question.id;
+      input.addEventListener("focus", () => {
+        this.activeUserInputQuestionId = question.id;
+      });
+      input.addEventListener("change", () => {
+        for (const radio of fieldset.querySelectorAll<HTMLInputElement>(
+          "input[type='radio']",
+        )) {
+          radio.tabIndex = radio === input ? 0 : -1;
+        }
+      });
+      label.append(input, document.createTextNode(` ${option.label}`));
+      if (option.description) {
+        const description = document.createElement("small");
+        description.className = "codex-user-input-option-description";
+        description.textContent = option.description;
+        label.append(description);
+      }
+      fieldset.append(label);
+    }
+    if (question.options?.length) {
+      const noteLabel = document.createElement("label");
+      noteLabel.className = "codex-user-input-note-label";
+      noteLabel.textContent = "Note (optional)";
+      const note = document.createElement("input");
+      note.type = "text";
+      note.placeholder = "Add a note";
+      note.setAttribute(
+        "aria-label",
+        `Note for ${question.header || question.question}`,
+      );
+      note.dataset.questionId = question.id;
+      note.dataset.note = "true";
+      note.hidden = true;
+      note.addEventListener("focus", () => {
+        this.activeUserInputQuestionId = question.id;
+      });
+      noteLabel.append(note);
+      noteLabel.hidden = true;
+      fieldset.append(noteLabel);
+    }
+    if (!question.options?.length) {
+      const input = document.createElement("input");
+      input.type = question.isSecret ? "password" : "text";
+      input.placeholder = question.isOther ? "Other" : question.question;
+      input.dataset.questionId = question.id;
+      input.dataset.other = "true";
+      fieldset.append(input);
+    }
+    form.append(fieldset);
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.textContent =
+      this.userInputQuestionIndex < pending.questions.length - 1
+        ? "Next"
+        : "Submit";
+    form.append(submit);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const selected = Array.from(
+        form.querySelectorAll<HTMLInputElement>("[data-question-id]"),
+      )
+        .filter(
+          (input) =>
+            input.dataset.questionId === question.id &&
+            (input.type !== "radio" || input.checked),
+        )
+        .map((input) => (input.value ?? "").trim())
+        .filter(Boolean);
+      this.userInputAnswers[question.id] = selected;
+      if (this.userInputQuestionIndex < pending.questions.length - 1) {
+        this.userInputQuestionIndex += 1;
+        this.activeUserInputQuestionId =
+          pending.questions[this.userInputQuestionIndex]?.id;
+        this.renderUserInput(true);
+        this.focusUserInputOption();
+        return;
+      }
+      const answers = { ...this.userInputAnswers };
+      window.peskApi.respondCodexUserInput(pending.requestId, answers);
+      submit.disabled = true;
+      this.focusChatInput();
+    });
+    form.addEventListener("keydown", (event) => {
+      if (
+        (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+        event.target instanceof HTMLInputElement &&
+        event.target.type === "radio" &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey
+      ) {
+        const options = Array.from(
+          event.target
+            .closest("fieldset")
+            ?.querySelectorAll<HTMLInputElement>("input[type='radio']") ?? [],
+        );
+        const currentIndex = options.indexOf(event.target);
+        if (currentIndex >= 0 && options.length > 1) {
+          event.preventDefault();
+          const direction = event.key === "ArrowDown" ? 1 : -1;
+          const next =
+            options[
+              (currentIndex + direction + options.length) % options.length
+            ];
+          for (const radio of options) radio.checked = false;
+          next.checked = true;
+          for (const radio of options) radio.tabIndex = radio === next ? 0 : -1;
+          next.focus();
+        }
+        return;
+      }
+      if (
+        event.key === "Tab" &&
+        !event.shiftKey &&
+        event.target instanceof HTMLInputElement &&
+        event.target.type === "radio"
+      ) {
+        const fieldset = event.target.closest("fieldset");
+        const note = fieldset?.querySelector<HTMLInputElement>(
+          "input[data-note='true']",
+        );
+        const noteLabel = note?.closest("label");
+        if (note && noteLabel) {
+          event.preventDefault();
+          noteLabel.hidden = false;
+          note.hidden = false;
+          note.focus();
+        }
+        return;
+      }
+      if (
+        event.key === "Tab" &&
+        event.target instanceof HTMLInputElement &&
+        event.target.dataset.note === "true"
+      ) {
+        const fieldset = event.target.closest("fieldset");
+        const selected = fieldset?.querySelector<HTMLInputElement>(
+          "input[type='radio']:checked",
+        );
+        event.preventDefault();
+        event.target.value = "";
+        event.target.hidden = true;
+        const noteLabel = event.target.closest("label");
+        if (noteLabel) noteLabel.hidden = true;
+        selected?.focus();
+        return;
+      }
+      if (
+        event.key === "Enter" &&
+        event.target instanceof HTMLInputElement &&
+        (event.target.type === "radio" ||
+          event.target.type === "text" ||
+          event.target.type === "password") &&
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+    container.append(form);
+    if (requestChanged || force) {
+      form.querySelector<HTMLInputElement>("input[type='radio']")?.focus();
+      requestAnimationFrame(() => {
+        form.querySelector<HTMLInputElement>("input[type='radio']")?.focus();
+        if (requestChanged) {
+          this.history.scrollTop = this.history.scrollHeight;
+        }
+      });
+    }
+  }
+
+  focusUserInputOption(): void {
+    const container = this.userInput;
+    if (!container || container.hidden) return;
+    const questionId = this.activeUserInputQuestionId;
+    const fieldset = Array.from(
+      container.querySelectorAll<HTMLElement>("fieldset"),
+    ).find(
+      (candidate) => !questionId || candidate.dataset.questionId === questionId,
+    );
+    const option =
+      fieldset?.querySelector<HTMLInputElement>(
+        "input[type='radio']:checked",
+      ) ?? fieldset?.querySelector<HTMLInputElement>("input[type='radio']");
+    option?.focus();
   }
 
   private async copySessionId(): Promise<void> {
@@ -497,15 +841,14 @@ export class CodexRenderer {
   }
 
   private handleInputKeydown(event: KeyboardEvent): void {
-    if (!this.fileSuggestions.hidden) {
+    if (this.suggestionCount()) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         const direction = event.key === "ArrowDown" ? 1 : -1;
+        const suggestionCount = this.suggestionCount();
         this.fileSuggestionIndex =
-          (this.fileSuggestionIndex +
-            direction +
-            this.fileSuggestionResults.length) %
-          this.fileSuggestionResults.length;
+          (this.fileSuggestionIndex + direction + suggestionCount) %
+          suggestionCount;
         this.renderFileSuggestions();
         return;
       }
@@ -517,7 +860,7 @@ export class CodexRenderer {
         !event.metaKey
       ) {
         event.preventDefault();
-        this.selectFileSuggestion(this.fileSuggestionIndex);
+        this.selectSuggestion(this.fileSuggestionIndex);
         return;
       }
       if (event.key === "Escape") {
@@ -556,9 +899,21 @@ export class CodexRenderer {
     }
   }
 
-  private async updateFileSuggestions(): Promise<void> {
+  private async updateSuggestions(): Promise<void> {
     const cursor = this.input.selectionStart ?? this.input.value.length;
     const beforeCursor = this.input.value.slice(0, cursor);
+    const commandMatch = beforeCursor.match(/^\/([^\s]*)$/);
+    if (commandMatch) {
+      const query = commandMatch[1].toLowerCase();
+      this.fileSearchSerial += 1;
+      this.suggestionKind = "command";
+      this.slashCommandResults = slashCommands.filter(({ command }) =>
+        command.slice(1).startsWith(query),
+      );
+      this.fileSuggestionIndex = this.slashCommandResults.length ? 0 : -1;
+      this.renderFileSuggestions();
+      return;
+    }
     const match = beforeCursor.match(/(?:^|\s)@([^\s]*)$/);
     if (!match) {
       this.hideFileSuggestions();
@@ -575,6 +930,7 @@ export class CodexRenderer {
       this.settings.codexCwd ? [this.settings.codexCwd] : [],
     );
     if (serial !== this.fileSearchSerial) return;
+    this.suggestionKind = "file";
     this.fileSuggestionResults = results.slice(0, 8);
     this.fileSuggestionIndex = this.fileSuggestionResults.length ? 0 : -1;
     this.renderFileSuggestions();
@@ -582,7 +938,38 @@ export class CodexRenderer {
 
   private renderFileSuggestions(): void {
     this.fileSuggestions.replaceChildren();
-    this.fileSuggestions.hidden = !this.fileSuggestionResults.length;
+    const results =
+      this.suggestionKind === "command"
+        ? this.slashCommandResults
+        : this.fileSuggestionResults;
+    this.fileSuggestions.hidden = !results.length;
+    if (this.suggestionKind === "command") {
+      this.slashCommandResults.forEach((result, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "codex-file-suggestion";
+        button.setAttribute("role", "option");
+        button.setAttribute(
+          "aria-selected",
+          String(index === this.fileSuggestionIndex),
+        );
+        const name = document.createElement("span");
+        name.className = "codex-file-suggestion-name";
+        name.textContent = result.command;
+        const description = document.createElement("span");
+        description.className = "codex-file-suggestion-path";
+        description.textContent = result.description;
+        button.append(name, description);
+        button.title = result.description;
+        button.addEventListener("mousedown", (event) => event.preventDefault());
+        button.addEventListener("click", () => this.selectSuggestion(index));
+        this.fileSuggestions.append(button);
+        if (index === this.fileSuggestionIndex) {
+          button.scrollIntoView?.({ block: "nearest" });
+        }
+      });
+      return;
+    }
     this.fileSuggestionResults.forEach((result, index) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -609,7 +996,7 @@ export class CodexRenderer {
       button.append(name, parentPath, matchType);
       button.title = result.path;
       button.addEventListener("mousedown", (event) => event.preventDefault());
-      button.addEventListener("click", () => this.selectFileSuggestion(index));
+      button.addEventListener("click", () => this.selectSuggestion(index));
       this.fileSuggestions.append(button);
       if (index === this.fileSuggestionIndex) {
         button.scrollIntoView?.({ block: "nearest" });
@@ -617,7 +1004,18 @@ export class CodexRenderer {
     });
   }
 
-  private selectFileSuggestion(index: number): void {
+  private selectSuggestion(index: number): void {
+    if (this.suggestionKind === "command") {
+      const result = this.slashCommandResults[index];
+      if (!result) return;
+      this.input.value = `${result.command} `;
+      this.input.selectionStart = this.input.value.length;
+      this.input.selectionEnd = this.input.value.length;
+      this.hideFileSuggestions();
+      this.resizeInput();
+      this.input.focus();
+      return;
+    }
     const result = this.fileSuggestionResults[index];
     if (!result) return;
     const cursor = this.input.selectionStart ?? this.input.value.length;
@@ -640,6 +1038,8 @@ export class CodexRenderer {
   private hideFileSuggestions(): void {
     this.fileSearchSerial += 1;
     this.fileSuggestionResults = [];
+    this.slashCommandResults = [];
+    this.suggestionKind = undefined;
     this.fileSuggestionIndex = -1;
     this.fileSuggestions.hidden = true;
     this.fileSuggestions.replaceChildren();
@@ -649,6 +1049,28 @@ export class CodexRenderer {
     history: PeskSettings["codexHistory"],
     sessionConnected = false,
   ): void {
+    this.updateActivePlanConfirmation(history);
+    const structureKey = historyStructureKey(history);
+    const planContentChanged = (history ?? []).some((message, index) => {
+      if (message.activity?.kind !== "plan") return false;
+      const activityKey = message.itemId ?? `history-${index}`;
+      return (
+        this.renderedPlanDetails.get(activityKey) !==
+        (message.activity.details ?? "")
+      );
+    });
+    if (
+      this.renderedHistoryStructureKey &&
+      structureKey === this.renderedHistoryStructureKey &&
+      this.schedulePlanUpdates(history)
+    ) {
+      return;
+    }
+    if (this.planRenderTimer !== undefined) {
+      window.clearTimeout(this.planRenderTimer);
+      this.planRenderTimer = undefined;
+      this.pendingPlanHistory = undefined;
+    }
     const wasAtBottom =
       this.historyInitialized &&
       this.history.scrollTop + this.history.clientHeight >=
@@ -673,6 +1095,8 @@ export class CodexRenderer {
         .filter((key): key is string => Boolean(key)),
     );
     this.history.replaceChildren();
+    this.renderedHistoryStructureKey = structureKey;
+    this.renderedPlanDetails.clear();
     if (!history?.length) {
       const empty = document.createElement("div");
       empty.className = "codex-empty-history";
@@ -695,6 +1119,13 @@ export class CodexRenderer {
       }
       if (message.temporary) bubble.classList.add("codex-message-working");
       const activityKey = message.itemId ?? `history-${index}`;
+      if (message.itemId) bubble.dataset.messageItemId = message.itemId;
+      if (message.activity?.kind === "plan") {
+        this.renderedPlanDetails.set(
+          activityKey,
+          message.activity.details ?? "",
+        );
+      }
       bubble.append(
         this.renderMessageContent(
           message,
@@ -713,10 +1144,95 @@ export class CodexRenderer {
       this.history.append(bubble);
     }
     this.applySelectedMessage();
-    if (!this.historyInitialized || wasAtBottom) {
+    if (!this.historyInitialized || wasAtBottom || planContentChanged) {
       this.history.scrollTop = this.history.scrollHeight;
     }
     this.historyInitialized = true;
+  }
+
+  private updateActivePlanConfirmation(
+    history: PeskSettings["codexHistory"],
+  ): void {
+    this.activePlanConfirmation = undefined;
+    const lastMessage = history?.[history.length - 1];
+    if (
+      lastMessage?.activity?.kind !== "plan" ||
+      (lastMessage.activity.status !== "completed" &&
+        lastMessage.activity.status !== "complete")
+    ) {
+      return;
+    }
+    const activityKey =
+      lastMessage.itemId ?? `history-${(history?.length ?? 1) - 1}`;
+    if (this.dismissedPlanConfirmations.has(activityKey)) return;
+    this.activePlanConfirmation = {
+      key: activityKey,
+      planText: lastMessage.activity.details ?? lastMessage.text,
+    };
+  }
+
+  private schedulePlanUpdates(history: PeskSettings["codexHistory"]): boolean {
+    const planUpdates = (history ?? []).filter((message, index) => {
+      if (message.activity?.kind !== "plan") return false;
+      const activityKey = message.itemId ?? `history-${index}`;
+      return (
+        this.renderedPlanDetails.get(activityKey) !==
+        (message.activity.details ?? "")
+      );
+    });
+    if (!planUpdates.length) return true;
+    const activityDetails = Array.from(
+      this.history.querySelectorAll<HTMLDetailsElement>(
+        "details[data-activity-key]",
+      ),
+    );
+    if (
+      !planUpdates.every((message, index) => {
+        const historyIndex = history.indexOf(message);
+        const activityKey =
+          message.itemId ??
+          `history-${historyIndex >= 0 ? historyIndex : index}`;
+        return activityDetails.some(
+          (details) => details.dataset.activityKey === activityKey,
+        );
+      })
+    ) {
+      return false;
+    }
+    this.pendingPlanHistory = history;
+    if (this.planRenderTimer === undefined) {
+      this.planRenderTimer = window.setTimeout(() => {
+        this.planRenderTimer = undefined;
+        const nextHistory = this.pendingPlanHistory;
+        this.pendingPlanHistory = undefined;
+        if (!nextHistory) return;
+        for (const [index, message] of nextHistory.entries()) {
+          if (message.activity?.kind !== "plan") continue;
+          const activityKey = message.itemId ?? `history-${index}`;
+          const details = Array.from(
+            this.history.querySelectorAll<HTMLDetailsElement>(
+              "details[data-activity-key]",
+            ),
+          ).find((candidate) => candidate.dataset.activityKey === activityKey);
+          const content = details?.querySelector<HTMLElement>(
+            ".codex-plan-content",
+          );
+          if (!content) {
+            this.renderHistory(nextHistory);
+            return;
+          }
+          content.innerHTML = renderMarkdown(message.activity.details ?? "");
+          this.renderedPlanDetails.set(
+            activityKey,
+            message.activity.details ?? "",
+          );
+        }
+        requestAnimationFrame(() => {
+          this.history.scrollTop = this.history.scrollHeight;
+        });
+      }, 100);
+    }
+    return true;
   }
 
   private renderMessageContent(
@@ -754,6 +1270,22 @@ export class CodexRenderer {
         renderedActivityKeys,
       );
     }
+    if (message.activity?.kind === "plan") {
+      const details = document.createElement("details");
+      details.className = "codex-plan-details";
+      details.dataset.activityKey = activityKey;
+      details.open =
+        openActivityKeys.has(activityKey) ||
+        !renderedActivityKeys.has(activityKey);
+      const summary = document.createElement("summary");
+      summary.textContent = `Plan · ${message.activity.status ?? "in progress"}`;
+      details.append(summary);
+      const body = document.createElement("div");
+      body.className = "codex-plan-content codex-markdown";
+      body.innerHTML = renderMarkdown(message.activity.details ?? "");
+      details.append(body);
+      return details;
+    }
     if (message.activity) {
       const details = document.createElement("details");
       details.className = "codex-activity-details-block";
@@ -785,6 +1317,89 @@ export class CodexRenderer {
       content.textContent = message.text;
     }
     return content;
+  }
+
+  private renderPlanImplementationPrompt(
+    activityKey: string,
+    planText: string,
+  ): HTMLElement {
+    const prompt = document.createElement("section");
+    prompt.className = "codex-plan-implementation-prompt";
+    prompt.dataset.planConfirmationKey = activityKey;
+
+    const title = document.createElement("strong");
+    title.textContent = "Implement this plan?";
+    prompt.append(title);
+
+    const form = document.createElement("form");
+    const choices = [
+      [
+        "implement",
+        "Yes, implement this plan",
+        "Switch to Default and start coding.",
+      ],
+      [
+        "clear-context",
+        "Yes, clear context and implement",
+        "Fresh thread. The completed plan will be included.",
+      ],
+      [
+        "stay-plan",
+        "No, stay in Plan mode",
+        "Continue planning with the model.",
+      ],
+    ] as const;
+    for (const [value, labelText, descriptionText] of choices) {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = `plan-confirmation-${activityKey}`;
+      input.value = value;
+      input.checked = value === "implement";
+      label.append(input, document.createTextNode(` ${labelText}`));
+      const description = document.createElement("small");
+      description.textContent = descriptionText;
+      label.append(description);
+      form.append(label);
+    }
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.textContent = "Submit";
+    form.append(submit);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const selected = form.querySelector<HTMLInputElement>(
+        "input[type='radio']:checked",
+      )?.value;
+      if (!selected) return;
+      this.dismissedPlanConfirmations.add(activityKey);
+      if (selected === "stay-plan") {
+        this.renderHistory(
+          this.settings.codexHistory,
+          Boolean(this.settings.codexThreadId),
+        );
+        this.renderUserInput();
+        this.form.hidden = false;
+        this.focusChatInput();
+        return;
+      }
+      submit.disabled = true;
+      void window.peskApi
+        .implementCodexPlan(planText, selected === "clear-context")
+        .then((next) => {
+          this.updateSettings(next);
+          this.focusChatInput();
+          this.renderHistory(
+            this.settings.codexHistory,
+            Boolean(this.settings.codexThreadId),
+          );
+        });
+    });
+    prompt.append(form);
+    requestAnimationFrame(() => {
+      form.querySelector<HTMLInputElement>("input[type='radio']")?.focus();
+    });
+    return prompt;
   }
 
   private renderFileChangeActivity(
@@ -935,6 +1550,8 @@ function activityLabel(
       return "Web search";
     case "tool":
       return "Tool";
+    case "plan":
+      return "Plan";
     case "other":
       return "Activity";
     default:
@@ -953,6 +1570,28 @@ function formatElapsed(milliseconds: number): string {
   const hours = Math.floor(minutes / 60);
   const remainderMinutes = minutes % 60;
   return `${hours}h ${remainderMinutes}m ${remainderSeconds}s`;
+}
+
+function historyStructureKey(history: PeskSettings["codexHistory"]): string {
+  return JSON.stringify(
+    (history ?? []).map((message) => ({
+      role: message.role,
+      itemId: message.itemId,
+      timestamp: message.timestamp,
+      temporary: message.temporary,
+      approval: message.approval,
+      text: message.activity?.kind === "plan" ? undefined : message.text,
+      activity: message.activity
+        ? {
+            ...message.activity,
+            details:
+              message.activity.kind === "plan"
+                ? undefined
+                : message.activity.details,
+          }
+        : undefined,
+    })),
+  );
 }
 
 function renderMarkdown(value: string): string {

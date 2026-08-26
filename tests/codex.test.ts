@@ -56,6 +56,7 @@ function options() {
   return {
     publishRendererState: jest.fn(),
     showPetForUpdate: jest.fn(),
+    focusUserInput: jest.fn(),
     showApproval: jest.fn(),
     debug: jest.fn(),
   };
@@ -710,7 +711,10 @@ describe("CodexController", () => {
     const startId = lastMessage(socket).id;
     socket.emit(
       "message",
-      JSON.stringify({ id: startId, result: { thread: { id: "local-thread" } } }),
+      JSON.stringify({
+        id: startId,
+        result: { thread: { id: "local-thread" } },
+      }),
     );
     socket.emit(
       "message",
@@ -1015,7 +1019,6 @@ describe("CodexController", () => {
     expect(controller.getState().connected).toBe(false);
   });
 
-
   test("discovers and resumes the loaded Codex session", () => {
     const { controller, socket } = connectedController();
 
@@ -1087,6 +1090,265 @@ describe("CodexController", () => {
         .getState()
         .history.filter((message) => message.role === "assistant"),
     ).toHaveLength(1);
+  });
+
+  test.each([
+    ["/plan", "plan"],
+    ["/default", "default"],
+  ])("handles %s as a local mode command", (command, mode) => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.submitPrompt(command)).toBe(true);
+    expect(controller.getState().collaborationMode).toBe(mode);
+    expect(lastMessage(socket)).not.toMatchObject({ method: "turn/start" });
+  });
+
+  test("starts the next turn in Plan mode when selected", () => {
+    const { controller, socket } = connectedController();
+
+    controller.setCollaborationMode("plan");
+    expect(controller.submitPrompt("plan this change")).toBe(true);
+
+    expect(lastMessage(socket)).toMatchObject({
+      method: "turn/start",
+      params: {
+        collaborationMode: {
+          mode: "plan",
+          settings: {
+            reasoning_effort: "medium",
+            developer_instructions: null,
+          },
+        },
+      },
+    });
+  });
+
+  test("starts the next turn in Default mode explicitly", () => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.submitPrompt("continue normally")).toBe(true);
+
+    expect(lastMessage(socket)).toMatchObject({
+      method: "turn/start",
+      params: {
+        collaborationMode: {
+          mode: "default",
+          settings: {
+            reasoning_effort: null,
+            developer_instructions: null,
+          },
+        },
+      },
+    });
+  });
+
+  test("implements the completed plan in the current thread with a short prompt", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as {
+      history: Array<{ role: string; text: string }>;
+    };
+    internal.history.push({ role: "assistant", text: "completed plan" });
+
+    expect(controller.implementPlan("1. Make the change", false)).toBe(true);
+
+    const request = lastMessage(socket);
+    expect(request).toMatchObject({
+      method: "turn/start",
+      params: {
+        threadId: "thread-1",
+        input: [
+          {
+            type: "text",
+            text: "Implement the plan.",
+            text_elements: [],
+          },
+        ],
+        collaborationMode: {
+          mode: "default",
+          settings: {
+            reasoning_effort: null,
+            developer_instructions: null,
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(request)).not.toContain("1. Make the change");
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        { role: "assistant", text: "completed plan" },
+        expect.objectContaining({
+          role: "user",
+          text: "Implement the plan.",
+        }),
+      ]),
+    );
+  });
+
+  test("includes the completed plan when implementing in a clear-context thread", () => {
+    const { controller, socket } = connectedController();
+    const planText = "1. Make the change";
+
+    expect(controller.implementPlan(planText, true)).toBe(true);
+    const startRequest = lastMessage(socket);
+    expect(startRequest).toMatchObject({
+      method: "thread/start",
+      params: { cwd: process.cwd(), serviceName: "pesk" },
+    });
+
+    const startId = startRequest.id;
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: startId,
+        result: { thread: { id: "fresh-thread", status: { type: "idle" } } },
+      }),
+    );
+
+    expect(lastMessage(socket)).toMatchObject({
+      method: "turn/start",
+      params: {
+        threadId: "fresh-thread",
+        input: [
+          {
+            type: "text",
+            text: `A previous agent produced the plan below to accomplish the user's task. Implement the plan in a fresh context. Treat the plan as the source of user intent, re-read files as needed, and carry the work through implementation and verification.\n\n${planText}`,
+            text_elements: [],
+          },
+        ],
+        collaborationMode: {
+          mode: "default",
+          settings: {
+            reasoning_effort: null,
+            developer_instructions: null,
+          },
+        },
+      },
+    });
+  });
+
+  test("streams and completes plan activity", () => {
+    const { controller, socket } = connectedController();
+
+    controller.submitPrompt("plan this change");
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: { id: "plan-1", type: "plan" },
+        },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/plan/delta",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "plan-1",
+          delta: "1. Inspect the code",
+        },
+      }),
+    );
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemId: "plan-1",
+          activity: expect.objectContaining({
+            kind: "plan",
+            status: "inProgress",
+            details: "1. Inspect the code",
+          }),
+        }),
+      ]),
+    );
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            id: "plan-1",
+            type: "plan",
+            text: "1. Inspect the code\n2. Implement the change",
+          },
+        },
+      }),
+    );
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemId: "plan-1",
+          activity: expect.objectContaining({
+            kind: "plan",
+            status: "completed",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  test("answers an app-server user-input request", () => {
+    const {
+      controller,
+      socket,
+      options: controllerOptions,
+    } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: "request-1",
+        method: "item/tool/requestUserInput",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "question-1",
+          isBlocking: true,
+          autoResolutionMs: null,
+          questions: [
+            {
+              id: "choice",
+              header: "Mode",
+              question: "Which mode?",
+              isOther: false,
+              isSecret: false,
+              options: [
+                { label: "Plan", description: "Plan first" },
+                { label: "Default", description: "Act directly" },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(controller.getState().pendingUserInput).toMatchObject({
+      requestId: "request-1",
+      isBlocking: true,
+    });
+    expect(controllerOptions.focusUserInput).toHaveBeenCalled();
+    expect(controller.respondUserInput({ choice: ["Plan"] })).toBe(true);
+    expect(lastMessage(socket)).toEqual({
+      id: "request-1",
+      result: { answers: { choice: { answers: ["Plan"] } } },
+    });
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          text: "Mode: Plan",
+          turnId: "turn-1",
+        }),
+      ]),
+    );
+    expect(controller.getState().pendingUserInput).toBeUndefined();
   });
 
   test("interrupts the active turn with its thread and turn ids", () => {
@@ -1401,8 +1663,11 @@ describe("CodexController", () => {
   });
 
   test("requests approval and sends the selected decision", () => {
-    const { controller, socket, options: controllerOptions } =
-      connectedController();
+    const {
+      controller,
+      socket,
+      options: controllerOptions,
+    } = connectedController();
 
     socket.emit(
       "message",
@@ -1422,9 +1687,9 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().status).toBe("waiting");
-    expect(controllerOptions.publishRendererState.mock.invocationCallOrder[0]).toBeLessThan(
-      controllerOptions.showApproval.mock.invocationCallOrder[0],
-    );
+    expect(
+      controllerOptions.publishRendererState.mock.invocationCallOrder[0],
+    ).toBeLessThan(controllerOptions.showApproval.mock.invocationCallOrder[0]);
     expect(controller.getState().history).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1446,8 +1711,12 @@ describe("CodexController", () => {
         params: { turn: { id: "approval-turn" } },
       }),
     );
-    expect(controller.getState().history).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ role: "system" })]),
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          approval: { requestId: 88, state: "pending" },
+        }),
+      ]),
     );
 
     controller.respondPermission(88, "accept");
@@ -1456,6 +1725,102 @@ describe("CodexController", () => {
       id: 88,
       result: { decision: "accept" },
     });
+    expect(controller.getState().status).toBe("working");
+  });
+
+  test("keeps independent string and numeric approvals actionable", () => {
+    const { controller, socket } = connectedController();
+
+    for (const [id, command] of [
+      ["approval-1", "first command"],
+      [7, "second command"],
+    ] as const) {
+      socket.emit(
+        "message",
+        JSON.stringify({
+          id,
+          method: "item/commandExecution/requestApproval",
+          params: { command, reason: "needs permission" },
+        }),
+      );
+    }
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { id: "command-1", type: "commandExecution" } },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/commandExecution/outputDelta",
+        params: { itemId: "command-1", delta: "output" },
+      }),
+    );
+
+    expect(controller.getState().status).toBe("waiting");
+    expect(
+      controller
+        .getState()
+        .history.filter((message) => message.approval?.state === "pending"),
+    ).toHaveLength(2);
+    expect(controller.submitPrompt("blocked while approval is pending")).toBe(
+      false,
+    );
+
+    controller.respondPermission("approval-1", "decline");
+    expect(lastMessage(socket)).toEqual({
+      id: "approval-1",
+      result: { decision: "decline" },
+    });
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          approval: { requestId: "approval-1", state: "denied" },
+        }),
+        expect.objectContaining({
+          approval: { requestId: 7, state: "pending" },
+        }),
+      ]),
+    );
+    expect(controller.getState().status).toBe("waiting");
+
+    controller.respondPermission(7, "accept");
+    expect(lastMessage(socket)).toEqual({
+      id: 7,
+      result: { decision: "accept" },
+    });
+    expect(controller.getState().status).toBe("working");
+  });
+
+  test("removes unresolved approvals when a later assistant message supersedes them", () => {
+    const { controller, socket } = connectedController();
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: "stale-1",
+        method: "item/fileChange/requestApproval",
+        params: { reason: "edit files", changes: [] },
+      }),
+    );
+    expect(controller.getState().status).toBe("waiting");
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/agentMessage/delta",
+        params: { delta: "The turn continued.", itemId: "assistant-1" },
+      }),
+    );
+
+    expect(controller.getState().history).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          approval: { requestId: "stale-1", state: "pending" },
+        }),
+      ]),
+    );
     expect(controller.getState().status).toBe("working");
   });
 });

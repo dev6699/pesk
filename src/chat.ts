@@ -59,6 +59,26 @@ export class ChatWindowController {
     this.options.setCodexUpdateIndicator(true);
   }
 
+  /** Focuses the chat window and asks its renderer to focus pending options. */
+  focusForUserInput(): void {
+    this.create();
+    this.position();
+    this.chatWindow?.show();
+    this.chatWindow?.focus();
+    this.chatWindow?.webContents.focus();
+    this.chatWindow?.webContents.send("codex-user-input-focus");
+  }
+
+  /** Focuses the normal Codex text input. */
+  focusInput(): void {
+    this.create();
+    this.position();
+    this.chatWindow?.show();
+    this.chatWindow?.focus();
+    this.chatWindow?.webContents.focus();
+    this.chatWindow?.webContents.send("codex-input-focus");
+  }
+
   /** Places the chat window beside the pet within the active work area. */
   position(): void {
     const petWindow = this.options.getPetWindow();

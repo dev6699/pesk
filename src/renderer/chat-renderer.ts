@@ -15,6 +15,8 @@ const codex = new CodexRenderer(
   defaultSettings(),
   document.getElementById("codex-rate-limit") as HTMLElement,
   document.getElementById("codex-file-suggestions") as HTMLElement,
+  document.getElementById("codex-mode-toggle") as HTMLButtonElement,
+  document.getElementById("codex-user-input") as HTMLElement,
 );
 
 document.addEventListener(
@@ -29,6 +31,7 @@ window.peskApi.onSettingsChanged((next) => {
   }
 });
 window.peskApi.onCodexInputFocus(() => codex.focusInput());
+window.peskApi.onCodexUserInputFocus(() => codex.focusUserInputOption());
 
 void window.peskApi.getChatSize().then(({ width, height }) => {
   document.documentElement.style.setProperty("--chat-width", `${width}px`);

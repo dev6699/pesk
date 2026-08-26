@@ -274,6 +274,173 @@ body.chat-only #codex-chat {
   opacity: 0.45;
 }
 
+#codex-mode-toggle {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  padding: 4px 7px;
+  border: 1px solid #ffffff88;
+  border-radius: 6px;
+  background: #000000cc;
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  height: 24px;
+  font:
+    10px/14px system-ui,
+    sans-serif;
+}
+
+#codex-mode-toggle.codex-mode-plan {
+  background: #2458a8;
+}
+
+#codex-user-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
+  flex: 0 0 auto;
+  margin-top: 6px;
+  padding: 7px;
+  border: 1px solid #ffffff88;
+  border-radius: 8px;
+  background: #000000dd;
+  display: block;
+  overflow: visible;
+}
+
+#codex-user-input > strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+#codex-user-input[hidden] {
+  display: none !important;
+}
+
+#codex-chat-form[hidden] {
+  display: none !important;
+}
+
+.codex-user-input-form {
+  display: block;
+}
+
+.codex-user-input-instructions {
+  display: block;
+  margin: 3px 0 5px;
+  color: #ffffffbb;
+  font-size: 9px;
+}
+
+.codex-user-input-form fieldset {
+  margin: 5px 0;
+  padding: 4px 6px;
+  border: 1px solid #ffffff55;
+  border-radius: 5px;
+}
+
+.codex-user-input-form legend,
+.codex-user-input-question {
+  font-size: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.codex-user-input-form label {
+  display: block;
+  margin: 3px 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.codex-user-input-note-label {
+  color: #ffffffbb;
+  font-size: 9px;
+}
+
+.codex-user-input-note-label input {
+  background: #00000099;
+  color: #fff;
+}
+
+.codex-user-input-note-label input::placeholder {
+  color: #ffffff88;
+}
+
+.codex-user-input-option-description {
+  display: block;
+  margin-left: 20px;
+  color: #ffffffbb;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+
+.codex-user-input-form input[type="text"],
+.codex-user-input-form input[type="password"] {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 3px 5px;
+  border: 1px solid #ffffff88;
+  border-radius: 4px;
+}
+
+.codex-user-input-form button {
+  position: sticky;
+  bottom: 0;
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid #ffffff88;
+  border-radius: 5px;
+  background: #2458a8;
+  color: #fff;
+  cursor: pointer;
+}
+
+.codex-plan-implementation-prompt {
+  margin: 6px 0 2px;
+  padding: 6px;
+  border: 1px solid #ffffff55;
+  border-radius: 6px;
+  background: #00000099;
+}
+
+.codex-plan-implementation-prompt > strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.codex-plan-implementation-prompt label {
+  display: block;
+  margin: 3px 0;
+  cursor: pointer;
+}
+
+.codex-plan-implementation-prompt small {
+  display: block;
+  margin-left: 20px;
+  color: #ffffffbb;
+  font-size: 9px;
+}
+
+.codex-plan-implementation-prompt button {
+  margin-top: 4px;
+}
+
+#codex-user-input input:focus-visible,
+#codex-user-input button:focus-visible,
+#codex-mode-toggle:focus-visible,
+#codex-session-copy:focus-visible,
+#codex-session-select:focus-visible,
+#codex-chat-input:focus-visible {
+  outline: 2px solid #b9dcff;
+  outline-offset: 2px;
+}
+
+#codex-user-input .codex-user-input-note-label input:focus-visible {
+  outline: none;
+}
+
 #codex-rate-limit {
   box-sizing: border-box;
   width: 100%;

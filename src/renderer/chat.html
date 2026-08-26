@@ -22,6 +22,14 @@
           >
             Copy
           </button>
+          <button
+            id="codex-mode-toggle"
+            type="button"
+            aria-label="Toggle Codex mode"
+            title="Toggle Codex mode"
+          >
+            Default
+          </button>
         </div>
         <div id="codex-rate-limit" aria-live="polite" hidden></div>
         <div id="codex-error" role="alert" hidden></div>
@@ -33,6 +41,7 @@
           </div>
         </div>
         <div id="codex-token-usage" aria-live="polite" hidden></div>
+        <section id="codex-user-input" aria-live="assertive" hidden></section>
         <form id="codex-chat-form">
           <textarea
             id="codex-chat-input"

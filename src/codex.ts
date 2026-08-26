@@ -6,6 +6,7 @@ import type {
   ServerNotification,
   ServerRequest,
 } from "./codex-schema";
+import type { CollaborationMode } from "./codex-schema/CollaborationMode";
 import type {
   CommandExecutionRequestApprovalResponse,
   FileChangeRequestApprovalResponse,
@@ -18,6 +19,7 @@ import type {
   ThreadTokenUsage,
   TokenUsageBreakdown,
   TurnStartResponse,
+  ToolRequestUserInputParams,
   GetAccountRateLimitsResponse,
   RateLimitSnapshot,
 } from "./codex-schema/v2";
@@ -37,7 +39,7 @@ export interface CodexMessage {
   turnId?: string;
   itemId?: string;
   activity?: {
-    kind: "command" | "fileChange" | "webSearch" | "tool" | "other";
+    kind: "command" | "fileChange" | "webSearch" | "tool" | "plan" | "other";
     label?: string;
     status?: string;
     command?: string;
@@ -51,6 +53,15 @@ export interface CodexMessage {
     requestId: string | number;
     state: "pending" | "approved" | "denied";
   };
+}
+
+export interface CodexPendingUserInput {
+  requestId: string | number;
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  questions: ToolRequestUserInputParams["questions"];
+  isBlocking: boolean;
 }
 
 export interface CodexModelInfo {
@@ -76,17 +87,20 @@ export interface CodexState {
   tokenUsage?: ThreadTokenUsage;
   modelInfo?: CodexModelInfo;
   rateLimits?: RateLimitSnapshot;
+  collaborationMode: "default" | "plan";
+  pendingUserInput?: CodexPendingUserInput;
 }
 
 interface Options {
   publishRendererState: () => void;
   showPetForUpdate: () => void;
-  showApproval: (requestId: number, command: string, reason: string) => void;
+  focusUserInput: () => void;
+  showApproval: (requestId: RequestId, command: string, reason: string) => void;
   debug: (...values: unknown[]) => void;
 }
 
 interface PendingApproval {
-  requestId: number;
+  requestId: RequestId;
   command: string;
   reason: string;
 }
@@ -108,14 +122,9 @@ type IncomingMessage = JsonRpcResponse | ServerNotification | ServerRequest;
 
 type ServerMessage = ServerNotification | ServerRequest;
 
-const ACTIVITY_METHODS = new Set<ServerMessage["method"]>([
-  "turn/started",
-  "item/started",
-  "item/agentMessage/delta",
-  "item/completed",
-  "turn/completed",
-  "thread/status/changed",
-]);
+function requestIdKey(requestId: RequestId): string {
+  return `${typeof requestId}:${String(requestId)}`;
+}
 
 type RequestOf<Method extends ClientRequest["method"]> = Extract<
   ClientRequest,
@@ -128,6 +137,9 @@ type ThreadListRequest = RequestOf<"thread/list">;
 type ThreadLoadedListRequest = RequestOf<"thread/loaded/list">;
 type ThreadReadRequest = RequestOf<"thread/read">;
 type TurnStartRequest = RequestOf<"turn/start">;
+type PlanTurnStartParams = TurnStartRequest["params"] & {
+  collaborationMode?: CollaborationMode | null;
+};
 type AccountRateLimitsRequest = RequestOf<"account/rateLimits/read">;
 type TurnInterruptRequest = RequestOf<"turn/interrupt">;
 type FuzzyFileSearchRequest = RequestOf<"fuzzyFileSearch">;
@@ -155,8 +167,8 @@ export class CodexController {
   private status: CodexState["status"] = "idle";
   /** Whether the selected thread is resumed and ready for input. */
   private connected = false;
-  /** Approval request that is waiting for a renderer decision. */
-  private pendingApproval: PendingApproval | null = null;
+  /** Approval requests that are waiting for renderer decisions. */
+  private readonly pendingApprovals = new Map<string, PendingApproval>();
   /** Human-readable transport error shown by the renderer. */
   private connectionError: string | undefined;
   /** Conversation messages normalized for the renderer. */
@@ -177,6 +189,9 @@ export class CodexController {
   private modelInfo: CodexModelInfo | undefined;
   /** Latest account-wide ChatGPT rate-limit snapshot. */
   private rateLimits: RateLimitSnapshot | undefined;
+  /** Mode used for the next Codex turn. */
+  private collaborationMode: "default" | "plan" = "default";
+  private pendingUserInput: CodexPendingUserInput | undefined;
   /** Prevents duplicate initial rate-limit reads from multiple renderer windows. */
   private rateLimitsReadPending = false;
   /** Index of the assistant message currently receiving deltas. */
@@ -228,6 +243,8 @@ export class CodexController {
       tokenUsage: this.tokenUsage,
       modelInfo: this.modelInfo,
       rateLimits: this.rateLimits,
+      collaborationMode: this.collaborationMode,
+      pendingUserInput: this.pendingUserInput,
     };
   }
 
@@ -252,6 +269,63 @@ export class CodexController {
   /** Selects a known Codex thread and resumes it. */
   selectThread(id: string): void {
     this.switchThread(id);
+  }
+
+  /** Selects the collaboration mode used for the next turn. */
+  setCollaborationMode(mode: "default" | "plan"): void {
+    this.collaborationMode = mode;
+    this.options.publishRendererState();
+  }
+
+  /** Starts implementation from a completed plan confirmation. */
+  implementPlan(planText: string, clearContext: boolean): boolean {
+    this.setCollaborationMode("default");
+    if (!clearContext) {
+      return this.submitPrompt("Implement the plan.");
+    }
+    const prompt = [
+      "A previous agent produced the plan below to accomplish the user's task. Implement the plan in a fresh context. Treat the plan as the source of user intent, re-read files as needed, and carry the work through implementation and verification.",
+      "",
+      planText.trim(),
+    ].join("\n");
+    return this.startNewThread(undefined, prompt);
+  }
+
+  /** Answers an app-server request_user_input request. */
+  respondUserInput(answers: Record<string, string[]>): boolean {
+    const pending = this.pendingUserInput;
+    if (!pending || !this.initialized) return false;
+    const responseAnswers = Object.fromEntries(
+      Object.entries(answers).map(([questionId, values]) => [
+        questionId,
+        { answers: values },
+      ]),
+    );
+    this.send({
+      id: pending.requestId,
+      result: { answers: responseAnswers },
+    });
+    const answerText = pending.questions
+      .map((question) => {
+        const values = answers[question.id] ?? [];
+        const displayed = question.isSecret
+          ? values.map(() => "[hidden]")
+          : values;
+        return `${question.header || question.question}: ${
+          displayed.join(", ") || "No answer"
+        }`;
+      })
+      .join("\n");
+    this.history.push({
+      role: "user",
+      text: answerText || "No answer provided.",
+      timestamp: Date.now(),
+      turnId: pending.turnId,
+    });
+    this.trim();
+    this.pendingUserInput = undefined;
+    this.options.publishRendererState();
+    return true;
   }
 
   /** Requests the complete account-wide rate-limit snapshot. */
@@ -344,6 +418,13 @@ export class CodexController {
     this.workingSince = undefined;
     this.workedElapsed = undefined;
     this.interrupted = false;
+    const modeCommand = prompt.match(/^\/(plan|default)$/i);
+    if (modeCommand) {
+      this.setCollaborationMode(
+        modeCommand[1].toLowerCase() as "plan" | "default",
+      );
+      return true;
+    }
     const newThreadMatch = prompt.match(/^\/new(?:\s+(.+))?$/);
     if (newThreadMatch) {
       return this.startNewThread(newThreadMatch[1]);
@@ -386,7 +467,7 @@ export class CodexController {
   }
 
   /** Starts and selects a fresh Codex session without sending a prompt. */
-  startNewThread(workingDirectory?: string): boolean {
+  startNewThread(workingDirectory?: string, initialPrompt?: string): boolean {
     if (!this.initialized || this.status !== "idle") {
       return false;
     }
@@ -438,13 +519,19 @@ export class CodexController {
         ...this.threads.filter((candidate) => candidate.id !== thread.id),
       ];
       this.options.publishRendererState();
+      if (initialPrompt) {
+        this.addMessage("user", initialPrompt);
+        this.prompts.set(initialPrompt, Date.now());
+        this.startTurn(thread.id, initialPrompt);
+      }
     });
     return true;
   }
 
   /** Sends an approval response for an app-server request. */
-  respondPermission(requestId: number, decision: PermissionDecision): void {
-    if (!this.pendingApproval) return;
+  respondPermission(requestId: RequestId, decision: PermissionDecision): void {
+    const key = requestIdKey(requestId);
+    if (!this.pendingApprovals.has(key)) return;
     this.send({
       id: requestId,
       result: {
@@ -455,7 +542,7 @@ export class CodexController {
       requestId,
       decision === "accept" ? "approved" : "denied",
     );
-    this.pendingApproval = null;
+    this.pendingApprovals.delete(key);
     this.setStatus("working");
   }
 
@@ -558,7 +645,7 @@ export class CodexController {
       this.pendingThreadResumeId = undefined;
       this.locallyStartedThreads.clear();
       this.streamingAssistant = -1;
-      this.pendingApproval = null;
+      this.clearPendingApprovals();
       this.options.publishRendererState();
       this.setStatus("idle");
       this.scheduleReconnect();
@@ -596,7 +683,7 @@ export class CodexController {
         this.workingSince = undefined;
         this.workedElapsed = undefined;
         this.activityIndexes.clear();
-        this.pendingApproval = null;
+        this.clearPendingApprovals();
       }
       this.options.publishRendererState();
       const firstSession = threads[0];
@@ -826,10 +913,6 @@ export class CodexController {
       this.options.debug(message);
     }
 
-    if (ACTIVITY_METHODS.has(method)) {
-      this.hidePendingApprovals();
-    }
-
     switch (method) {
       case "thread/started":
         this.handleThreadStarted(message);
@@ -862,6 +945,9 @@ export class CodexController {
       case "item/agentMessage/delta":
         this.handleAgentMessageDelta(message);
         break;
+      case "item/plan/delta":
+        this.appendPlanDelta(message.params.itemId, message.params.delta);
+        break;
       case "item/commandExecution/outputDelta":
         this.handleCommandOutputDelta(message);
         break;
@@ -871,6 +957,15 @@ export class CodexController {
       case "item/commandExecution/requestApproval":
       case "item/fileChange/requestApproval":
         this.handleApprovalRequest(message);
+        break;
+      case "item/tool/requestUserInput":
+        this.handleUserInputRequest(message);
+        break;
+      case "serverRequest/resolved":
+        if (this.pendingUserInput?.requestId === message.params.requestId) {
+          this.pendingUserInput = undefined;
+          this.options.publishRendererState();
+        }
         break;
     }
 
@@ -932,7 +1027,11 @@ export class CodexController {
       }
     }
     if (item && this.isActivityItem(item)) {
-      this.addOrUpdateActivity(item, stringValue(item.id));
+      this.addOrUpdateActivity(
+        item,
+        stringValue(item.id),
+        item.type === "plan" ? "inProgress" : undefined,
+      );
     }
   }
 
@@ -940,6 +1039,9 @@ export class CodexController {
   private handleTurnCompleted(
     message: Extract<ServerMessage, { method: "turn/completed" }>,
   ): void {
+    if (this.pendingUserInput?.threadId === message.params.threadId) {
+      this.pendingUserInput = undefined;
+    }
     this.activeTurnId = undefined;
     this.interrupted = message.params.turn?.status === "interrupted";
     this.setStatus("idle");
@@ -1041,6 +1143,24 @@ export class CodexController {
     this.appendActivityOutput(message.params.itemId, message.params.delta);
   }
 
+  /** Stores a server request_user_input request for the renderer. */
+  private handleUserInputRequest(
+    message: Extract<ServerMessage, { method: "item/tool/requestUserInput" }>,
+  ): void {
+    this.pendingUserInput = {
+      requestId: message.id,
+      threadId: message.params.threadId,
+      turnId: message.params.turnId,
+      itemId: message.params.itemId,
+      questions: message.params.questions,
+      isBlocking: message.params.isBlocking,
+    };
+    this.setStatus("waiting");
+    this.options.showPetForUpdate();
+    this.options.publishRendererState();
+    this.options.focusUserInput();
+  }
+
   /** Commits a completed assistant or activity item to conversation history. */
   private handleItemCompleted(
     message: Extract<ServerMessage, { method: "item/completed" }>,
@@ -1051,7 +1171,11 @@ export class CodexController {
     if (item?.type === "agentMessage" && typeof item.text === "string") {
       this.completeAssistant(item.text, stringValue(item.id));
     } else if (item && this.isActivityItem(item)) {
-      this.addOrUpdateActivity(item, stringValue(item.id));
+      this.addOrUpdateActivity(
+        item,
+        stringValue(item.id),
+        item.type === "plan" ? "completed" : undefined,
+      );
     }
   }
 
@@ -1066,11 +1190,15 @@ export class CodexController {
       }
     >,
   ): void {
-    const id = typeof message.id === "number" ? message.id : 0;
+    const id = message.id;
     const command =
       "command" in message.params ? (message.params.command ?? "") : "";
     const reason = message.params.reason ?? "";
-    this.pendingApproval = { requestId: id, command, reason };
+    this.pendingApprovals.set(requestIdKey(id), {
+      requestId: id,
+      command,
+      reason,
+    });
     this.addApproval(id, command, reason);
     this.options.showApproval(id, command, reason);
     this.setStatus("waiting");
@@ -1094,19 +1222,28 @@ export class CodexController {
         this.setStatus("idle");
       }
     });
+    const params: PlanTurnStartParams = {
+      threadId,
+      input: [
+        {
+          type: "text",
+          text: prompt,
+          text_elements: [],
+        },
+      ],
+    };
+    params.collaborationMode = {
+      mode: this.collaborationMode,
+      settings: {
+        model: this.modelInfo?.model ?? "gpt-5.1-codex",
+        reasoning_effort: this.collaborationMode === "plan" ? "medium" : null,
+        developer_instructions: null,
+      },
+    };
     this.send({
       method: "turn/start",
       id,
-      params: {
-        threadId,
-        input: [
-          {
-            type: "text",
-            text: prompt,
-            text_elements: [],
-          },
-        ],
-      },
+      params,
     } satisfies TurnStartRequest);
     this.setStatus("working");
   }
@@ -1117,6 +1254,7 @@ export class CodexController {
     if (!value) {
       return;
     }
+    this.clearStaleApprovals();
     this.history.push({
       role,
       text: value,
@@ -1132,6 +1270,7 @@ export class CodexController {
     if (!value) {
       return;
     }
+    this.clearStaleApprovals();
     if (
       turnId &&
       this.history.some(
@@ -1173,6 +1312,7 @@ export class CodexController {
     if (!delta) {
       return;
     }
+    this.clearStaleApprovals();
     if (
       this.streamingAssistant < 0 ||
       (itemId !== undefined && itemId !== this.streamingAssistantItemId)
@@ -1212,6 +1352,7 @@ export class CodexController {
     if (!value) {
       return;
     }
+    this.clearStaleApprovals();
     const current =
       this.history.find(
         (x) => x.role === "assistant" && itemId && x.itemId === itemId,
@@ -1244,8 +1385,14 @@ export class CodexController {
   private addOrUpdateActivity(
     item: Record<string, unknown>,
     itemId?: string,
+    statusOverride?: string,
   ): void {
-    const message = this.activityMessage(item, Date.now());
+    const message = this.activityMessage(
+      statusOverride && item.type === "plan"
+        ? { ...item, status: statusOverride }
+        : item,
+      Date.now(),
+    );
     message.itemId = itemId;
     const existingIndex = itemId ? this.activityIndexes.get(itemId) : undefined;
     if (existingIndex !== undefined && this.history[existingIndex]) {
@@ -1293,6 +1440,18 @@ export class CodexController {
     this.options.publishRendererState();
   }
 
+  /** Appends streamed plan text to its activity history entry. */
+  private appendPlanDelta(itemId: string, delta: string): void {
+    if (!delta) return;
+    const index = this.activityIndexes.get(itemId);
+    if (index === undefined) return;
+    const message = this.history[index];
+    if (!message.activity || message.activity.kind !== "plan") return;
+    message.activity.details = `${message.activity.details ?? ""}${delta}`;
+    message.text = formatActivityText(message.activity);
+    this.options.publishRendererState();
+  }
+
   /** Converts a persisted or live app-server item into a system message. */
   private activityMessage(
     item: Record<string, unknown>,
@@ -1306,9 +1465,11 @@ export class CodexController {
           ? "fileChange"
           : /search/i.test(type)
             ? "webSearch"
-            : /tool|mcp/i.test(type)
-              ? "tool"
-              : "other";
+            : type === "plan"
+              ? "plan"
+              : /tool|mcp/i.test(type)
+                ? "tool"
+                : "other";
     const changes = this.records(item.changes).map((change) => {
       const filePath =
         typeof change.path === "string" ? change.path : "unknown file";
@@ -1330,7 +1491,12 @@ export class CodexController {
     const activity: NonNullable<CodexMessage["activity"]> = {
       kind,
       label: type,
-      status: typeof item.status === "string" ? item.status : undefined,
+      status:
+        typeof item.status === "string"
+          ? item.status
+          : kind === "plan"
+            ? "completed"
+            : undefined,
       command: typeof item.command === "string" ? item.command : undefined,
       cwd: typeof item.cwd === "string" ? item.cwd : undefined,
       summary: firstText(item, ["query", "title", "name", "url", "message"]),
@@ -1340,9 +1506,13 @@ export class CodexController {
           : undefined,
       changes,
       details:
-        kind === "command" || kind === "fileChange"
-          ? undefined
-          : summarizeActivity(item),
+        kind === "plan"
+          ? typeof item.text === "string"
+            ? item.text
+            : undefined
+          : kind === "command" || kind === "fileChange"
+            ? undefined
+            : summarizeActivity(item),
     };
     return {
       role: "system",
@@ -1389,7 +1559,10 @@ export class CodexController {
     state: "approved" | "denied",
   ): void {
     const item = this.history.find(
-      (x) => x.approval?.requestId === id && x.approval.state === "pending",
+      (x) =>
+        x.approval &&
+        requestIdKey(x.approval.requestId) === requestIdKey(id) &&
+        x.approval.state === "pending",
     );
     if (item?.approval) {
       item.approval.state = state;
@@ -1397,13 +1570,23 @@ export class CodexController {
     }
   }
 
-  /** Removes stale pending approvals once new live activity arrives. */
-  private hidePendingApprovals(): void {
+  /** Removes pending approvals when a later conversation message supersedes them. */
+  private clearStaleApprovals(): void {
+    if (!this.pendingApprovals.size) return;
+    this.pendingApprovals.clear();
     const next = this.history.filter((x) => x.approval?.state !== "pending");
     if (next.length !== this.history.length) {
       this.history = next;
       this.options.publishRendererState();
     }
+    if (this.status === "waiting") this.setStatus("working");
+  }
+
+  /** Clears protocol approvals during transport/session cleanup. */
+  private clearPendingApprovals(): void {
+    this.pendingApprovals.clear();
+    const next = this.history.filter((x) => x.approval?.state !== "pending");
+    if (next.length !== this.history.length) this.history = next;
   }
 
   /** Detects an echoed prompt emitted after Pesk submitted it. */
@@ -1449,6 +1632,9 @@ export class CodexController {
 
   /** Updates status and publishes the new renderer snapshot. */
   private setStatus(status: CodexState["status"]): void {
+    if (status !== "waiting" && this.pendingApprovals.size > 0) {
+      status = "waiting";
+    }
     this.status = status;
     if (status === "working" && this.workingSince === undefined) {
       this.workingSince = Date.now();
