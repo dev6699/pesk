@@ -702,6 +702,7 @@ body.chat-only #codex-chat {
 }
 
 #codex-error {
+  flex: 0 0 auto;
   margin: 0 0 7px;
   padding: 6px 8px;
   border: 1px solid #ff5c5c;
@@ -715,7 +716,7 @@ body.chat-only #codex-chat {
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-  overflow: hidden;
+  white-space: normal;
 }
 
 .codex-approval-actions {

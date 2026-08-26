@@ -11,7 +11,6 @@ import type {
   FileChangeRequestApprovalResponse,
   Thread,
   ThreadListResponse,
-  ThreadLoadedListResponse,
   ThreadResumeResponse,
   ThreadReadResponse,
   ThreadStartResponse,
@@ -575,7 +574,7 @@ export class CodexController {
     });
   }
 
-  /** Finds the loaded or most recent active Codex session after initialization. */
+  /** Finds the most recent Codex session after initialization. */
   private discover(): void {
     if (!this.initialized || this.discoveryPending) {
       return;
@@ -585,56 +584,35 @@ export class CodexController {
       this.discoveryPending = false;
       this.switchThread(id);
     };
-    const list = (): void => {
-      const id = ++this.nextId;
-      this.setRequest<ThreadListResponse>(id, (message) => {
-        const active = (message.result?.data ?? [])
-          .filter(isThread)
-          .filter(
-            (thread) =>
-              thread.status.type === "active" || thread.status.type === "idle",
-          );
-        this.threads = active;
-        if (!active.length) {
-          this.threadId = undefined;
-          this.history = [];
-          this.streamingAssistant = -1;
-          this.streamingAssistantItemId = undefined;
-          this.workingSince = undefined;
-          this.workedElapsed = undefined;
-          this.activityIndexes.clear();
-          this.pendingApproval = null;
-        }
-        this.options.publishRendererState();
-        const firstSession = active[0];
-        if (firstSession) {
-          choose(firstSession.id);
-        }
-      });
-      this.send({
-        method: "thread/list",
-        id,
-        params: {
-          limit: 20,
-          sortKey: "recency_at",
-          sortDirection: "desc",
-        },
-      } satisfies ThreadListRequest);
-    };
     const id = ++this.nextId;
-    this.setRequest<ThreadLoadedListResponse>(id, (message) => {
-      const loaded = message.result?.data ?? [];
-      if (loaded.length === 1) {
-        choose(loaded[0]);
-      } else {
-        list();
+    this.setRequest<ThreadListResponse>(id, (message) => {
+      const threads = (message.result?.data ?? []).filter(isThread);
+      this.threads = threads;
+      if (!threads.length) {
+        this.threadId = undefined;
+        this.history = [];
+        this.streamingAssistant = -1;
+        this.streamingAssistantItemId = undefined;
+        this.workingSince = undefined;
+        this.workedElapsed = undefined;
+        this.activityIndexes.clear();
+        this.pendingApproval = null;
+      }
+      this.options.publishRendererState();
+      const firstSession = threads[0];
+      if (firstSession) {
+        choose(firstSession.id);
       }
     });
     this.send({
-      method: "thread/loaded/list",
+      method: "thread/list",
       id,
-      params: {},
-    } satisfies ThreadLoadedListRequest);
+      params: {
+        limit: 10,
+        sortKey: "recency_at",
+        sortDirection: "desc",
+      },
+    } satisfies ThreadListRequest);
   }
 
   /** Replaces the selected session and optionally resumes it. */

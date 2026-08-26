@@ -74,7 +74,12 @@ function connectedController(turns: unknown[] = []) {
   socket.emit("message", JSON.stringify({ id: 1, result: {} }));
   socket.emit(
     "message",
-    JSON.stringify({ id: 2, result: { data: ["thread-1"] } }),
+    JSON.stringify({
+      id: 2,
+      result: {
+        data: [{ id: "thread-1", status: { type: "idle" } }],
+      },
+    }),
   );
   socket.emit("message", JSON.stringify({ id: 3, result: {} }));
   socket.emit(
@@ -206,11 +211,6 @@ describe("CodexController", () => {
     internal.threadId = "stale-thread";
     internal.discover();
 
-    const loadedListId = lastMessage(socket).id;
-    socket.emit(
-      "message",
-      JSON.stringify({ id: loadedListId, result: { data: [] } }),
-    );
     const threadListId = lastMessage(socket).id;
     socket.emit(
       "message",
@@ -338,17 +338,16 @@ describe("CodexController", () => {
     socket.emit("open");
     socket.emit("message", JSON.stringify({ id: 1, result: {} }));
     socket.emit("message", JSON.stringify({ id: 2, result: { data: [] } }));
-    socket.emit("message", JSON.stringify({ id: 3, result: { data: [] } }));
 
     expect(controller.submitPrompt("start a session")).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/start",
-      id: 4,
+      id: 3,
     });
 
     socket.emit(
       "message",
-      JSON.stringify({ id: 4, result: { thread: { id: "new-thread" } } }),
+      JSON.stringify({ id: 3, result: { thread: { id: "new-thread" } } }),
     );
 
     expect(lastMessage(socket)).toMatchObject({
@@ -953,7 +952,6 @@ describe("CodexController", () => {
     socket.emit("open");
     socket.emit("message", JSON.stringify({ id: 1, result: {} }));
     socket.emit("message", JSON.stringify({ id: 2, result: { data: [] } }));
-    socket.emit("message", JSON.stringify({ id: 3, result: { data: [] } }));
 
     expect(controller.getState()).toMatchObject({
       connected: false,
@@ -963,7 +961,7 @@ describe("CodexController", () => {
     });
   });
 
-  test("lists active sessions when no single loaded session is available", () => {
+  test("lists all sessions returned by thread/list", () => {
     const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
       FakeWebSocket;
@@ -971,11 +969,10 @@ describe("CodexController", () => {
     const socket = FakeWebSocket.instances[0];
     socket.emit("open");
     socket.emit("message", JSON.stringify({ id: 1, result: {} }));
-    socket.emit("message", JSON.stringify({ id: 2, result: { data: [] } }));
     socket.emit(
       "message",
       JSON.stringify({
-        id: 3,
+        id: 2,
         result: {
           data: [
             { id: "active-1", preview: "Active", status: { type: "active" } },
@@ -990,6 +987,7 @@ describe("CodexController", () => {
     expect(controller.getState().threads).toEqual([
       { id: "active-1", preview: "Active", status: { type: "active" } },
       { id: "idle-1", status: { type: "idle" } },
+      { id: "ignored", status: { type: "closed" } },
     ]);
     expect(controller.getState().threadId).toBe("active-1");
     expect(lastMessage(socket)).toMatchObject({
