@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("peskApi", {
   getSettings: () => ipcRenderer.invoke("get-settings"),
+  refreshCodexRateLimits: () => ipcRenderer.invoke("refresh-codex-rate-limits"),
   getAnimations: () => ipcRenderer.invoke("get-animations"),
   getChatSize: () => ipcRenderer.invoke("get-chat-size"),
   movePet: (dx: number, dy: number) => ipcRenderer.send("move-pet", dx, dy),

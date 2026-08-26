@@ -25,6 +25,7 @@ interface RendererSettings extends PeskSettings {
   codexThreads: Thread[];
   codexTokenUsage?: ThreadTokenUsage;
   codexModelInfo?: CodexModelInfo;
+  codexRateLimits?: import("./codex-schema/v2").RateLimitSnapshot;
   codexStatusSoundUrl: string;
 }
 
@@ -68,6 +69,7 @@ function rendererSettings(): RendererSettings {
     codexInterrupted: state.interrupted,
     codexTokenUsage: state.tokenUsage,
     codexModelInfo: state.modelInfo,
+    codexRateLimits: state.rateLimits,
     codexStatusSoundUrl,
   };
 }
@@ -147,7 +149,13 @@ app.whenReady().then(() => {
       "idle";
     persistSettings();
   }
-  ipcMain.handle("get-settings", () => rendererSettings());
+  ipcMain.handle("get-settings", () => {
+    codexController.refreshRateLimits();
+    return rendererSettings();
+  });
+  ipcMain.handle("refresh-codex-rate-limits", () => {
+    codexController.refreshRateLimits();
+  });
   ipcMain.handle("get-animations", () => pet.getAnimations());
   ipcMain.handle("get-chat-size", () => chat.getSize());
   ipcMain.handle("get-presets", () => presets.getPresets());

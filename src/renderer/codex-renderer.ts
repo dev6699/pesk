@@ -7,6 +7,7 @@ export class CodexRenderer {
   private workingLabelTimer: number | undefined;
   private workingLabelSince: number | undefined;
   private selectedMessageIndex = -1;
+  private readonly rateLimit: HTMLElement;
 
   constructor(
     private readonly chat: HTMLElement,
@@ -20,8 +21,10 @@ export class CodexRenderer {
     private readonly form: HTMLFormElement,
     private readonly input: HTMLTextAreaElement,
     settings: PeskSettings,
+    rateLimit?: HTMLElement,
   ) {
     this.settings = settings;
+    this.rateLimit = rateLimit ?? document.createElement("div");
     this.renderWorkingStatus();
     sessionSelect.addEventListener("change", () => {
       if (sessionSelect.value)
@@ -165,6 +168,7 @@ export class CodexRenderer {
     this.renderHistory(next.codexHistory, Boolean(next.codexThreadId));
     this.renderWorkingStatus();
     this.renderTokenUsage();
+    this.renderRateLimit();
   }
 
   focusInput(): void {
@@ -305,6 +309,29 @@ export class CodexRenderer {
       .filter(Boolean)
       .join(" · ");
     this.tokenUsage.hidden = lines.length === 0 && !cwd;
+  }
+
+  private renderRateLimit(): void {
+    const limits = this.settings.codexRateLimits;
+    const primary = limits?.primary;
+    if (!primary) {
+      this.rateLimit.hidden = true;
+      this.rateLimit.textContent = "";
+      return;
+    }
+    const used = Math.round(primary.usedPercent);
+    const reached = Boolean(
+      limits?.rateLimitReachedType || limits?.spendControlReached,
+    );
+    this.rateLimit.textContent = formatRateLimitDetails(limits).join(" · ");
+    this.rateLimit.className = reached
+      ? "codex-rate-limit-reached"
+      : used >= 80
+        ? "codex-rate-limit-warning"
+        : "codex-rate-limit-ok";
+    const details = formatRateLimitDetails(limits);
+    this.rateLimit.setAttribute("aria-label", details.join("; "));
+    this.rateLimit.hidden = false;
   }
 
   private selectMessage(
@@ -890,4 +917,51 @@ function formatTokens(value: number): string {
   if (value < 1000) return String(value);
   if (value < 1_000_000) return `${(value / 1000).toFixed(1)}k`;
   return `${(value / 1_000_000).toFixed(2)}m`;
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes % 1440 === 0) return `${minutes / 1440}d`;
+  if (minutes % 60 === 0) return `${minutes / 60}h`;
+  return `${minutes}m`;
+}
+
+function formatReset(timestamp: number): string {
+  return new Date(timestamp * 1000).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatPlan(plan: string): string {
+  return plan.replaceAll("_", " ").replace(/(^| )\S/g, (letter) => letter.toUpperCase());
+}
+
+function formatRateLimitDetails(
+  limits: NonNullable<PeskSettings["codexRateLimits"]>,
+): string[] {
+  const formatWindow = (label: string, window: typeof limits.primary): string => {
+    if (!window) return `${label}: unavailable`;
+    const reset = window.resetsAt ? ` · resets ${formatReset(window.resetsAt)}` : "";
+    return `${label}: ${Math.round(window.usedPercent)}% used${reset}`;
+  };
+  return [
+    formatWindow("Quota", limits.primary),
+    limits.secondary ? formatWindow("Secondary", limits.secondary) : "",
+    limits.credits?.unlimited
+      ? "Credits: unlimited"
+      : limits.credits?.balance
+        ? `Credits: ${limits.credits.balance}`
+        : "",
+    limits.individualLimit
+      ? `Monthly: ${Math.round(limits.individualLimit.remainingPercent)}% remaining`
+      : "",
+    limits.planType ? `Plan: ${formatPlan(limits.planType)}` : "",
+    limits.rateLimitReachedType
+      ? `Status: ${formatPlan(limits.rateLimitReachedType)}`
+      : limits.spendControlReached
+        ? "Status: spend control reached"
+        : "",
+  ].filter(Boolean);
 }

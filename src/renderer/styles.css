@@ -274,6 +274,26 @@ body.chat-only #codex-chat {
   opacity: 0.45;
 }
 
+#codex-rate-limit {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 18px;
+  margin: -2px 2px 6px;
+  padding: 2px 4px;
+  border: 1px solid #ffffff88;
+  border-radius: 6px;
+  background: #000000cc;
+  color: #fff;
+  font: 700 10px/14px system-ui, sans-serif;
+  white-space: normal;
+  text-shadow: 0 1px 2px #000;
+}
+
+.codex-rate-limit-ok { color: #b9f6c5 !important; }
+.codex-rate-limit-warning { color: #ffd166 !important; }
+.codex-rate-limit-reached { color: #ff8c8c !important; }
+.codex-rate-limit-unavailable { opacity: 0.65; }
+
 #codex-connection {
   font-size: 10px;
   font-weight: 600;

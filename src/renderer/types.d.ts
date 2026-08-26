@@ -30,6 +30,24 @@ interface CodexRuntimeState {
     reasoningEffort?: string;
     serviceTier?: string;
   };
+  codexRateLimits?: {
+    primary: RateLimitWindow | null;
+    secondary: RateLimitWindow | null;
+    credits: {
+      hasCredits: boolean;
+      unlimited: boolean;
+      balance: string | null;
+    } | null;
+    individualLimit: {
+      limit: string;
+      used: string;
+      remainingPercent: number;
+      resetsAt: number;
+    } | null;
+    spendControlReached: boolean | null;
+    planType: string | null;
+    rateLimitReachedType: string | null;
+  };
   codexHistory: Array<{
     role: "user" | "assistant" | "system";
     text: string;
@@ -66,6 +84,7 @@ interface AnimationFrames {
 interface Window {
   peskApi: {
     getSettings: () => Promise<PeskSettings>;
+    refreshCodexRateLimits: () => Promise<void>;
     getAnimations: () => Promise<AnimationFrames[]>;
     getChatSize: () => Promise<{ width: number; height: number }>;
     movePet: (dx: number, dy: number) => void;
@@ -101,3 +120,9 @@ interface Window {
 }
 
 type PeskSettings = SavedPeskSettings & CodexRuntimeState;
+
+interface RateLimitWindow {
+  usedPercent: number;
+  windowDurationMins: number | null;
+  resetsAt: number | null;
+}

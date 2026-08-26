@@ -19,6 +19,8 @@ import type {
   ThreadTokenUsage,
   TokenUsageBreakdown,
   TurnStartResponse,
+  GetAccountRateLimitsResponse,
+  RateLimitSnapshot,
 } from "./codex-schema/v2";
 
 const MAX_HISTORY = 100;
@@ -70,6 +72,7 @@ export interface CodexState {
   interrupted?: boolean;
   tokenUsage?: ThreadTokenUsage;
   modelInfo?: CodexModelInfo;
+  rateLimits?: RateLimitSnapshot;
 }
 
 interface Options {
@@ -122,6 +125,7 @@ type ThreadListRequest = RequestOf<"thread/list">;
 type ThreadLoadedListRequest = RequestOf<"thread/loaded/list">;
 type ThreadReadRequest = RequestOf<"thread/read">;
 type TurnStartRequest = RequestOf<"turn/start">;
+type AccountRateLimitsRequest = RequestOf<"account/rateLimits/read">;
 type TurnInterruptRequest = RequestOf<"turn/interrupt">;
 
 type OutgoingMessage = ClientRequest | ClientNotification | JsonRpcResponse;
@@ -167,6 +171,10 @@ export class CodexController {
   private startingNewThread = false;
   /** Model/provider metadata displayed by the renderer. */
   private modelInfo: CodexModelInfo | undefined;
+  /** Latest account-wide ChatGPT rate-limit snapshot. */
+  private rateLimits: RateLimitSnapshot | undefined;
+  /** Prevents duplicate initial rate-limit reads from multiple renderer windows. */
+  private rateLimitsReadPending = false;
   /** Index of the assistant message currently receiving deltas. */
   private streamingAssistant = -1;
   /** Item id associated with the currently streaming assistant message. */
@@ -215,6 +223,7 @@ export class CodexController {
       interrupted: this.interrupted,
       tokenUsage: this.tokenUsage,
       modelInfo: this.modelInfo,
+      rateLimits: this.rateLimits,
     };
   }
 
@@ -239,6 +248,25 @@ export class CodexController {
   /** Selects a known Codex thread and resumes it. */
   selectThread(id: string): void {
     this.switchThread(id);
+  }
+
+  /** Requests the complete account-wide rate-limit snapshot. */
+  refreshRateLimits(): void {
+    if (!this.initialized || this.rateLimitsReadPending) return;
+    this.rateLimitsReadPending = true;
+    const id = ++this.nextId;
+    this.setRequest<GetAccountRateLimitsResponse>(id, (message) => {
+      this.rateLimitsReadPending = false;
+      if (message.result?.rateLimits) {
+        this.rateLimits = message.result.rateLimits;
+        this.options.publishRendererState();
+      }
+    });
+    this.send({
+      method: "account/rateLimits/read",
+      id,
+      params: undefined,
+    } satisfies AccountRateLimitsRequest);
   }
 
   /** Requests cancellation of the currently running turn. */
@@ -792,6 +820,10 @@ export class CodexController {
         break;
       case "thread/tokenUsage/updated":
         this.handleTokenUsageUpdated(message);
+        break;
+      case "account/rateLimits/updated":
+        this.rateLimits = message.params.rateLimits;
+        this.options.publishRendererState();
         break;
       case "model/rerouted":
         this.handleModelRerouted(message);
