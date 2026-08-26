@@ -1124,6 +1124,63 @@ describe("CodexController", () => {
     });
   });
 
+  test("follows collaboration mode changes made in the Codex terminal", () => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.getState().collaborationMode).toBe("default");
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/settings/updated",
+        params: {
+          threadId: "thread-1",
+          threadSettings: {
+            collaborationMode: {
+              mode: "plan",
+              settings: {},
+            },
+          },
+        },
+      }),
+    );
+    expect(controller.getState().collaborationMode).toBe("plan");
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/settings/updated",
+        params: {
+          threadId: "thread-1",
+          threadSettings: {
+            collaborationMode: {
+              mode: "default",
+              settings: {},
+            },
+          },
+        },
+      }),
+    );
+    expect(controller.getState().collaborationMode).toBe("default");
+  });
+
+  test("ignores collaboration mode changes for another thread", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/settings/updated",
+        params: {
+          threadId: "other-thread",
+          threadSettings: { collaborationMode: { mode: "plan", settings: {} } },
+        },
+      }),
+    );
+
+    expect(controller.getState().collaborationMode).toBe("default");
+  });
+
   test("starts the next turn in Default mode explicitly", () => {
     const { controller, socket } = connectedController();
 

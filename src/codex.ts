@@ -1203,9 +1203,15 @@ export class CodexController {
   private handleThreadSettingsUpdated(
     message: Extract<ServerMessage, { method: "thread/settings/updated" }>,
   ): void {
+    if (message.params.threadId !== this.threadId) return;
+    const mode = message.params.threadSettings.collaborationMode?.mode;
+    if (mode === "plan" || mode === "default") {
+      this.collaborationMode = mode;
+    }
     if (isRecord(message.params.threadSettings)) {
       this.updateModelInfoFromValue(message.params.threadSettings);
     }
+    this.options.publishRendererState();
   }
 
   /** Applies thread lifecycle changes and performs resume/reconcile work. */
