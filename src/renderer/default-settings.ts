@@ -1,4 +1,4 @@
-export function defaultSettings(): PetSettings {
+export function defaultPeskSettings(): SavedPeskSettings {
   return {
     animation: "idle",
     animationMode: "selected",
@@ -7,11 +7,22 @@ export function defaultSettings(): PetSettings {
     locked: false,
     visible: true,
     codexStatusSound: true,
+  };
+}
+
+export function defaultCodexRuntimeState(): CodexRuntimeState {
+  return {
     codexStatusSoundUrl: "",
     codexStatus: "idle",
     codexConnected: false,
-    codexActivity: null,
     codexHistory: [],
     codexThreads: [],
+  };
+}
+
+export function defaultSettings(): PeskSettings {
+  return {
+    ...defaultPeskSettings(),
+    ...defaultCodexRuntimeState(),
   };
 }

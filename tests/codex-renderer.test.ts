@@ -112,7 +112,7 @@ test("renders session state, history, activities, approvals, and token usage", (
     },
     codexTokenUsage: {
       total: { totalTokens: 12500, inputTokens: 1200, outputTokens: 3400 },
-      lastTurn: { totalTokens: 4000, inputTokens: 500 },
+      last: { totalTokens: 4000, inputTokens: 500 },
       modelContextWindow: 1000,
     },
     codexHistory: [

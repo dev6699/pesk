@@ -100,7 +100,7 @@ function petOptions() {
       visible: true,
     }),
     saveSettings: jest.fn(),
-    sendSettings: jest.fn(),
+    publishRendererState: jest.fn(),
     refreshTrayMenu: jest.fn(),
     positionChat: jest.fn(),
     showChat: jest.fn(),
@@ -140,6 +140,24 @@ describe("ChatWindowController", () => {
 
     expect(windows[0].showInactive).toHaveBeenCalled();
     expect(options.keepPetAbove).toHaveBeenCalled();
+    expect(options.setCodexUpdateIndicator).toHaveBeenCalledWith(true);
+    expect(windows[0].focus).not.toHaveBeenCalled();
+  });
+
+  test("marks the pet when an approval request is shown", () => {
+    const { windows } = createWindowFactory();
+    const pet = new FakeWindow();
+    const options = {
+      getPetWindow: () => pet as never,
+      keepPetAbove: jest.fn(),
+      setPetFocus: jest.fn(),
+      setCodexUpdateIndicator: jest.fn(),
+    };
+    const controller = new ChatWindowController(options);
+
+    controller.showForApproval();
+
+    expect(windows[0].showInactive).toHaveBeenCalled();
     expect(options.setCodexUpdateIndicator).toHaveBeenCalledWith(true);
     expect(windows[0].focus).not.toHaveBeenCalled();
   });
@@ -208,6 +226,18 @@ describe("ChatWindowController", () => {
 });
 
 describe("PetWindowController", () => {
+  test("focuses chat input when the pet window receives focus", () => {
+    const { windows } = createWindowFactory();
+    const options = petOptions();
+    const controller = new PetWindowController(options);
+    controller.create();
+
+    windows[0].emit("focus");
+
+    expect(options.showChat).toHaveBeenCalled();
+    expect(options.focusChat).toHaveBeenCalled();
+  });
+
   test("forwards focus and Codex-update state to the renderer", () => {
     const { windows } = createWindowFactory();
     const options = petOptions();
@@ -315,7 +345,8 @@ describe("PetRenderer focus state", () => {
     (globalThis as unknown as { window: typeof globalThis }).window =
       globalThis;
     const previousAudio = window.Audio;
-    window.Audio = jest.fn() as unknown as typeof Audio;
+    const sound = { volume: 0, play: jest.fn(async () => undefined) };
+    window.Audio = jest.fn(() => sound) as unknown as typeof Audio;
     const renderer = new PetRenderer({
       image: new FakeElement() as never,
       pet: new FakeElement() as never,
@@ -338,7 +369,7 @@ describe("PetRenderer focus state", () => {
     });
     renderer.updateCodexUpdate(true);
 
-    expect(window.Audio).not.toHaveBeenCalled();
+    expect(sound.play).not.toHaveBeenCalled();
     window.Audio = previousAudio;
   });
 

@@ -1,7 +1,7 @@
 import { marked } from "./vendor/marked.js";
 
 export class CodexRenderer {
-  private settings: PetSettings;
+  private settings: PeskSettings;
   private historyInitialized = false;
   private workingTimer: number | undefined;
   private workingLabelTimer: number | undefined;
@@ -19,7 +19,7 @@ export class CodexRenderer {
     private readonly tokenUsage: HTMLElement,
     private readonly form: HTMLFormElement,
     private readonly input: HTMLTextAreaElement,
-    settings: PetSettings,
+    settings: PeskSettings,
   ) {
     this.settings = settings;
     this.renderWorkingStatus();
@@ -138,7 +138,7 @@ export class CodexRenderer {
     }
   }
 
-  updateSettings(next: PetSettings): void {
+  updateSettings(next: PeskSettings): void {
     this.settings = next;
     this.error.hidden = !next.codexError;
     this.error.textContent = next.codexError ? "Codex connection error." : "";
@@ -241,9 +241,9 @@ export class CodexRenderer {
       return;
     }
     const total = usage?.total.totalTokens;
-    const lastTurn = usage?.lastTurn?.totalTokens;
-    const currentContext = usage?.lastTurn?.inputTokens;
-    const context = usage?.modelContextWindow;
+    const last = usage?.last?.totalTokens;
+    const currentContext = usage?.last?.inputTokens;
+    const context = usage?.modelContextWindow ?? undefined;
     const contextPercent =
       currentContext !== undefined && context
         ? Math.min(100, (currentContext / context) * 100)
@@ -270,7 +270,7 @@ export class CodexRenderer {
       usage?.total.reasoningOutputTokens !== undefined
         ? `Reasoning ${formatTokens(usage.total.reasoningOutputTokens)}`
         : "",
-      lastTurn !== undefined ? `Turn ${formatTokens(lastTurn)}` : "",
+      last !== undefined ? `Turn ${formatTokens(last)}` : "",
       contextPercent !== undefined && currentContext !== undefined
         ? `Context ${contextPercent.toFixed(1)}% (${formatTokens(currentContext)} / ${formatTokens(context!)})`
         : context !== undefined
@@ -309,7 +309,7 @@ export class CodexRenderer {
 
   private selectMessage(
     direction: -1 | 1,
-    role?: PetSettings["codexHistory"][number]["role"],
+    role?: PeskSettings["codexHistory"][number]["role"],
   ): void {
     const messages = Array.from(
       this.history.querySelectorAll<HTMLElement>(".codex-message"),
@@ -337,17 +337,17 @@ export class CodexRenderer {
     );
     const nextIndex = selectionIsVisible
       ? candidateIndices[
-          Math.max(
-            0,
-            Math.min(
-              candidateIndices.length - 1,
-              currentCandidateIndex + direction,
-            ),
-          )
-        ]
+      Math.max(
+        0,
+        Math.min(
+          candidateIndices.length - 1,
+          currentCandidateIndex + direction,
+        ),
+      )
+      ]
       : ((direction < 0
-          ? visibleIndices[visibleIndices.length - 1]
-          : visibleIndices[0]) ??
+        ? visibleIndices[visibleIndices.length - 1]
+        : visibleIndices[0]) ??
         (direction < 0
           ? candidateIndices[candidateIndices.length - 1]
           : candidateIndices[0]));
@@ -392,7 +392,7 @@ export class CodexRenderer {
     if (this.selectedMessageIndex < 0) return false;
     const message =
       this.history.querySelectorAll<HTMLElement>(".codex-message")[
-        this.selectedMessageIndex
+      this.selectedMessageIndex
       ];
     const details = message?.querySelector<HTMLDetailsElement>("details");
     if (!details) return false;
@@ -430,7 +430,7 @@ export class CodexRenderer {
     if (this.selectedMessageIndex < 0) return undefined;
     const message =
       this.history.querySelectorAll<HTMLElement>(".codex-message")[
-        this.selectedMessageIndex
+      this.selectedMessageIndex
       ];
     if (!message) return undefined;
     const content = message.cloneNode(true) as HTMLElement;
@@ -491,13 +491,13 @@ export class CodexRenderer {
   }
 
   private renderHistory(
-    history: PetSettings["codexHistory"],
+    history: PeskSettings["codexHistory"],
     sessionConnected = false,
   ): void {
     const wasAtBottom =
       this.historyInitialized &&
       this.history.scrollTop + this.history.clientHeight >=
-        this.history.scrollHeight - 24;
+      this.history.scrollHeight - 24;
     const openActivityKeys = new Set(
       Array.from(
         this.history.querySelectorAll<HTMLDetailsElement>(
@@ -565,7 +565,7 @@ export class CodexRenderer {
   }
 
   private renderMessageContent(
-    message: PetSettings["codexHistory"][number],
+    message: PeskSettings["codexHistory"][number],
     activityKey: string,
     openActivityKeys: Set<string>,
     renderedActivityKeys: Set<string>,
@@ -633,7 +633,7 @@ export class CodexRenderer {
   }
 
   private renderFileChangeActivity(
-    activity: NonNullable<PetSettings["codexHistory"][number]["activity"]>,
+    activity: NonNullable<PeskSettings["codexHistory"][number]["activity"]>,
     activityKey: string,
     openActivityKeys: Set<string>,
     renderedActivityKeys: Set<string>,
@@ -734,7 +734,7 @@ export class CodexRenderer {
 
   private renderApproval(
     bubble: HTMLElement,
-    message: PetSettings["codexHistory"][number],
+    message: PeskSettings["codexHistory"][number],
   ): void {
     const approval = message.approval;
     if (!approval) return;
@@ -771,7 +771,7 @@ export class CodexRenderer {
 }
 
 function activityLabel(
-  kind: NonNullable<PetSettings["codexHistory"][number]["activity"]>["kind"],
+  kind: NonNullable<PeskSettings["codexHistory"][number]["activity"]>["kind"],
 ): string {
   switch (kind) {
     case "webSearch":
@@ -825,6 +825,13 @@ function sanitizeMarkdownHtml(html: string): string {
     "P",
     "PRE",
     "STRONG",
+    "TABLE",
+    "TBODY",
+    "TD",
+    "TFOOT",
+    "TH",
+    "THEAD",
+    "TR",
     "UL",
   ]);
   const visit = (element: Element): void => {
@@ -855,7 +862,7 @@ function sanitizeMarkdownHtml(html: string): string {
 }
 
 function formatCommandActivity(
-  activity: NonNullable<PetSettings["codexHistory"][number]["activity"]>,
+  activity: NonNullable<PeskSettings["codexHistory"][number]["activity"]>,
 ): string {
   return [
     activity.command ? `$ ${activity.command}` : "",

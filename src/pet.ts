@@ -16,7 +16,7 @@ export interface AnimationFrames {
 interface PetWindowOptions {
   getSettings: () => PeskSettings;
   saveSettings: () => void;
-  sendSettings: () => void;
+  publishRendererState: () => void;
   refreshTrayMenu: () => void;
   positionChat: () => void;
   showChat: () => void;
@@ -72,7 +72,7 @@ export class PetWindowController {
     const settings = this.options.getSettings();
     settings.animation = animation.name;
     this.options.saveSettings();
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Persists whether animation selection is fixed or shuffled. */
@@ -80,7 +80,7 @@ export class PetWindowController {
     const settings = this.options.getSettings();
     settings.animationMode = mode;
     this.options.saveSettings();
-    this.options.sendSettings();
+    this.options.publishRendererState();
     this.options.refreshTrayMenu();
   }
 
@@ -130,6 +130,7 @@ export class PetWindowController {
     this.petWindow.on("focus", () => {
       this.petWindow?.webContents.send("pet-focus-changed", true);
       this.options.showChat();
+      this.options.focusChat();
     });
     this.petWindow.on("blur", () => {
       this.petWindow?.webContents.send("pet-focus-changed", false);
@@ -150,14 +151,14 @@ export class PetWindowController {
     else this.options.hideChat();
     this.options.saveSettings();
     this.options.refreshTrayMenu();
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Toggles animation pause state. */
   togglePaused(): void {
     const settings = this.options.getSettings();
     settings.paused = !settings.paused;
-    this.options.sendSettings();
+    this.options.publishRendererState();
     this.options.refreshTrayMenu();
     this.options.saveSettings();
   }
@@ -166,7 +167,7 @@ export class PetWindowController {
   toggleCodexStatusSound(): void {
     const settings = this.options.getSettings();
     settings.codexStatusSound = !settings.codexStatusSound;
-    this.options.sendSettings();
+    this.options.publishRendererState();
     this.options.refreshTrayMenu();
     this.options.saveSettings();
   }
@@ -175,7 +176,7 @@ export class PetWindowController {
   toggleLocked(): void {
     const settings = this.options.getSettings();
     settings.locked = !settings.locked;
-    this.options.sendSettings();
+    this.options.publishRendererState();
     this.options.refreshTrayMenu();
     this.options.saveSettings();
   }
@@ -320,7 +321,7 @@ export class PetWindowController {
     );
     this.options.positionChat();
     this.options.saveSettings();
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Stops movement and closes the pet window during shutdown. */

@@ -54,7 +54,7 @@ function lastMessage(socket: FakeWebSocket): Record<string, unknown> {
 
 function options() {
   return {
-    sendSettings: jest.fn(),
+    publishRendererState: jest.fn(),
     showPetForUpdate: jest.fn(),
     showApproval: jest.fn(),
     debug: jest.fn(),
@@ -84,7 +84,6 @@ function connectedController(turns: unknown[] = []) {
       result: {
         thread: {
           id: "thread-1",
-          canAcceptDirectInput: true,
           status: { type: "idle" },
           turns,
         },
@@ -325,7 +324,6 @@ describe("CodexController", () => {
   test("rejects invalid prompts and prompts while a turn is active", () => {
     const { controller } = connectedController();
 
-    expect(controller.submitPrompt(null)).toBe(false);
     expect(controller.submitPrompt("   ")).toBe(false);
     expect(controller.submitPrompt("first prompt")).toBe(true);
     expect(controller.submitPrompt("second prompt")).toBe(false);
@@ -501,7 +499,6 @@ describe("CodexController", () => {
         id: readId,
         result: {
           thread: {
-            canAcceptDirectInput: true,
             status: { type: "idle" },
             turns: [
               {
@@ -610,7 +607,6 @@ describe("CodexController", () => {
         id: readId,
         result: {
           thread: {
-            canAcceptDirectInput: true,
             status: { type: "idle" },
             turns: [
               {
@@ -790,7 +786,7 @@ describe("CodexController", () => {
         reasoningOutputTokens: undefined,
         totalTokens: 1650,
       },
-      lastTurn: {
+      last: {
         inputTokens: undefined,
         cachedInputTokens: undefined,
         outputTokens: undefined,
@@ -843,7 +839,6 @@ describe("CodexController", () => {
       "message",
       JSON.stringify({
         id: readId,
-        result: { thread: { canAcceptDirectInput: true, turns: [] } },
       }),
     );
 
@@ -892,7 +887,7 @@ describe("CodexController", () => {
         outputTokens: 1200,
         reasoningOutputTokens: 300,
       },
-      lastTurn: {
+      last: {
         totalTokens: 1600,
         inputTokens: 1000,
         cachedInputTokens: 200,
@@ -993,8 +988,8 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().threads).toEqual([
-      { id: "active-1", preview: "Active", status: "active" },
-      { id: "idle-1", status: "idle" },
+      { id: "active-1", preview: "Active", status: { type: "active" } },
+      { id: "idle-1", status: { type: "idle" } },
     ]);
     expect(controller.getState().threadId).toBe("active-1");
     expect(lastMessage(socket)).toMatchObject({
@@ -1022,23 +1017,6 @@ describe("CodexController", () => {
     expect(controller.getState().connected).toBe(false);
   });
 
-
-  test("clears a session that cannot accept direct input", () => {
-    const { controller, socket } = connectedController();
-
-    (controller as unknown as { read: (id: string) => void }).read("thread-1");
-    const readId = lastMessage(socket).id;
-    socket.emit(
-      "message",
-      JSON.stringify({
-        id: readId,
-        result: { thread: { canAcceptDirectInput: false } },
-      }),
-    );
-
-    expect(controller.getState().threadId).toBeUndefined();
-    expect(controller.getState().connected).toBe(false);
-  });
 
   test("discovers and resumes the loaded Codex session", () => {
     const { controller, socket } = connectedController();
@@ -1446,7 +1424,7 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().status).toBe("waiting");
-    expect(controllerOptions.sendSettings.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(controllerOptions.publishRendererState.mock.invocationCallOrder[0]).toBeLessThan(
       controllerOptions.showApproval.mock.invocationCallOrder[0],
     );
     expect(controller.getState().history).toEqual(

@@ -2,10 +2,9 @@ import { app, globalShortcut, ipcMain, shell } from "electron";
 import { CodexController } from "./codex";
 import type {
   CodexMessage,
-  CodexThreadSummary,
-  CodexTokenUsage,
   CodexModelInfo,
 } from "./codex";
+import type { Thread, ThreadTokenUsage } from "./codex-schema/v2";
 import { ChatWindowController } from "./chat";
 import { PetWindowController } from "./pet";
 import { loadConfig, loadSettings, saveSettings } from "./config";
@@ -19,13 +18,12 @@ interface RendererSettings extends PeskSettings {
   codexError?: string;
   codexStatus: "idle" | "working" | "waiting";
   codexConnected: boolean;
-  codexActivity: Record<string, unknown> | null;
   codexWorkingSince?: number;
   codexWorkedElapsed?: number;
   codexInterrupted?: boolean;
   codexHistory: CodexMessage[];
-  codexThreads: CodexThreadSummary[];
-  codexTokenUsage?: CodexTokenUsage;
+  codexThreads: Thread[];
+  codexTokenUsage?: ThreadTokenUsage;
   codexModelInfo?: CodexModelInfo;
   codexStatusSoundUrl: string;
 }
@@ -63,7 +61,6 @@ function rendererSettings(): RendererSettings {
     codexError: state.error,
     codexStatus: state.status,
     codexConnected: state.connected,
-    codexActivity: state.activity,
     codexHistory: state.history,
     codexThreads: state.threads,
     codexWorkingSince: state.workingSince,
@@ -75,7 +72,7 @@ function rendererSettings(): RendererSettings {
   };
 }
 
-function sendSettings(): void {
+function publishRendererState(): void {
   pet.window?.webContents.send("settings-changed", rendererSettings());
   chat.window?.webContents.send("settings-changed", rendererSettings());
 }
@@ -89,7 +86,7 @@ app.whenReady().then(() => {
   pet = new PetWindowController({
     getSettings: () => settings,
     saveSettings: persistSettings,
-    sendSettings,
+    publishRendererState: publishRendererState,
     refreshTrayMenu: () => menu.refreshTrayMenu(),
     positionChat: () => chat.position(),
     showChat: () => chat.showForPetFocus(),
@@ -127,7 +124,7 @@ app.whenReady().then(() => {
     showPet: () => pet.show(),
   });
   codexController = new CodexController({
-    sendSettings,
+    publishRendererState,
     showPetForUpdate: () => {
       settings.visible = true;
       chat.showForCodexUpdate();
@@ -177,18 +174,22 @@ app.whenReady().then(() => {
   ipcMain.on(
     "respond-codex-permission",
     (_event, requestId: unknown, decision: unknown) => {
-      codexController.respondPermission(
-        requestId,
+      if (typeof requestId !== "number") return;
+      const normalizedDecision =
         decision === "allow"
           ? "accept"
           : decision === "deny"
             ? "decline"
-            : decision,
-      );
+            : undefined;
+      if (normalizedDecision) {
+        codexController.respondPermission(requestId, normalizedDecision);
+      }
     },
   );
   ipcMain.handle("submit-codex-prompt", (_event, prompt: unknown) => {
-    codexController.submitPrompt(prompt);
+    if (typeof prompt === "string") {
+      codexController.submitPrompt(prompt);
+    }
     return rendererSettings();
   });
   ipcMain.handle("interrupt-codex-turn", () =>

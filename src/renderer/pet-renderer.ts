@@ -4,11 +4,11 @@ interface PetRendererOptions {
   status: HTMLElement;
   statusLabel: HTMLElement;
   chatOnly: boolean;
-  settings: PetSettings;
+  settings: PeskSettings;
 }
 
 export class PetRenderer {
-  private settings: PetSettings;
+  private settings: PeskSettings;
   private frame = 0;
   private lastFrame = performance.now();
   private animationFrames = [
@@ -25,7 +25,9 @@ export class PetRenderer {
   private codexUpdateActive = false;
   private pendingStatusSound = false;
   private statusTimer: number | undefined;
-  private previousStatus: PetSettings["codexStatus"];
+  private previousStatus: PeskSettings["codexStatus"];
+  private statusSound: HTMLAudioElement | undefined;
+  private statusSoundUrl = "";
 
   constructor(private readonly options: PetRendererOptions) {
     this.settings = options.settings;
@@ -56,10 +58,11 @@ export class PetRenderer {
     return this.focused;
   }
 
-  updateSettings(next: PetSettings): void {
+  updateSettings(next: PeskSettings): void {
     const animationChanged = next.animation !== this.settings.animation;
     const modeChanged = next.animationMode !== this.settings.animationMode;
     this.settings = next;
+    this.updateStatusSound(next.codexStatusSoundUrl);
     this.updateStatus(next);
     if (
       animationChanged ||
@@ -146,7 +149,7 @@ export class PetRenderer {
     this.options.pet.style.height = `${this.configuredPetSize * this.settings.scale}px`;
   }
 
-  private updateStatus(next: PetSettings): void {
+  private updateStatus(next: PeskSettings): void {
     if (
       this.previousStatus === "working" &&
       (next.codexStatus === "idle" || next.codexStatus === "waiting")
@@ -197,11 +200,19 @@ export class PetRenderer {
 
   private playStatusChangeSound(): void {
     if (!this.settings.codexStatusSound) return;
-    if (!this.settings.codexStatusSoundUrl) return;
+    if (!this.statusSound) return;
 
-    const sound = new Audio(this.settings.codexStatusSoundUrl);
+    const sound = this.statusSound;
+    sound.currentTime = 0;
     sound.volume = 1;
     void sound.play().catch(() => undefined);
+  }
+
+  private updateStatusSound(url: string): void {
+    if (url === this.statusSoundUrl) return;
+    this.statusSoundUrl = url;
+    this.statusSound = url ? new Audio(url) : undefined;
+    if (this.statusSound) this.statusSound.preload = "auto";
   }
 }
 

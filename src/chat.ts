@@ -56,6 +56,7 @@ export class ChatWindowController {
     this.position();
     this.chatWindow?.showInactive();
     this.options.keepPetAbove();
+    this.options.setCodexUpdateIndicator(true);
   }
 
   /** Places the chat window beside the pet within the active work area. */

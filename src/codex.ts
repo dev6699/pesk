@@ -1,3 +1,28 @@
+import type {
+  ClientNotification,
+  ClientRequest,
+  InitializeResponse,
+  RequestId,
+  ServerNotification,
+  ServerRequest,
+} from "./codex-schema";
+import type {
+  CommandExecutionRequestApprovalResponse,
+  FileChangeRequestApprovalResponse,
+  Thread,
+  ThreadListResponse,
+  ThreadLoadedListResponse,
+  ThreadResumeResponse,
+  ThreadReadResponse,
+  ThreadStartResponse,
+  ThreadStatus,
+  ThreadTokenUsage,
+  TokenUsageBreakdown,
+  TurnStartResponse,
+} from "./codex-schema/v2";
+
+const MAX_HISTORY = 100;
+
 /** A message displayed in the Pesk Codex conversation. */
 export interface CodexMessage {
   role: "user" | "assistant" | "system";
@@ -23,28 +48,6 @@ export interface CodexMessage {
   };
 }
 
-/** The session metadata required by the renderer's session selector. */
-export interface CodexThreadSummary {
-  id: string;
-  preview?: string;
-  status?: string;
-}
-
-export interface CodexTokenCounts {
-  inputTokens?: number;
-  cachedInputTokens?: number;
-  cacheWriteInputTokens?: number;
-  outputTokens?: number;
-  reasoningOutputTokens?: number;
-  totalTokens?: number;
-}
-
-export interface CodexTokenUsage {
-  total: CodexTokenCounts;
-  lastTurn?: CodexTokenCounts;
-  modelContextWindow?: number;
-}
-
 export interface CodexModelInfo {
   model?: string;
   provider?: string;
@@ -60,22 +63,68 @@ export interface CodexState {
   error?: string;
   status: "idle" | "working" | "waiting";
   connected: boolean;
-  activity: Record<string, unknown> | null;
   history: CodexMessage[];
-  threads: CodexThreadSummary[];
+  threads: Thread[];
   workingSince?: number;
   workedElapsed?: number;
   interrupted?: boolean;
-  tokenUsage?: CodexTokenUsage;
+  tokenUsage?: ThreadTokenUsage;
   modelInfo?: CodexModelInfo;
 }
 
 interface Options {
-  sendSettings: () => void;
+  publishRendererState: () => void;
   showPetForUpdate: () => void;
   showApproval: (requestId: number, command: string, reason: string) => void;
   debug: (...values: unknown[]) => void;
 }
+
+interface PendingApproval {
+  requestId: number;
+  command: string;
+  reason: string;
+}
+
+type PermissionDecision = "accept" | "decline";
+
+type PermissionApprovalResponse =
+  CommandExecutionRequestApprovalResponse | FileChangeRequestApprovalResponse;
+
+/** JSON-RPC response envelope; generated schemas provide the method result types. */
+interface JsonRpcResponse<TResult = unknown> {
+  [key: string]: unknown;
+  id: RequestId;
+  result?: TResult;
+  error?: unknown;
+}
+
+type IncomingMessage = JsonRpcResponse | ServerNotification | ServerRequest;
+
+type ServerMessage = ServerNotification | ServerRequest;
+
+const ACTIVITY_METHODS = new Set<ServerMessage["method"]>([
+  "turn/started",
+  "item/started",
+  "item/agentMessage/delta",
+  "item/completed",
+  "turn/completed",
+  "thread/status/changed",
+]);
+
+type RequestOf<Method extends ClientRequest["method"]> = Extract<
+  ClientRequest,
+  { method: Method }
+>;
+type InitializeRequest = RequestOf<"initialize">;
+type ThreadStartRequest = RequestOf<"thread/start">;
+type ThreadResumeRequest = RequestOf<"thread/resume">;
+type ThreadListRequest = RequestOf<"thread/list">;
+type ThreadLoadedListRequest = RequestOf<"thread/loaded/list">;
+type ThreadReadRequest = RequestOf<"thread/read">;
+type TurnStartRequest = RequestOf<"turn/start">;
+type TurnInterruptRequest = RequestOf<"turn/interrupt">;
+
+type OutgoingMessage = ClientRequest | ClientNotification | JsonRpcResponse;
 
 /**
  * Owns the Codex app-server connection and translates protocol events into
@@ -84,40 +133,72 @@ interface Options {
  * Window management remains in main.ts; callbacks notify it about UI changes.
  */
 export class CodexController {
+  /** Active WebSocket transport, or null while disconnected. */
   private socket: WebSocket | null = null;
+  /** App-server endpoint used for the current and future connections. */
   private url = "ws://127.0.0.1:4500";
+  /** Working directory used when starting a new thread. */
   private workingDirectory = process.cwd();
+  /** Currently selected thread in the renderer. */
   private threadId: string | undefined;
+  /** Turn currently generating output, if any. */
   private activeTurnId: string | undefined;
+  /** Renderer-facing lifecycle status for the selected thread. */
   private status: CodexState["status"] = "idle";
+  /** Whether the selected thread is resumed and ready for input. */
   private connected = false;
-  private activity: Record<string, unknown> | null = null;
+  /** Approval request that is waiting for a renderer decision. */
+  private pendingApproval: PendingApproval | null = null;
+  /** Human-readable transport error shown by the renderer. */
   private connectionError: string | undefined;
+  /** Conversation messages normalized for the renderer. */
   private history: CodexMessage[] = [];
-  private threads: CodexThreadSummary[] = [];
+  /** Known selectable threads returned by app-server discovery. */
+  private threads: Thread[] = [];
+  /** Timestamp when the current working period began. */
   private workingSince: number | undefined;
+  /** Duration of the most recently completed working period. */
   private workedElapsed: number | undefined;
+  /** Whether the last completed turn was interrupted. */
   private interrupted = false;
-  private tokenUsage: CodexTokenUsage | undefined;
+  /** Latest persisted or live token usage for the selected thread. */
+  private tokenUsage: ThreadTokenUsage | undefined;
+  /** True while /new is replacing the selected thread. */
   private startingNewThread = false;
+  /** Model/provider metadata displayed by the renderer. */
   private modelInfo: CodexModelInfo | undefined;
+  /** Index of the assistant message currently receiving deltas. */
   private streamingAssistant = -1;
+  /** Item id associated with the currently streaming assistant message. */
   private streamingAssistantItemId: string | undefined;
+  /** Maps protocol activity item ids to normalized history indexes. */
   private readonly activityIndexes = new Map<string, number>();
+  /** True while a prompt needs a follow-up history reconciliation. */
   private needsReconcile = false;
+  /** Whether initialize/initialized completed on the current socket. */
   private initialized = false;
+  /** Monotonic JSON-RPC request id for this controller instance. */
   private nextId = 0;
+  /** Delayed reconnect task after a transport close or failure. */
   private reconnectTimer: NodeJS.Timeout | null = null;
+  /** Prevents duplicate thread discovery requests. */
   private discoveryPending = false;
+  /** Locally requested thread starts awaiting their responses/events. */
   private pendingThreadStarts = 0;
+  /** Thread id announced as active and awaiting resume. */
   private pendingThreadResumeId: string | undefined;
+  /** Correlates local thread/start responses with thread/started events. */
   private readonly locallyStartedThreads = new Set<string>();
+  /** Callbacks waiting for JSON-RPC responses keyed by request id. */
   private readonly requests = new Map<
     number,
-    (message: Record<string, unknown>) => void
+    (message: JsonRpcResponse) => void
   >();
+  /** Prompt text and timestamps used to deduplicate echoed user messages. */
   private readonly prompts = new Map<string, number>();
-  constructor(private readonly options: Options) { }
+
+  /** Creates a controller with callbacks for renderer and window updates. */
+  constructor(private readonly options: Options) {}
 
   /** Returns the current state snapshot for renderer IPC responses. */
   getState(): CodexState {
@@ -127,7 +208,6 @@ export class CodexController {
       error: this.connectionError,
       status: this.status,
       connected: this.connected,
-      activity: this.activity,
       history: this.history,
       threads: this.threads,
       workingSince: this.workingSince,
@@ -179,19 +259,16 @@ export class CodexController {
         threadId: this.threadId,
         turnId: this.activeTurnId,
       },
-    });
+    } satisfies TurnInterruptRequest);
     return true;
   }
 
   /** Starts a prompt turn when the controller is initialized and idle. */
-  submitPrompt(value: unknown): boolean {
-    if (
-      typeof value !== "string" ||
-      !value.trim() ||
-      !this.initialized ||
-      this.status !== "idle"
-    )
+  submitPrompt(value: string): boolean {
+    if (!value.trim() || !this.initialized || this.status !== "idle") {
       return false;
+    }
+
     const prompt = value.trim();
     this.workingSince = undefined;
     this.workedElapsed = undefined;
@@ -200,6 +277,7 @@ export class CodexController {
     if (newThreadMatch) {
       return this.startNewThread(newThreadMatch[1]);
     }
+
     this.addMessage("user", prompt);
     this.prompts.set(prompt, Date.now());
     const threadId = this.threadId;
@@ -207,6 +285,7 @@ export class CodexController {
       this.startTurn(threadId, prompt);
       return true;
     }
+
     const id = ++this.nextId;
     this.options.debug("Pesk starting new Codex thread", {
       cwd: this.workingDirectory,
@@ -219,15 +298,15 @@ export class CodexController {
         cwd: ".",
         serviceName: "pesk",
       },
-    });
+    } satisfies ThreadStartRequest);
     this.pendingThreadStarts += 1;
-    this.requests.set(id, (message) => {
-      const thread = this.resultThread(message);
+    this.setRequest<ThreadStartResponse>(id, (message) => {
+      const thread = message.result?.thread;
       if (typeof thread?.id === "string") {
         this.noteThreadStartResponse(thread.id);
         this.updateModelInfo(message);
         this.connected = true;
-        this.options.sendSettings();
+        this.options.publishRendererState();
         this.rememberWorkingDirectory(thread);
         this.startTurn(thread.id, prompt);
       }
@@ -246,7 +325,7 @@ export class CodexController {
     }
     this.startingNewThread = true;
     this.tokenUsage = undefined;
-    this.options.sendSettings();
+    this.options.publishRendererState();
     const id = ++this.nextId;
     this.options.debug("Pesk starting new Codex thread", {
       cwd,
@@ -259,10 +338,11 @@ export class CodexController {
         cwd,
         serviceName: "pesk",
       },
-    });
+    } satisfies ThreadStartRequest);
+
     this.pendingThreadStarts += 1;
-    this.requests.set(id, (message) => {
-      const thread = this.resultThread(message);
+    this.setRequest<ThreadStartResponse>(id, (message) => {
+      const thread = message.result?.thread;
       if (typeof thread?.id !== "string") {
         this.startingNewThread = false;
         return;
@@ -283,44 +363,46 @@ export class CodexController {
       this.interrupted = false;
       this.activityIndexes.clear();
       this.threads = [
-        { id: thread.id, status: "idle" },
+        thread,
         ...this.threads.filter((candidate) => candidate.id !== thread.id),
       ];
-      this.options.sendSettings();
+      this.options.publishRendererState();
     });
     return true;
   }
 
   /** Sends an approval response for an app-server request. */
-  respondPermission(requestId: unknown, decision: unknown): void {
-    if (
-      this.activity?.approval !== true ||
-      typeof requestId !== "number" ||
-      typeof decision !== "string"
-    )
-      return;
+  respondPermission(requestId: number, decision: PermissionDecision): void {
+    if (!this.pendingApproval) return;
     this.send({
       id: requestId,
       result: {
         decision,
       },
-    });
+    } satisfies JsonRpcResponse<PermissionApprovalResponse>);
     this.updateApproval(
       requestId,
-      decision === "accept" || decision === "acceptForSession"
-        ? "approved"
-        : "denied",
+      decision === "accept" ? "approved" : "denied",
     );
-    this.activity = null;
+    this.pendingApproval = null;
     this.setStatus("working");
   }
 
   /** Sends one newline-delimited JSON-RPC message to the app server. */
-  private send(message: Record<string, unknown>): void {
-    console.log('send->', message)
+  private send(message: OutgoingMessage): void {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(`${JSON.stringify(message)}\n`);
     }
+  }
+
+  /** Registers a response callback with the expected generated result type. */
+  private setRequest<TResult>(
+    id: number,
+    callback: (message: JsonRpcResponse<TResult>) => void,
+  ): void {
+    this.requests.set(id, (message) => {
+      callback(message as JsonRpcResponse<TResult>);
+    });
   }
 
   /** Opens the socket and wires protocol, close, and error events. */
@@ -329,8 +411,10 @@ export class CodexController {
       this.socket &&
       (this.socket.readyState === WebSocket.OPEN ||
         this.socket.readyState === WebSocket.CONNECTING)
-    )
+    ) {
       return;
+    }
+
     try {
       this.socket = new WebSocket(this.url);
     } catch (error) {
@@ -338,21 +422,21 @@ export class CodexController {
       this.scheduleReconnect();
       return;
     }
+
     this.socket.addEventListener("open", () => {
       this.connectionError = undefined;
-      this.options.sendSettings();
+      this.options.publishRendererState();
       const id = ++this.nextId;
-      this.requests.set(id, () => {
+      this.setRequest<InitializeResponse>(id, () => {
         this.send({
           method: "initialized",
-          params: {},
-        });
+        } satisfies ClientNotification);
         this.initialized = true;
         this.connected = false;
         this.threadId = undefined;
         this.activeTurnId = undefined;
         this.pendingThreadResumeId = undefined;
-        this.options.sendSettings();
+        this.options.publishRendererState();
         this.discover();
       });
       this.send({
@@ -364,12 +448,16 @@ export class CodexController {
             title: "Pesk",
             version: "0.1.0",
           },
+          capabilities: null,
         },
-      });
+      } satisfies InitializeRequest);
     });
     this.socket.addEventListener("message", (event) => {
       try {
-        this.handle(JSON.parse(String(event.data)) as Record<string, unknown>);
+        const value: unknown = JSON.parse(String(event.data));
+        if (isRecord(value)) {
+          this.handle(value as IncomingMessage);
+        }
       } catch (error) {
         this.options.debug("Invalid Codex message", error);
       }
@@ -396,8 +484,8 @@ export class CodexController {
       this.pendingThreadResumeId = undefined;
       this.locallyStartedThreads.clear();
       this.streamingAssistant = -1;
-      this.activity = null;
-      this.options.sendSettings();
+      this.pendingApproval = null;
+      this.options.publishRendererState();
       this.setStatus("idle");
       this.scheduleReconnect();
     });
@@ -408,7 +496,7 @@ export class CodexController {
       }
       this.connectionError = details;
       this.options.debug("Codex socket error", details);
-      this.options.sendSettings();
+      this.options.publishRendererState();
     });
   }
 
@@ -424,28 +512,14 @@ export class CodexController {
     };
     const list = (): void => {
       const id = ++this.nextId;
-      this.requests.set(id, (message) => {
-        const data = (message.result as Record<string, unknown> | undefined)
-          ?.data;
-        const active = (Array.isArray(data) ? data : [])
-          .filter((x): x is Record<string, unknown> =>
-            Boolean(x && typeof x === "object"),
-          )
-          .filter((x) => {
-            const s =
-              x.status && typeof x.status === "object"
-                ? (x.status as Record<string, unknown>)
-                : undefined;
-            return s?.type === "active" || s?.type === "idle";
-          });
-        this.threads = active
-          .filter((x) => typeof x.id === "string")
-          .map((x) => ({
-            id: x.id as string,
-            preview: typeof x.preview === "string" ? x.preview : undefined,
-            status: (x.status as Record<string, unknown> | undefined)?.type as
-              string | undefined,
-          }));
+      this.setRequest<ThreadListResponse>(id, (message) => {
+        const active = (message.result?.data ?? [])
+          .filter(isThread)
+          .filter(
+            (thread) =>
+              thread.status.type === "active" || thread.status.type === "idle",
+          );
+        this.threads = active;
         if (!active.length) {
           this.threadId = undefined;
           this.history = [];
@@ -454,14 +528,12 @@ export class CodexController {
           this.workingSince = undefined;
           this.workedElapsed = undefined;
           this.activityIndexes.clear();
-          this.activity = null;
+          this.pendingApproval = null;
         }
-        this.options.sendSettings();
-        const firstSession = active.find(
-          (session) => typeof session.id === "string",
-        );
+        this.options.publishRendererState();
+        const firstSession = active[0];
         if (firstSession) {
-          choose(firstSession.id as string);
+          choose(firstSession.id);
         }
       });
       this.send({
@@ -472,15 +544,11 @@ export class CodexController {
           sortKey: "recency_at",
           sortDirection: "desc",
         },
-      });
+      } satisfies ThreadListRequest);
     };
     const id = ++this.nextId;
-    this.requests.set(id, (message) => {
-      const data = (message.result as Record<string, unknown> | undefined)
-        ?.data;
-      const loaded = Array.isArray(data)
-        ? data.filter((x): x is string => typeof x === "string")
-        : [];
+    this.setRequest<ThreadLoadedListResponse>(id, (message) => {
+      const loaded = message.result?.data ?? [];
       if (loaded.length === 1) {
         choose(loaded[0]);
       } else {
@@ -491,7 +559,7 @@ export class CodexController {
       method: "thread/loaded/list",
       id,
       params: {},
-    });
+    } satisfies ThreadLoadedListRequest);
   }
 
   /** Replaces the selected session and optionally resumes it. */
@@ -507,14 +575,11 @@ export class CodexController {
     ) {
       return;
     }
-    if (!this.threads.some((thread) => thread.id === id)) {
-      this.threads = [{ id }, ...this.threads];
-    }
     if (this.threadId === id) {
       if (resume && !this.connected) {
         this.resume(id);
       }
-      this.options.sendSettings();
+      this.options.publishRendererState();
       return;
     }
     this.threadId = id;
@@ -527,7 +592,7 @@ export class CodexController {
     this.workedElapsed = undefined;
     this.interrupted = false;
     this.activityIndexes.clear();
-    this.options.sendSettings();
+    this.options.publishRendererState();
     if (resume) {
       this.resume(id);
     }
@@ -561,7 +626,7 @@ export class CodexController {
       return;
     }
     const id = ++this.nextId;
-    this.requests.set(id, (message) => {
+    this.setRequest<ThreadResumeResponse>(id, (message) => {
       if (!message.error) {
         this.updateModelInfo(message);
         this.read(threadId);
@@ -576,7 +641,7 @@ export class CodexController {
         this.connected = false;
         this.history = [];
         this.threads = this.threads.filter((thread) => thread.id !== threadId);
-        this.options.sendSettings();
+        this.options.publishRendererState();
       }
     });
     this.send({
@@ -585,33 +650,28 @@ export class CodexController {
       params: {
         threadId,
       },
-    });
+    } satisfies ThreadResumeRequest);
   }
 
   /** Reads persisted turns and converts them into renderer messages. */
   private read(threadId: string): void {
     const id = ++this.nextId;
-    this.requests.set(id, (message) => {
-      const thread = this.resultThread(message);
-      if (thread?.canAcceptDirectInput === false) {
-        this.threadId = undefined;
-        this.connected = false;
-        this.history = [];
-        this.options.sendSettings();
-        return;
+    this.setRequest<ThreadReadResponse>(id, (message) => {
+      const thread = message.result?.thread;
+      if (isThread(thread)) {
+        this.threads = [
+          thread,
+          ...this.threads.filter((candidate) => candidate.id !== thread.id),
+        ];
       }
       this.rememberWorkingDirectory(thread);
       this.connected = true;
-      this.setStatusFromThread(thread);
+      this.setStatusFromStatus(thread?.status);
       const turns = this.records(thread?.turns);
-      const restoredTokenUsage =
-        parseTokenUsageValue(thread?.tokenUsage) ??
-        [...turns]
-          .reverse()
-          .map((turn) =>
-            parseTokenUsageValue(turn.tokenUsage ?? turn.usage),
-          )
-          .find((usage): usage is CodexTokenUsage => usage !== undefined);
+      const restoredTokenUsage = [...turns]
+        .reverse()
+        .map((turn) => parseTokenUsageValue(turn.tokenUsage ?? turn.usage))
+        .find((usage): usage is ThreadTokenUsage => usage !== undefined);
       // A live usage notification can arrive while the history read is in
       // flight. Do not erase it when the read response has no persisted usage.
       if (restoredTokenUsage) {
@@ -642,10 +702,10 @@ export class CodexController {
               typeof item.text === "string"
                 ? item.text
                 : this.records(item.content)
-                  .map((part) =>
-                    typeof part.text === "string" ? part.text : "",
-                  )
-                  .join("");
+                    .map((part) =>
+                      typeof part.text === "string" ? part.text : "",
+                    )
+                    .join("");
             if (text.trim()) {
               restored.push({
                 role: "assistant",
@@ -674,9 +734,8 @@ export class CodexController {
       ) {
         this.history = restored;
         this.trim();
-        this.rebuildActivityIndexes();
       }
-      this.options.sendSettings();
+      this.options.publishRendererState();
     });
     this.send({
       method: "thread/read",
@@ -685,261 +744,283 @@ export class CodexController {
         threadId,
         includeTurns: true,
       },
-    });
+    } satisfies ThreadReadRequest);
   }
 
   /** Dispatches JSON-RPC responses and app-server notifications. */
-  private handle(message: Record<string, unknown>): void {
-    const id = typeof message.id === "number" ? message.id : null;
-    if (id !== null) {
-      const callback = this.requests.get(id);
-      if (callback) {
-        this.requests.delete(id);
-        callback(message);
-      }
+  private handle(message: IncomingMessage): void {
+    if (isJsonRpcResponse(message)) {
+      this.handleResponse(message);
+      return;
     }
-    const method = typeof message.method === "string" ? message.method : "";
-    if (!method.startsWith('item')) {
-      this.options.debug(message)
-    }
+    this.handleServerMessage(message as ServerMessage);
+  }
 
-    const params =
-      message.params && typeof message.params === "object"
-        ? (message.params as Record<string, unknown>)
-        : {};
-    if (
-      [
-        "turn/started",
-        "item/started",
-        "item/agentMessage/delta",
-        "item/completed",
-        "turn/completed",
-        "thread/status/changed",
-      ].includes(method)
-    )
-      this.hidePendingApprovals();
-    const threadStatus =
-      params.status && typeof params.status === "object"
-        ? (params.status as Record<string, unknown>)
-        : undefined;
-    const shouldShowForUpdate =
-      method === "turn/completed" ||
-      method === "item/commandExecution/requestApproval" ||
-      method === "item/fileChange/requestApproval" ||
-      (method === "thread/status/changed" && threadStatus?.type === "idle");
-    const thread =
-      params.thread && typeof params.thread === "object"
-        ? (params.thread as Record<string, unknown>)
-        : undefined;
-    if (
-      (method === "thread/started" || method === "thread/resumed") &&
-      typeof thread?.id === "string"
-    ) {
-      this.rememberWorkingDirectory(thread);
-      if (method === "thread/started") {
-        this.threads = [
-          {
-            id: thread.id,
-            status: "active",
-          },
-        ];
-      }
-      const locallyStarted =
-        method === "thread/started" &&
-        this.consumeLocalThreadStarted(thread.id);
-      if (method === "thread/started") {
-        this.pendingThreadResumeId = locallyStarted ? undefined : thread.id;
-      }
-      const preservePendingPrompt =
-        method === "thread/started" &&
-        this.threadId === undefined &&
-        this.history.some((item) => item.role === "user");
-      this.switchThread(
-        thread.id,
-        method !== "thread/started",
-        preservePendingPrompt,
-      );
-    }
-    if (method === "turn/started") {
-      const turn =
-        params.turn && typeof params.turn === "object"
-          ? (params.turn as Record<string, unknown>)
-          : undefined;
-      const turnId = typeof turn?.id === "string" ? turn.id : undefined;
-      this.activeTurnId = turnId;
-      const last = [...this.history]
-        .reverse()
-        .find((item) => item.role === "user" && !item.turnId);
-      if (last) {
-        last.turnId = turnId;
-      }
-      this.ensureWorking(turnId);
-      this.setStatus("working");
-    }
-    if (method === "item/started") {
-      this.setStatus("working");
-      const item =
-        params.item && typeof params.item === "object"
-          ? (params.item as Record<string, unknown>)
-          : undefined;
-      for (const content of this.records(item?.content)) {
-        if (typeof content.text === "string" && !this.consume(content.text)) {
-          this.insertUser(
-            content.text,
-            typeof params.turnId === "string" ? params.turnId : undefined,
-          );
-        }
-      }
-      if (item && this.isActivityItem(item)) {
-        this.addOrUpdateActivity(
-          item,
-          typeof item.id === "string" ? item.id : undefined,
-        );
-      }
-    }
-    if (method === "turn/completed") {
-      this.activeTurnId = undefined;
-      const completedTurn =
-        params.turn && typeof params.turn === "object"
-          ? (params.turn as Record<string, unknown>)
-          : undefined;
-      this.interrupted = completedTurn?.status === "interrupted";
-      this.activity = message;
-      this.setStatus("idle");
-      const turn =
-        params.turn && typeof params.turn === "object"
-          ? (params.turn as Record<string, unknown>)
-          : undefined;
-      const usage = parseTokenUsageValue(
-        turn?.tokenUsage ?? turn?.usage ?? params.tokenUsage,
-      );
-      if (usage && !this.startingNewThread && this.matchesCurrentThread(params)) {
-        this.tokenUsage = usage;
-        this.options.debug("Pesk Codex token usage", {
-          source: "turn/completed",
-          usage,
-        });
-        this.options.sendSettings();
-      }
-    }
-    if (method === "thread/tokenUsage/updated") {
-      const usage = parseTokenUsageValue(params.tokenUsage);
-      if (
-        usage &&
-        !this.startingNewThread &&
-        this.matchesCurrentThread(params)
-      ) {
-        this.tokenUsage = usage;
-        this.options.debug("Pesk Codex token usage", {
-          source: "thread/tokenUsage/updated",
-          threadId: params.threadId,
-          turnId: params.turnId,
-          usage,
-        });
-        this.options.sendSettings();
-      }
-    }
-    if (method === "model/rerouted" && typeof params.toModel === "string") {
-      this.modelInfo = { ...this.modelInfo, model: params.toModel };
-      this.options.sendSettings();
-    }
-    if (method === "thread/settings/updated") {
-      const threadSettings =
-        params.threadSettings && typeof params.threadSettings === "object"
-          ? (params.threadSettings as Record<string, unknown>)
-          : undefined;
-      if (threadSettings) this.updateModelInfoFromValue(threadSettings);
-    }
-    if (
-      method === "thread/status/changed" &&
-      params.threadId === this.threadId
-    ) {
-      const status =
-        params.status && typeof params.status === "object"
-          ? (params.status as Record<string, unknown>)
-          : undefined;
-      const previous = this.status;
-      this.setStatusFromThread({
-        status,
-      });
-      if (shouldReconcileOnIdle(previous, status, this.needsReconcile)) {
-        this.needsReconcile = false;
-        this.read(params.threadId as string);
-      }
-      if (
-        status?.type === "active" &&
-        this.pendingThreadResumeId === params.threadId
-      ) {
-        this.pendingThreadResumeId = undefined;
-        this.resume(params.threadId as string);
-      } else if (shouldResumeOnActiveStatus(this.connected, status)) {
-        this.resume(params.threadId as string);
-      }
-    }
-    if (method === "item/agentMessage/delta") {
-      this.appendDelta(
-        typeof params.delta === "string" ? params.delta : "",
-        typeof params.itemId === "string" ? params.itemId : undefined,
-        typeof params.turnId === "string" ? params.turnId : undefined,
-      );
-      this.activity = message;
-    }
-    if (method === "item/commandExecution/outputDelta") {
-      this.appendActivityOutput(
-        typeof params.itemId === "string" ? params.itemId : undefined,
-        typeof params.delta === "string" ? params.delta : "",
-      );
-    }
-    if (method === "item/completed") {
-      const item =
-        params.item && typeof params.item === "object"
-          ? (params.item as Record<string, unknown>)
-          : undefined;
-      if (item?.type === "agentMessage" && typeof item.text === "string") {
-        this.completeAssistant(
-          item.text,
-          typeof item.id === "string" ? item.id : undefined,
-        );
-      } else if (item && this.isActivityItem(item)) {
-        this.addOrUpdateActivity(
-          item,
-          typeof item.id === "string" ? item.id : undefined,
-        );
-      }
-    }
-    if (
-      method === "item/commandExecution/requestApproval" ||
-      method === "item/fileChange/requestApproval"
-    ) {
-      this.activity = {
-        ...message,
-        approval: true,
-        requestId: id,
-      };
-      this.addApproval(
-        id ?? 0,
-        typeof params.command === "string" ? params.command : "",
-        typeof params.reason === "string" ? params.reason : "",
-      );
-      this.setStatus("waiting");
-    }
-    if (shouldShowForUpdate) {
-      this.options.sendSettings();
-      this.options.showPetForUpdate();
-    }
-    if (
-      method === "item/commandExecution/requestApproval" ||
-      method === "item/fileChange/requestApproval"
-    ) {
-      this.options.showApproval(
-        id ?? 0,
-        typeof params.command === "string" ? params.command : "",
-        typeof params.reason === "string" ? params.reason : "",
-      );
+  /** Resolves and invokes a callback waiting for a JSON-RPC response. */
+  private handleResponse(message: JsonRpcResponse): void {
+    if (typeof message.id !== "number") return;
+    const callback = this.requests.get(message.id);
+    if (callback) {
+      this.requests.delete(message.id);
+      callback(message);
     }
   }
 
-  private matchesCurrentThread(params: Record<string, unknown>): boolean {
+  /** Routes an app-server notification or request to its protocol handler. */
+  private handleServerMessage(message: ServerMessage): void {
+    const method = message.method;
+    if (!method.startsWith("item")) {
+      this.options.debug(message);
+    }
+
+    if (ACTIVITY_METHODS.has(method)) {
+      this.hidePendingApprovals();
+    }
+
+    switch (method) {
+      case "thread/started":
+        this.handleThreadStarted(message);
+        break;
+      case "turn/started":
+        this.handleTurnStarted(message);
+        break;
+      case "item/started":
+        this.handleItemStarted(message);
+        break;
+      case "turn/completed":
+        this.handleTurnCompleted(message);
+        break;
+      case "thread/tokenUsage/updated":
+        this.handleTokenUsageUpdated(message);
+        break;
+      case "model/rerouted":
+        this.handleModelRerouted(message);
+        break;
+      case "thread/settings/updated":
+        this.handleThreadSettingsUpdated(message);
+        break;
+      case "thread/status/changed":
+        this.handleThreadStatusChanged(message);
+        break;
+      case "item/agentMessage/delta":
+        this.handleAgentMessageDelta(message);
+        break;
+      case "item/commandExecution/outputDelta":
+        this.handleCommandOutputDelta(message);
+        break;
+      case "item/completed":
+        this.handleItemCompleted(message);
+        break;
+      case "item/commandExecution/requestApproval":
+      case "item/fileChange/requestApproval":
+        this.handleApprovalRequest(message);
+        break;
+    }
+
+    const shouldShowPetForUpdate =
+      method === "turn/completed" ||
+      method === "item/commandExecution/requestApproval" ||
+      method === "item/fileChange/requestApproval" ||
+      (method === "thread/status/changed" &&
+        message.params.status?.type === "idle");
+    if (shouldShowPetForUpdate) {
+      this.options.publishRendererState();
+      this.options.showPetForUpdate();
+    }
+  }
+
+  /** Selects and initializes a thread announced by the app server. */
+  private handleThreadStarted(
+    message: Extract<ServerMessage, { method: "thread/started" }>,
+  ): void {
+    const { thread } = message.params;
+    this.rememberWorkingDirectory(thread);
+    this.threads = [
+      thread,
+      ...this.threads.filter((candidate) => candidate.id !== thread.id),
+    ];
+    const locallyStarted = this.consumeLocalThreadStarted(thread.id);
+    this.pendingThreadResumeId = locallyStarted ? undefined : thread.id;
+    const preservePendingPrompt =
+      this.threadId === undefined &&
+      this.history.some((item) => item.role === "user");
+    this.switchThread(thread.id, false, preservePendingPrompt);
+  }
+
+  /** Tracks the active turn and associates it with the latest user message. */
+  private handleTurnStarted(
+    message: Extract<ServerMessage, { method: "turn/started" }>,
+  ): void {
+    const turnId = message.params.turn.id;
+    this.activeTurnId = turnId;
+    const last = [...this.history]
+      .reverse()
+      .find((item) => item.role === "user" && !item.turnId);
+    if (last) last.turnId = turnId;
+    this.ensureWorking();
+    this.setStatus("working");
+  }
+
+  /** Adds echoed user input and visible activity from a started item. */
+  private handleItemStarted(
+    message: Extract<ServerMessage, { method: "item/started" }>,
+  ): void {
+    this.setStatus("working");
+    const item = isRecord(message.params.item)
+      ? (message.params.item as Record<string, unknown>)
+      : undefined;
+    for (const content of this.records(item?.content)) {
+      if (typeof content.text === "string" && !this.consume(content.text)) {
+        this.insertUser(content.text, message.params.turnId);
+      }
+    }
+    if (item && this.isActivityItem(item)) {
+      this.addOrUpdateActivity(item, stringValue(item.id));
+    }
+  }
+
+  /** Finalizes turn state and records token usage from a completed turn. */
+  private handleTurnCompleted(
+    message: Extract<ServerMessage, { method: "turn/completed" }>,
+  ): void {
+    this.activeTurnId = undefined;
+    this.interrupted = message.params.turn?.status === "interrupted";
+    this.setStatus("idle");
+    const turn = isRecord(message.params.turn)
+      ? (message.params.turn as Record<string, unknown>)
+      : undefined;
+    const usage = parseTokenUsageValue(turn?.tokenUsage ?? turn?.usage);
+    if (
+      usage &&
+      !this.startingNewThread &&
+      this.matchesCurrentThread(message.params)
+    ) {
+      this.tokenUsage = usage;
+      this.options.debug("Pesk Codex token usage", {
+        source: "turn/completed",
+        usage,
+      });
+      this.options.publishRendererState();
+    }
+  }
+
+  /** Updates the selected thread's token usage from a live notification. */
+  private handleTokenUsageUpdated(
+    message: Extract<ServerMessage, { method: "thread/tokenUsage/updated" }>,
+  ): void {
+    const { threadId, turnId, tokenUsage } = message.params;
+    const usage = parseTokenUsageValue(tokenUsage);
+    if (
+      usage &&
+      !this.startingNewThread &&
+      this.matchesCurrentThread(message.params)
+    ) {
+      this.tokenUsage = usage;
+      this.options.debug("Pesk Codex token usage", {
+        source: "thread/tokenUsage/updated",
+        threadId,
+        turnId,
+        usage,
+      });
+      this.options.publishRendererState();
+    }
+  }
+
+  /** Stores the model selected after an app-server reroute. */
+  private handleModelRerouted(
+    message: Extract<ServerMessage, { method: "model/rerouted" }>,
+  ): void {
+    this.modelInfo = { ...this.modelInfo, model: message.params.toModel };
+    this.options.publishRendererState();
+  }
+
+  /** Updates model metadata when thread settings change. */
+  private handleThreadSettingsUpdated(
+    message: Extract<ServerMessage, { method: "thread/settings/updated" }>,
+  ): void {
+    if (isRecord(message.params.threadSettings)) {
+      this.updateModelInfoFromValue(message.params.threadSettings);
+    }
+  }
+
+  /** Applies thread lifecycle changes and performs resume/reconcile work. */
+  private handleThreadStatusChanged(
+    message: Extract<ServerMessage, { method: "thread/status/changed" }>,
+  ): void {
+    const { threadId, status } = message.params;
+    if (threadId !== this.threadId) return;
+    const previous = this.status;
+    this.setStatusFromStatus(status);
+    if (shouldReconcileOnIdle(previous, status, this.needsReconcile)) {
+      this.needsReconcile = false;
+      this.read(threadId);
+    }
+    if (status?.type === "active" && this.pendingThreadResumeId === threadId) {
+      this.pendingThreadResumeId = undefined;
+      this.resume(threadId);
+    } else if (shouldResumeOnActiveStatus(this.connected, status)) {
+      this.resume(threadId);
+    }
+  }
+
+  /** Appends streamed assistant text to the conversation. */
+  private handleAgentMessageDelta(
+    message: Extract<ServerMessage, { method: "item/agentMessage/delta" }>,
+  ): void {
+    this.appendDelta(
+      message.params.delta,
+      message.params.itemId,
+      message.params.turnId,
+    );
+  }
+
+  /** Appends streamed command output to its activity message. */
+  private handleCommandOutputDelta(
+    message: Extract<
+      ServerMessage,
+      { method: "item/commandExecution/outputDelta" }
+    >,
+  ): void {
+    this.appendActivityOutput(message.params.itemId, message.params.delta);
+  }
+
+  /** Commits a completed assistant or activity item to conversation history. */
+  private handleItemCompleted(
+    message: Extract<ServerMessage, { method: "item/completed" }>,
+  ): void {
+    const item = isRecord(message.params.item)
+      ? message.params.item
+      : undefined;
+    if (item?.type === "agentMessage" && typeof item.text === "string") {
+      this.completeAssistant(item.text, stringValue(item.id));
+    } else if (item && this.isActivityItem(item)) {
+      this.addOrUpdateActivity(item, stringValue(item.id));
+    }
+  }
+
+  /** Displays a pending approval and changes the controller to waiting status. */
+  private handleApprovalRequest(
+    message: Extract<
+      ServerMessage,
+      {
+        method:
+          | "item/commandExecution/requestApproval"
+          | "item/fileChange/requestApproval";
+      }
+    >,
+  ): void {
+    const id = typeof message.id === "number" ? message.id : 0;
+    const command =
+      "command" in message.params ? (message.params.command ?? "") : "";
+    const reason = message.params.reason ?? "";
+    this.pendingApproval = { requestId: id, command, reason };
+    this.addApproval(id, command, reason);
+    this.options.showApproval(id, command, reason);
+    this.setStatus("waiting");
+  }
+
+  /** Returns whether a notification belongs to the currently selected thread. */
+  private matchesCurrentThread(params: { threadId?: string }): boolean {
     return (
       typeof params.threadId !== "string" || params.threadId === this.threadId
     );
@@ -950,15 +1031,8 @@ export class CodexController {
     this.needsReconcile = true;
     this.ensureWorking();
     const id = ++this.nextId;
-    this.requests.set(id, (message) => {
-      const turn =
-        message.result && typeof message.result === "object"
-          ? (message.result as Record<string, unknown>).turn
-          : undefined;
-      if (turn && typeof turn === "object") {
-        const turnId = (turn as Record<string, unknown>).id;
-        if (typeof turnId === "string") this.activeTurnId = turnId;
-      }
+    this.setRequest<TurnStartResponse>(id, (message) => {
+      this.activeTurnId = message.result?.turn.id;
       if (message.error) {
         this.setStatus("idle");
       }
@@ -972,10 +1046,11 @@ export class CodexController {
           {
             type: "text",
             text: prompt,
+            text_elements: [],
           },
         ],
       },
-    });
+    } satisfies TurnStartRequest);
     this.setStatus("working");
   }
 
@@ -991,7 +1066,7 @@ export class CodexController {
       timestamp: Date.now(),
     });
     this.trim();
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Inserts a remote user message before any currently streaming output. */
@@ -1026,15 +1101,14 @@ export class CodexController {
     if (this.streamingAssistant >= 0) {
       this.streamingAssistant += 1;
     }
-    this.rebuildActivityIndexes();
     this.trim();
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Starts the live working indicator without adding a history message. */
-  private ensureWorking(turnId?: string): void {
+  private ensureWorking(): void {
     if (this.workingSince === undefined) this.workingSince = Date.now();
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Appends an assistant stream delta to the current conversation. */
@@ -1072,7 +1146,7 @@ export class CodexController {
       }
     }
     this.trim();
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Replaces temporary output with the completed assistant message. */
@@ -1106,7 +1180,7 @@ export class CodexController {
     this.streamingAssistant = -1;
     this.streamingAssistantItemId = undefined;
     this.trim();
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Creates or updates a visible command/file activity message. */
@@ -1133,7 +1207,7 @@ export class CodexController {
       if (itemId) this.activityIndexes.set(itemId, this.history.length - 1);
     }
     this.trim();
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Returns true for non-message items that should be visible in the activity feed. */
@@ -1159,7 +1233,7 @@ export class CodexController {
     if (!message.activity) return;
     message.activity.output = `${message.activity.output ?? ""}${delta}`;
     message.text = formatActivityText(message.activity);
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Converts a persisted or live app-server item into a system message. */
@@ -1249,7 +1323,7 @@ export class CodexController {
       },
     });
     this.trim();
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Marks a matching pending approval as accepted or denied. */
@@ -1262,7 +1336,7 @@ export class CodexController {
     );
     if (item?.approval) {
       item.approval.state = state;
-      this.options.sendSettings();
+      this.options.publishRendererState();
     }
   }
 
@@ -1271,7 +1345,7 @@ export class CodexController {
     const next = this.history.filter((x) => x.approval?.state !== "pending");
     if (next.length !== this.history.length) {
       this.history = next;
-      this.options.sendSettings();
+      this.options.publishRendererState();
     }
   }
 
@@ -1286,11 +1360,27 @@ export class CodexController {
     return Date.now() - at < 10_000;
   }
 
-  /** Retains the complete renderer history for scrolling and review. */
+  /** Retains only the most recent renderer history entries. */
   private trim(): void {
-    // History is intentionally unbounded; the renderer's history panel scrolls.
+    const removed = Math.max(0, this.history.length - MAX_HISTORY);
+    if (removed > 0) {
+      this.history = this.history.slice(-MAX_HISTORY);
+    }
+    this.rebuildActivityIndexes();
+
+    if (removed > 0 && this.streamingAssistant >= 0) {
+      this.streamingAssistant -= removed;
+      if (
+        this.streamingAssistant < 0 ||
+        this.streamingAssistant >= this.history.length
+      ) {
+        this.streamingAssistant = -1;
+        this.streamingAssistantItemId = undefined;
+      }
+    }
   }
 
+  /** Rebuilds activity-item indexes after history changes or trimming. */
   private rebuildActivityIndexes(): void {
     this.activityIndexes.clear();
     this.history.forEach((message, index) => {
@@ -1314,21 +1404,14 @@ export class CodexController {
       this.streamingAssistant = -1;
       this.streamingAssistantItemId = undefined;
     }
-    this.options.sendSettings();
+    this.options.publishRendererState();
   }
 
   /** Maps app-server thread status and approval flags to Pesk status. */
-  private setStatusFromThread(
-    thread: Record<string, unknown> | undefined,
-  ): void {
-    const status =
-      thread?.status && typeof thread.status === "object"
-        ? (thread.status as Record<string, unknown>)
-        : undefined;
+  private setStatusFromStatus(status: ThreadStatus | undefined): void {
     if (status?.type === "active") {
       this.setStatus(
-        Array.isArray(status.activeFlags) &&
-          status.activeFlags.includes("waitingOnApproval")
+        status.activeFlags?.includes("waitingOnApproval")
           ? "waiting"
           : "working",
       );
@@ -1337,19 +1420,9 @@ export class CodexController {
     }
   }
 
-  /** Extracts a thread object from a JSON-RPC result. */
-  private resultThread(
-    message: Record<string, unknown>,
-  ): Record<string, unknown> | undefined {
-    return (message.result as Record<string, unknown> | undefined)?.thread as
-      Record<string, unknown> | undefined;
-  }
-
-  private updateModelInfo(message: Record<string, unknown>): void {
-    const result =
-      message.result && typeof message.result === "object"
-        ? (message.result as Record<string, unknown>)
-        : undefined;
+  /** Extracts model metadata from a typed JSON-RPC response. */
+  private updateModelInfo<TResult>(message: JsonRpcResponse<TResult>): void {
+    const result = isRecord(message.result) ? message.result : undefined;
     if (!result) return;
 
     this.updateModelInfoFromValue(result);
@@ -1358,6 +1431,7 @@ export class CodexController {
     }
   }
 
+  /** Merges model metadata from an untyped protocol value into controller state. */
   private updateModelInfoFromValue(value: Record<string, unknown>): void {
     const next: CodexModelInfo = {
       model: stringValue(value.model),
@@ -1370,7 +1444,7 @@ export class CodexController {
     ) as CodexModelInfo;
     if (Object.keys(defined).length > 0) {
       this.modelInfo = { ...this.modelInfo, ...defined };
-      this.options.sendSettings();
+      this.options.publishRendererState();
     }
   }
 
@@ -1500,22 +1574,24 @@ function describeSocketError(error: unknown, url: string): string {
   return `url=${url}; error=${String(error)}`;
 }
 
-function parseTokenUsageValue(value: unknown): CodexTokenUsage | undefined {
+function parseTokenUsageValue(value: unknown): ThreadTokenUsage | undefined {
   if (!value || typeof value !== "object") return undefined;
   const usage = value as Record<string, unknown>;
   const total = parseTokenCounts(usage.total ?? usage.totalTokenUsage);
   if (!total) return undefined;
   return {
     total,
-    lastTurn: parseTokenCounts(usage.last ?? usage.lastTurnUsage),
-    modelContextWindow: numberValue(usage.modelContextWindow),
+    last: parseTokenCounts(
+      usage.last ?? usage.lastTurnUsage,
+    ) as TokenUsageBreakdown,
+    modelContextWindow: numberValue(usage.modelContextWindow) ?? null,
   };
 }
 
-function parseTokenCounts(value: unknown): CodexTokenCounts | undefined {
+function parseTokenCounts(value: unknown): TokenUsageBreakdown | undefined {
   if (!value || typeof value !== "object") return undefined;
   const counts = value as Record<string, unknown>;
-  const parsed: CodexTokenCounts = {
+  const parsed = {
     inputTokens: numberValue(counts.inputTokens),
     cachedInputTokens: numberValue(counts.cachedInputTokens),
     cacheWriteInputTokens: numberValue(counts.cacheWriteInputTokens),
@@ -1524,7 +1600,7 @@ function parseTokenCounts(value: unknown): CodexTokenCounts | undefined {
     totalTokens: numberValue(counts.totalTokens),
   };
   return Object.values(parsed).some((entry) => entry !== undefined)
-    ? parsed
+    ? (parsed as TokenUsageBreakdown)
     : undefined;
 }
 
@@ -1532,6 +1608,23 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
+  return isRecord(value) && "id" in value && !("method" in value);
+}
+
+function isThread(value: unknown): value is Thread {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    isRecord(value.status) &&
+    typeof value.status.type === "string"
+  );
 }
 
 function stringValue(value: unknown): string | undefined {
