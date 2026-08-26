@@ -178,22 +178,6 @@ export class CodexRenderer {
       }
     }
     if (this.userInput?.contains(event.target as Node)) return;
-    const pendingApproval = this.history.querySelector<HTMLElement>(
-      ".codex-approval-pending",
-    );
-    const approve = pendingApproval?.querySelector<HTMLButtonElement>(
-      "[data-decision='allow']",
-    );
-    const deny = pendingApproval?.querySelector<HTMLButtonElement>(
-      "[data-decision='deny']",
-    );
-    if (event.key.toLowerCase() === "y" && approve) {
-      event.preventDefault();
-      approve.click();
-    } else if (event.key.toLowerCase() === "n" && deny) {
-      event.preventDefault();
-      deny.click();
-    }
   }
 
   updateSettings(next: PeskSettings): void {
@@ -226,7 +210,7 @@ export class CodexRenderer {
     this.renderRateLimit();
     this.renderUserInput();
     this.form.hidden = Boolean(
-      next.codexPendingUserInput || this.activePlanConfirmation,
+      next.codexPendingUserInput || next.codexPendingApproval || this.activePlanConfirmation,
     );
     if (this.modeToggle) {
       const plan = next.codexCollaborationMode === "plan";
@@ -270,9 +254,10 @@ export class CodexRenderer {
   private renderUserInput(force = false): void {
     const container = this.userInput;
     const pending = this.settings.codexPendingUserInput;
+    const pendingApproval = this.settings.codexPendingApproval;
     const planConfirmation = this.activePlanConfirmation;
     if (!container) return;
-    if (!pending && !planConfirmation) {
+    if (!pending && !pendingApproval && !planConfirmation) {
       container.replaceChildren();
       container.hidden = true;
       this.renderedUserInputRequestId = undefined;
@@ -281,7 +266,7 @@ export class CodexRenderer {
       this.userInputAnswers = {};
       return;
     }
-    if (!pending && planConfirmation) {
+    if (!pending && !pendingApproval && planConfirmation) {
       const existing = container.querySelector<HTMLElement>(
         ".codex-plan-implementation-prompt",
       );
@@ -306,6 +291,10 @@ export class CodexRenderer {
       requestAnimationFrame(() => {
         this.history.scrollTop = this.history.scrollHeight;
       });
+      return;
+    }
+    if (!pending && pendingApproval) {
+      this.renderApprovalInput(pendingApproval, force);
       return;
     }
     if (!pending) return;
@@ -532,6 +521,70 @@ export class CodexRenderer {
         }
       });
     }
+  }
+
+  private renderApprovalInput(
+    pending: NonNullable<PeskSettings["codexPendingApproval"]>,
+    force: boolean,
+  ): void {
+    const container = this.userInput;
+    if (!container) return;
+    const existing = container.querySelector("form");
+    if (!force && existing?.dataset.approvalRequestId === String(pending.requestId)) return;
+    container.replaceChildren();
+    container.hidden = false;
+    const title = document.createElement("strong");
+    title.textContent = "Codex needs approval";
+    container.append(title);
+    const form = document.createElement("form");
+    form.className = "codex-user-input-form";
+    form.dataset.approvalRequestId = String(pending.requestId);
+    const fieldset = document.createElement("fieldset");
+    const legend = document.createElement("legend");
+    legend.textContent = pending.command || "Approval request";
+    fieldset.append(legend);
+    if (pending.reason) {
+      const reason = document.createElement("div");
+      reason.className = "codex-user-input-question";
+      reason.textContent = pending.reason;
+      fieldset.append(reason);
+    }
+    for (const [index, option] of pending.options.entries()) {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "approval";
+      input.value = option.id;
+      input.checked = index === 0;
+      label.append(input, document.createTextNode(` ${option.label}`));
+      if (option.description) {
+        const description = document.createElement("small");
+        description.className = "codex-user-input-option-description";
+        description.textContent = option.description;
+        label.append(description);
+      }
+      fieldset.append(label);
+    }
+    form.append(fieldset);
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.textContent = "Submit";
+    form.append(submit);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const selected = form.querySelector<HTMLInputElement>(
+        "input[type='radio']:checked",
+      );
+      if (!selected) return;
+      window.peskApi.respondCodexPermission(pending.requestId, selected.value);
+      submit.disabled = true;
+      this.focusChatInput();
+    });
+    container.append(form);
+    requestAnimationFrame(() => {
+      form.querySelector<HTMLInputElement>("input[type='radio']")?.focus();
+      this.history.scrollTop = this.history.scrollHeight;
+    });
   }
 
   focusUserInputOption(): void {
@@ -1515,18 +1568,28 @@ export class CodexRenderer {
       bubble.classList.add("codex-approval-pending");
       const actions = document.createElement("div");
       actions.className = "codex-approval-actions";
-      for (const [decision, label] of [
-        ["deny", "Deny (N)"],
-        ["allow", "Approve (Y)"],
-      ] as const) {
+      const options = approval.options ?? [
+        {
+          id: "decline",
+          label: "Decline",
+          description: "Reject this request.",
+        },
+        {
+          id: "accept",
+          label: "Approve once",
+          description: "Allow this request only.",
+        },
+      ];
+      for (const option of options) {
         const button = document.createElement("button");
         button.type = "button";
-        button.dataset.decision = decision;
-        button.textContent = label;
+        button.dataset.decision = option.id;
+        button.textContent = option.label;
+        button.title = option.description;
         button.addEventListener("click", () =>
           window.peskApi.respondCodexPermission(
             approval.requestId ?? "",
-            decision,
+            option.id,
           ),
         );
         actions.append(button);

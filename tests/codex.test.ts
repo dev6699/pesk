@@ -1690,19 +1690,14 @@ describe("CodexController", () => {
     expect(
       controllerOptions.publishRendererState.mock.invocationCallOrder[0],
     ).toBeLessThan(controllerOptions.showApproval.mock.invocationCallOrder[0]);
-    expect(controller.getState().history).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "system",
-          text: "npm test\nRun the tests",
-        }),
-      ]),
+    expect(controller.getState().pendingApproval).toMatchObject({
+      requestId: 88,
+      command: "npm test",
+      reason: "Run the tests",
+    });
+    expect(controller.getState().history).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ approval: expect.anything() })]),
     );
-    expect(
-      controller
-        .getState()
-        .history.filter((message) => message.approval?.requestId === 88),
-    ).toHaveLength(1);
 
     socket.emit(
       "message",
@@ -1711,13 +1706,7 @@ describe("CodexController", () => {
         params: { turn: { id: "approval-turn" } },
       }),
     );
-    expect(controller.getState().history).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          approval: { requestId: 88, state: "pending" },
-        }),
-      ]),
-    );
+    expect(controller.getState().pendingApproval).toMatchObject({ requestId: 88 });
 
     controller.respondPermission(88, "accept");
 
@@ -1760,11 +1749,9 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().status).toBe("waiting");
-    expect(
-      controller
-        .getState()
-        .history.filter((message) => message.approval?.state === "pending"),
-    ).toHaveLength(2);
+    expect(controller.getState().pendingApproval).toMatchObject({
+      requestId: 7,
+    });
     expect(controller.submitPrompt("blocked while approval is pending")).toBe(
       false,
     );
@@ -1779,11 +1766,9 @@ describe("CodexController", () => {
         expect.objectContaining({
           approval: { requestId: "approval-1", state: "denied" },
         }),
-        expect.objectContaining({
-          approval: { requestId: 7, state: "pending" },
-        }),
       ]),
     );
+    expect(controller.getState().pendingApproval).toMatchObject({ requestId: 7 });
     expect(controller.getState().status).toBe("waiting");
 
     controller.respondPermission(7, "accept");
@@ -1792,6 +1777,67 @@ describe("CodexController", () => {
       result: { decision: "accept" },
     });
     expect(controller.getState().status).toBe("working");
+  });
+
+  test("exposes and sends schema-backed command approval options", () => {
+    const { controller, socket } = connectedController();
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: "command-approval",
+        method: "item/commandExecution/requestApproval",
+        params: {
+          command: "curl example.com",
+          proposedExecpolicyAmendment: ["curl", "example.com"],
+          proposedNetworkPolicyAmendments: [
+            { host: "example.com", action: "allow" },
+          ],
+        },
+      }),
+    );
+
+    const approval = controller.getState().history.at(-1)?.approval;
+    expect(approval?.options?.map((option) => option.id)).toEqual([
+      "accept",
+      "acceptForSession",
+      "applyNetworkPolicyAmendment:0",
+      "acceptWithExecpolicyAmendment",
+      "decline",
+      "cancel",
+    ]);
+
+    controller.respondPermission("command-approval", "acceptForSession");
+    expect(lastMessage(socket)).toEqual({
+      id: "command-approval",
+      result: { decision: "acceptForSession" },
+    });
+  });
+
+  test("sends structured command amendment decisions unchanged", () => {
+    const { controller, socket } = connectedController();
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: 99,
+        method: "item/commandExecution/requestApproval",
+        params: {
+          command: "npm test",
+          proposedExecpolicyAmendment: ["npm", "test"],
+        },
+      }),
+    );
+
+    controller.respondPermission(99, "acceptWithExecpolicyAmendment");
+    expect(lastMessage(socket)).toEqual({
+      id: 99,
+      result: {
+        decision: {
+          acceptWithExecpolicyAmendment: {
+            execpolicy_amendment: ["npm", "test"],
+          },
+        },
+      },
+    });
   });
 
   test("removes unresolved approvals when a later assistant message supersedes them", () => {

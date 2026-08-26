@@ -34,8 +34,8 @@ contextBridge.exposeInMainWorld("peskApi", {
   quitPesk: () => ipcRenderer.send("quit-pesk"),
   respondCodexPermission: (
     requestId: string | number,
-    decision: "allow" | "deny",
-  ) => ipcRenderer.send("respond-codex-permission", requestId, decision),
+    optionId: string,
+  ) => ipcRenderer.send("respond-codex-permission", requestId, optionId),
   submitCodexPrompt: (prompt: string) =>
     ipcRenderer.invoke("submit-codex-prompt", prompt),
   fuzzyFileSearch: (query: string, roots: string[]) =>

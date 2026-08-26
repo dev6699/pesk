@@ -982,37 +982,33 @@ test("submits a prompt, rejects empty or working input, and handles input shortc
   expect(submit).toHaveBeenCalledTimes(1);
 });
 
-test("handles approval keyboard shortcuts and completed approval states", () => {
+test("renders approval options and completed approval states", () => {
   const { renderer, elements } = makeRenderer();
   renderer.updateSettings({
     ...defaultSettings(),
     codexThreadId: "thread-1",
-    codexHistory: [
-      {
-        role: "system",
-        text: "permission",
-        approval: { requestId: 7, state: "pending" },
-      },
-    ],
+    codexPendingApproval: {
+      requestId: 7,
+      command: "permission",
+      reason: "Needs approval",
+      options: [
+        { id: "accept", label: "Approve once", description: "" },
+        { id: "decline", label: "Decline", description: "" },
+      ],
+    },
   });
-  const approve = elements.history.querySelector(
-    "[data-decision='allow']",
+  const approve = elements.userInput.querySelector(
+    "[data-decision='accept']",
   ) as HTMLButtonElement;
-  const deny = elements.history.querySelector(
-    "[data-decision='deny']",
+  const deny = elements.userInput.querySelector(
+    "[data-decision='decline']",
   ) as HTMLButtonElement;
-  const y = new KeyboardEvent("keydown", { key: "y", cancelable: true });
-  renderer.handleKeydown(y);
-  expect(y.defaultPrevented).toBe(true);
-  expect(window.peskApi.respondCodexPermission).toHaveBeenCalledWith(
-    7,
-    "allow",
-  );
-
-  const n = new KeyboardEvent("keydown", { key: "n", cancelable: true });
-  renderer.handleKeydown(n);
-  expect(n.defaultPrevented).toBe(true);
-  expect(window.peskApi.respondCodexPermission).toHaveBeenCalledWith(7, "deny");
+  approve.click();
+  expect(window.peskApi.respondCodexPermission).toHaveBeenCalledWith(7, "accept");
+  deny.click();
+  expect(window.peskApi.respondCodexPermission).toHaveBeenCalledWith(7, "decline");
+  expect(approve.textContent).toBe("Approve once");
+  expect(deny.textContent).toBe("Decline");
   expect(approve).toBeTruthy();
   expect(deny).toBeTruthy();
 

@@ -9,6 +9,8 @@ import type {
 import type { CollaborationMode } from "./codex-schema/CollaborationMode";
 import type {
   CommandExecutionRequestApprovalResponse,
+  CommandExecutionApprovalDecision,
+  FileChangeApprovalDecision,
   FileChangeRequestApprovalResponse,
   Thread,
   ThreadListResponse,
@@ -52,6 +54,7 @@ export interface CodexMessage {
   approval?: {
     requestId: string | number;
     state: "pending" | "approved" | "denied";
+    options?: Array<{ id: string; label: string; description: string }>;
   };
 }
 
@@ -62,6 +65,13 @@ export interface CodexPendingUserInput {
   itemId: string;
   questions: ToolRequestUserInputParams["questions"];
   isBlocking: boolean;
+}
+
+export interface CodexPendingApproval {
+  requestId: string | number;
+  command: string;
+  reason: string;
+  options: Array<{ id: string; label: string; description: string }>;
 }
 
 export interface CodexModelInfo {
@@ -89,6 +99,7 @@ export interface CodexState {
   rateLimits?: RateLimitSnapshot;
   collaborationMode: "default" | "plan";
   pendingUserInput?: CodexPendingUserInput;
+  pendingApproval?: CodexPendingApproval;
 }
 
 interface Options {
@@ -103,9 +114,10 @@ interface PendingApproval {
   requestId: RequestId;
   command: string;
   reason: string;
+  decisions: Map<string, CommandExecutionApprovalDecision | FileChangeApprovalDecision>;
 }
 
-type PermissionDecision = "accept" | "decline";
+type PermissionOption = string;
 
 type PermissionApprovalResponse =
   CommandExecutionRequestApprovalResponse | FileChangeRequestApprovalResponse;
@@ -124,6 +136,77 @@ type ServerMessage = ServerNotification | ServerRequest;
 
 function requestIdKey(requestId: RequestId): string {
   return `${typeof requestId}:${String(requestId)}`;
+}
+
+type ApprovalDecision =
+  | CommandExecutionApprovalDecision
+  | FileChangeApprovalDecision;
+type ApprovalOption = { id: string; label: string; description: string };
+
+function approvalDecisions(
+  message: Extract<
+    ServerMessage,
+    {
+      method:
+        | "item/commandExecution/requestApproval"
+        | "item/fileChange/requestApproval";
+    }
+  >,
+): Map<string, ApprovalDecision> {
+  const decisions = new Map<string, ApprovalDecision>([
+    ["accept", "accept"],
+    ["acceptForSession", "acceptForSession"],
+    ["decline", "decline"],
+    ["cancel", "cancel"],
+  ]);
+  if (message.method === "item/commandExecution/requestApproval") {
+    if (message.params.proposedExecpolicyAmendment) {
+      decisions.set("acceptWithExecpolicyAmendment", {
+        acceptWithExecpolicyAmendment: {
+          execpolicy_amendment: message.params.proposedExecpolicyAmendment,
+        },
+      });
+    }
+    for (const [index, amendment] of (
+      message.params.proposedNetworkPolicyAmendments ?? []
+    ).entries()) {
+      decisions.set(`applyNetworkPolicyAmendment:${index}`, {
+        applyNetworkPolicyAmendment: {
+          network_policy_amendment: amendment,
+        },
+      });
+    }
+  }
+  return decisions;
+}
+
+function approvalOptions(
+  decisions: Map<string, ApprovalDecision>,
+): ApprovalOption[] {
+  const options: ApprovalOption[] = [
+    { id: "accept", label: "Approve once", description: "Allow this request only." },
+    { id: "acceptForSession", label: "Approve for session", description: "Allow matching requests for this session." },
+    { id: "decline", label: "Decline", description: "Reject this request." },
+    { id: "cancel", label: "Cancel", description: "Cancel the request." },
+  ];
+  if (decisions.has("acceptWithExecpolicyAmendment")) {
+    options.splice(2, 0, {
+      id: "acceptWithExecpolicyAmendment",
+      label: "Approve and remember command",
+      description: "Apply the proposed command policy amendment.",
+    });
+  }
+  for (const id of decisions.keys()) {
+    if (id.startsWith("applyNetworkPolicyAmendment:")) {
+      const index = id.split(":")[1];
+      options.splice(2, 0, {
+        id,
+        label: `Approve and allow network access ${Number(index) + 1}`,
+        description: "Apply the proposed network policy amendment.",
+      });
+    }
+  }
+  return options.filter((option) => decisions.has(option.id));
 }
 
 type RequestOf<Method extends ClientRequest["method"]> = Extract<
@@ -192,6 +275,7 @@ export class CodexController {
   /** Mode used for the next Codex turn. */
   private collaborationMode: "default" | "plan" = "default";
   private pendingUserInput: CodexPendingUserInput | undefined;
+  private pendingApproval: CodexPendingApproval | undefined;
   /** Prevents duplicate initial rate-limit reads from multiple renderer windows. */
   private rateLimitsReadPending = false;
   /** Index of the assistant message currently receiving deltas. */
@@ -245,6 +329,7 @@ export class CodexController {
       rateLimits: this.rateLimits,
       collaborationMode: this.collaborationMode,
       pendingUserInput: this.pendingUserInput,
+      pendingApproval: this.pendingApproval,
     };
   }
 
@@ -529,19 +614,38 @@ export class CodexController {
   }
 
   /** Sends an approval response for an app-server request. */
-  respondPermission(requestId: RequestId, decision: PermissionDecision): void {
+  respondPermission(requestId: RequestId, optionId: PermissionOption): void {
     const key = requestIdKey(requestId);
-    if (!this.pendingApprovals.has(key)) return;
+    const pending = this.pendingApprovals.get(key);
+    const decision = pending?.decisions.get(optionId);
+    if (!pending || decision === undefined) return;
     this.send({
       id: requestId,
       result: {
         decision,
       },
     } satisfies JsonRpcResponse<PermissionApprovalResponse>);
-    this.updateApproval(
-      requestId,
-      decision === "accept" ? "approved" : "denied",
-    );
+    const state =
+      optionId === "decline" || optionId === "cancel"
+        ? "denied"
+        : "approved";
+    if (this.pendingApproval?.requestId === requestId) {
+      this.pendingApproval = undefined;
+    }
+    this.history.push({
+      role: "system",
+      text:
+        [pending.command, pending.reason].filter(Boolean).join("\n") ||
+        "Codex approval",
+      timestamp: Date.now(),
+      approval: {
+        requestId,
+        state,
+        options: approvalOptions(pending.decisions),
+      },
+    });
+    this.trim();
+    this.options.publishRendererState();
     this.pendingApprovals.delete(key);
     this.setStatus("working");
   }
@@ -1191,6 +1295,7 @@ export class CodexController {
     >,
   ): void {
     const id = message.id;
+    const decisions = approvalDecisions(message);
     const command =
       "command" in message.params ? (message.params.command ?? "") : "";
     const reason = message.params.reason ?? "";
@@ -1198,8 +1303,14 @@ export class CodexController {
       requestId: id,
       command,
       reason,
+      decisions,
     });
-    this.addApproval(id, command, reason);
+    this.pendingApproval = {
+      requestId: id,
+      command,
+      reason,
+      options: approvalOptions(decisions),
+    };
     this.options.showApproval(id, command, reason);
     this.setStatus("waiting");
   }
@@ -1523,57 +1634,11 @@ export class CodexController {
     };
   }
 
-  /** Adds a pending command or file-change approval to conversation history. */
-  private addApproval(
-    requestId: string | number,
-    command: string,
-    reason: string,
-  ): void {
-    if (
-      this.history.some(
-        (message) =>
-          message.approval?.requestId === requestId &&
-          message.approval.state === "pending",
-      )
-    ) {
-      return;
-    }
-    this.history.push({
-      role: "system",
-      text:
-        [command, reason].filter(Boolean).join("\n") ||
-        "Codex requests approval.",
-      timestamp: Date.now(),
-      approval: {
-        requestId,
-        state: "pending",
-      },
-    });
-    this.trim();
-    this.options.publishRendererState();
-  }
-
-  /** Marks a matching pending approval as accepted or denied. */
-  private updateApproval(
-    id: string | number,
-    state: "approved" | "denied",
-  ): void {
-    const item = this.history.find(
-      (x) =>
-        x.approval &&
-        requestIdKey(x.approval.requestId) === requestIdKey(id) &&
-        x.approval.state === "pending",
-    );
-    if (item?.approval) {
-      item.approval.state = state;
-      this.options.publishRendererState();
-    }
-  }
-
   /** Removes pending approvals when a later conversation message supersedes them. */
   private clearStaleApprovals(): void {
     if (!this.pendingApprovals.size) return;
     this.pendingApprovals.clear();
+    this.pendingApproval = undefined;
     const next = this.history.filter((x) => x.approval?.state !== "pending");
     if (next.length !== this.history.length) {
       this.history = next;
@@ -1585,6 +1650,7 @@ export class CodexController {
   /** Clears protocol approvals during transport/session cleanup. */
   private clearPendingApprovals(): void {
     this.pendingApprovals.clear();
+    this.pendingApproval = undefined;
     const next = this.history.filter((x) => x.approval?.state !== "pending");
     if (next.length !== this.history.length) this.history = next;
   }

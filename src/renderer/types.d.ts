@@ -64,6 +64,12 @@ interface CodexRuntimeState {
     }>;
     isBlocking: boolean;
   };
+  codexPendingApproval?: {
+    requestId: string | number;
+    command: string;
+    reason: string;
+    options: Array<{ id: string; label: string; description: string }>;
+  };
   codexHistory: Array<{
     role: "user" | "assistant" | "system";
     text: string;
@@ -85,6 +91,7 @@ interface CodexRuntimeState {
     approval?: {
       requestId: string | number;
       state: "pending" | "approved" | "denied";
+      options?: Array<{ id: string; label: string; description: string }>;
     };
   }>;
 }
@@ -131,7 +138,7 @@ interface Window {
     quitPesk: () => void;
     respondCodexPermission: (
       requestId: string | number,
-      decision: "allow" | "deny",
+      optionId: string,
     ) => void;
     submitCodexPrompt: (prompt: string) => Promise<PeskSettings>;
     fuzzyFileSearch: (

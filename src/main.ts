@@ -3,6 +3,7 @@ import { CodexController } from "./codex";
 import type {
   CodexMessage,
   CodexModelInfo,
+  CodexPendingApproval,
   CodexPendingUserInput,
 } from "./codex";
 import type { Thread, ThreadTokenUsage } from "./codex-schema/v2";
@@ -30,6 +31,7 @@ interface RendererSettings extends PeskSettings {
   codexRateLimits?: import("./codex-schema/v2").RateLimitSnapshot;
   codexCollaborationMode: "default" | "plan";
   codexPendingUserInput?: CodexPendingUserInput;
+  codexPendingApproval?: CodexPendingApproval;
   codexStatusSoundUrl: string;
 }
 
@@ -76,6 +78,7 @@ function rendererSettings(): RendererSettings {
     codexRateLimits: state.rateLimits,
     codexCollaborationMode: state.collaborationMode,
     codexPendingUserInput: state.pendingUserInput,
+    codexPendingApproval: state.pendingApproval,
     codexStatusSoundUrl,
   };
 }
@@ -231,14 +234,8 @@ app.whenReady().then(() => {
       if (typeof requestId !== "string" && typeof requestId !== "number") {
         return;
       }
-      const normalizedDecision =
-        decision === "allow"
-          ? "accept"
-          : decision === "deny"
-            ? "decline"
-            : undefined;
-      if (normalizedDecision) {
-        codexController.respondPermission(requestId, normalizedDecision);
+      if (typeof decision === "string") {
+        codexController.respondPermission(requestId, decision);
       }
     },
   );
