@@ -12,6 +12,7 @@ fs.copyFileSync(
 for (const file of [
   "pet.html",
   "chat.html",
+  "web-chat.html",
   "styles.css",
   "menu.html",
   "menu.css",

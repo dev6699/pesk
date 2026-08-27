@@ -210,7 +210,9 @@ export class CodexRenderer {
     this.renderRateLimit();
     this.renderUserInput();
     this.form.hidden = Boolean(
-      next.codexPendingUserInput || next.codexPendingApproval || this.activePlanConfirmation,
+      next.codexPendingUserInput ||
+      next.codexPendingApproval ||
+      this.activePlanConfirmation,
     );
     if (this.modeToggle) {
       const plan = next.codexCollaborationMode === "plan";
@@ -530,7 +532,11 @@ export class CodexRenderer {
     const container = this.userInput;
     if (!container) return;
     const existing = container.querySelector("form");
-    if (!force && existing?.dataset.approvalRequestId === String(pending.requestId)) return;
+    if (
+      !force &&
+      existing?.dataset.approvalRequestId === String(pending.requestId)
+    )
+      return;
     container.replaceChildren();
     container.hidden = false;
     const title = document.createElement("strong");
@@ -657,13 +663,18 @@ export class CodexRenderer {
       return;
     }
     const total = usage?.total.totalTokens;
-    const last = usage?.last?.totalTokens;
     const currentContext = usage?.last?.inputTokens;
     const context = usage?.modelContextWindow ?? undefined;
     const contextPercent =
       currentContext !== undefined && context
         ? Math.min(100, (currentContext / context) * 100)
         : undefined;
+    const contextLabel =
+      contextPercent !== undefined && currentContext !== undefined
+        ? `Context ${contextPercent.toFixed(1)}% (${formatTokens(currentContext)} / ${formatTokens(context!)})`
+        : context !== undefined
+          ? `Context window ${formatTokens(context)}`
+          : "";
     const modelParts = [
       modelInfo?.model ?? "",
       modelInfo?.provider ? `(${modelInfo.provider})` : "",
@@ -686,23 +697,26 @@ export class CodexRenderer {
       usage?.total.reasoningOutputTokens !== undefined
         ? `Reasoning ${formatTokens(usage.total.reasoningOutputTokens)}`
         : "",
-      last !== undefined ? `Turn ${formatTokens(last)}` : "",
-      contextPercent !== undefined && currentContext !== undefined
-        ? `Context ${contextPercent.toFixed(1)}% (${formatTokens(currentContext)} / ${formatTokens(context!)})`
-        : context !== undefined
-          ? `Context window ${formatTokens(context)}`
-          : "",
     ].filter(Boolean);
     const modelLine = modelParts.join(" · ");
     const cwd = this.settings.codexCwd;
-    const lines = [modelLine, usageParts.join(" · ")].filter(Boolean);
+    const lines = [modelLine, contextLabel, cwd, usageParts.join(" · ")].filter(
+      Boolean,
+    );
     this.tokenUsage.replaceChildren();
-    if (modelLine || cwd) {
+    if (modelLine || contextLabel || cwd) {
       const modelRow = document.createElement("div");
       modelRow.className = "codex-model-line";
       const modelLabel = document.createElement("span");
       modelLabel.textContent = modelLine;
       modelRow.append(modelLabel);
+      if (contextLabel) {
+        const contextLabelElement = document.createElement("span");
+        contextLabelElement.className = "codex-context";
+        contextLabelElement.textContent = contextLabel;
+        contextLabelElement.title = contextLabel;
+        modelRow.append(contextLabelElement);
+      }
       if (cwd) {
         const cwdLabel = document.createElement("span");
         cwdLabel.className = "codex-cwd";
@@ -717,7 +731,12 @@ export class CodexRenderer {
       usageLine.textContent = usageParts.join(" · ");
       this.tokenUsage.append(usageLine);
     }
-    this.tokenUsage.title = [...modelParts, cwd ?? "", ...usageParts]
+    this.tokenUsage.title = [
+      ...modelParts,
+      contextLabel,
+      cwd ?? "",
+      ...usageParts,
+    ]
       .filter(Boolean)
       .join(" · ");
     this.tokenUsage.hidden = lines.length === 0 && !cwd;
@@ -936,6 +955,20 @@ export class CodexRenderer {
       return;
     }
     if (event.key !== "Enter") return;
+    if (
+      document.body.classList.contains("web-chat") &&
+      !event.altKey &&
+      !event.metaKey
+    ) {
+      event.preventDefault();
+      const start = this.input.selectionStart;
+      const end = this.input.selectionEnd;
+      this.input.value = `${this.input.value.slice(0, start)}\n${this.input.value.slice(end)}`;
+      this.input.selectionStart = start + 1;
+      this.input.selectionEnd = start + 1;
+      this.resizeInput();
+      return;
+    }
     if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
       event.preventDefault();
       const start = this.input.selectionStart;

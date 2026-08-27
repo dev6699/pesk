@@ -5,9 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pesk Chat</title>
     <link rel="stylesheet" href="styles.css" />
+    <style>
+      html,
+      body {
+        height: 100%;
+        background: #111827;
+        overflow: hidden;
+      }
+      body.web-chat {
+        user-select: text;
+      }
+      body.web-chat #chat {
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        max-width: none;
+        overflow: hidden;
+      }
+      body.web-chat #codex-chat {
+        position: static;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+      }
+      body.web-chat #codex-history-shell {
+        flex: 1 1 0;
+        min-height: 0;
+      }
+      body.web-chat #codex-history {
+        flex: 1 1 0;
+        min-height: 0;
+      }
+      body.web-chat #codex-chat-input {
+        font-size: 16px;
+      }
+    </style>
   </head>
-
-  <body class="chat-only">
+  <body class="chat-only web-chat">
     <main id="chat" aria-label="Codex chat">
       <section id="codex-chat" aria-label="Codex chat">
         <div id="codex-chat-header">
@@ -30,14 +65,14 @@
           >
             Default
           </button>
+          <span id="web-connection-status" aria-live="polite">Connecting…</span>
         </div>
         <div id="codex-rate-limit" aria-live="polite" hidden></div>
         <div id="codex-error" role="alert" hidden></div>
         <div id="codex-history-shell">
           <div id="codex-history" aria-live="polite"></div>
           <div id="codex-working-status" aria-live="polite" hidden>
-            <span>Working…</span>
-            <time id="codex-working-elapsed">0s</time>
+            <span>Working…</span><time id="codex-working-elapsed">0s</time>
           </div>
         </div>
         <div id="codex-token-usage" aria-live="polite" hidden></div>
@@ -49,7 +84,12 @@
             placeholder="Message Pesk..."
             aria-label="Message Codex"
           ></textarea>
-          <button id="codex-chat-send" type="submit">Send</button>
+          <div id="codex-chat-actions">
+            <button id="codex-chat-interrupt" type="button" disabled>
+              Interrupt
+            </button>
+            <button id="codex-chat-send" type="submit">Send</button>
+          </div>
           <div
             id="codex-file-suggestions"
             role="listbox"
@@ -59,6 +99,7 @@
         </form>
       </section>
     </main>
+    <script type="module" src="web-adapter.js"></script>
     <script type="module" src="chat-renderer.js"></script>
   </body>
 </html>

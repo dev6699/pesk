@@ -19,6 +19,19 @@ const codex = new CodexRenderer(
   document.getElementById("codex-user-input") as HTMLElement,
 );
 
+const interruptButton = document.getElementById(
+  "codex-chat-interrupt",
+) as HTMLButtonElement | null;
+function updateInterruptButton(settings: PeskSettings): void {
+  if (!interruptButton) return;
+  interruptButton.disabled =
+    settings.codexStatus !== "working" && settings.codexStatus !== "waiting";
+}
+interruptButton?.addEventListener("click", () => {
+  if (!confirm("Interrupt the current Codex turn?")) return;
+  void window.peskApi.interruptCodexTurn();
+});
+
 document.addEventListener(
   "keydown",
   (event) => codex.handleKeydown(event),
@@ -26,6 +39,7 @@ document.addEventListener(
 );
 window.peskApi.onSettingsChanged((next) => {
   codex.updateSettings(next);
+  updateInterruptButton(next);
   if (next.codexConnected && !next.codexRateLimits) {
     void window.peskApi.refreshCodexRateLimits();
   }
@@ -40,6 +54,7 @@ void window.peskApi.getChatSize().then(({ width, height }) => {
 
 void window.peskApi.getSettings().then((next) => {
   codex.updateSettings(next);
+  updateInterruptButton(next);
   if (next.codexConnected && !next.codexRateLimits) {
     void window.peskApi.refreshCodexRateLimits();
   }

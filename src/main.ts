@@ -1,4 +1,5 @@
 import { app, globalShortcut, ipcMain, shell } from "electron";
+import * as path from "node:path";
 import { CodexController } from "./codex";
 import type {
   CodexMessage,
@@ -14,6 +15,7 @@ import type { PeskSettings } from "./config";
 import { PresetController } from "./preset";
 import { MenuController } from "./menu";
 import { routePetFocusShortcut } from "./focus-shortcut";
+import { ChatWebServer } from "./chat-web-server";
 
 interface RendererSettings extends PeskSettings {
   codexThreadId?: string;
@@ -42,6 +44,7 @@ let pet: PetWindowController;
 let presets: PresetController;
 let menu: MenuController;
 let codexStatusSoundUrl = "";
+let webServer: ChatWebServer;
 
 const debug = (...values: unknown[]): void => {
   if (!app.isPackaged) console.log("[pesk]", ...values);
@@ -84,8 +87,93 @@ function rendererSettings(): RendererSettings {
 }
 
 function publishRendererState(): void {
-  pet.window?.webContents.send("settings-changed", rendererSettings());
-  chat.window?.webContents.send("settings-changed", rendererSettings());
+  const state = rendererSettings();
+  pet.window?.webContents.send("settings-changed", state);
+  chat.window?.webContents.send("settings-changed", state);
+  webServer?.broadcast(state);
+}
+
+function handleWebCommand(
+  message: unknown,
+  reply: (message: unknown) => void,
+): void {
+  if (!message || typeof message !== "object") return;
+  const command = message as Record<string, unknown>;
+  switch (command.type) {
+    case "submitPrompt":
+      if (typeof command.prompt === "string")
+        codexController.submitPrompt(command.prompt);
+      break;
+    case "selectThread":
+      if (typeof command.threadId === "string")
+        codexController.selectThread(command.threadId);
+      break;
+    case "setCollaborationMode":
+      if (command.mode === "default" || command.mode === "plan") {
+        codexController.setCollaborationMode(command.mode);
+      }
+      break;
+    case "interruptTurn":
+      codexController.interruptTurn();
+      break;
+    case "respondPermission":
+      if (
+        (typeof command.requestId === "string" ||
+          typeof command.requestId === "number") &&
+        typeof command.optionId === "string"
+      ) {
+        codexController.respondPermission(command.requestId, command.optionId);
+      }
+      break;
+    case "respondUserInput":
+      if (
+        (typeof command.requestId === "string" ||
+          typeof command.requestId === "number") &&
+        command.answers &&
+        typeof command.answers === "object"
+      ) {
+        const answers = Object.fromEntries(
+          Object.entries(command.answers).flatMap(([id, value]) =>
+            Array.isArray(value)
+              ? [
+                  [
+                    id,
+                    value.filter(
+                      (item): item is string => typeof item === "string",
+                    ),
+                  ],
+                ]
+              : [],
+          ),
+        );
+        codexController.respondUserInput(answers);
+      }
+      break;
+    case "refreshRateLimits":
+      codexController.refreshRateLimits();
+      break;
+    case "fuzzyFileSearch":
+      if (
+        (typeof command.requestId === "string" ||
+          typeof command.requestId === "number") &&
+        typeof command.query === "string" &&
+        Array.isArray(command.roots)
+      ) {
+        const roots = command.roots.filter(
+          (root): root is string => typeof root === "string",
+        );
+        void codexController
+          .fuzzyFileSearch(command.query, roots)
+          .then((files) =>
+            reply({
+              type: "fuzzyFileSearchResult",
+              requestId: command.requestId,
+              files,
+            }),
+          );
+      }
+      break;
+  }
 }
 
 app.whenReady().then(() => {
@@ -93,6 +181,16 @@ app.whenReady().then(() => {
   settings = loadSettings();
   const config = loadConfig();
   codexStatusSoundUrl = config.codexStatusSound;
+  webServer = new ChatWebServer({
+    enabled: config.webAccessEnabled,
+    port: config.webPort,
+    token: config.webToken,
+    rendererDirectory: path.join(__dirname, "renderer"),
+    tokenPath: path.join(app.getPath("userData"), "web-token"),
+    getState: rendererSettings,
+    handleCommand: (message, reply) => handleWebCommand(message, reply),
+    debug,
+  });
   presets = new PresetController(debug);
   pet = new PetWindowController({
     getSettings: () => settings,
@@ -291,6 +389,7 @@ app.whenReady().then(() => {
   chat.create();
   menu.create();
   codexController.start();
+  webServer.start();
 });
 
 app.on("window-all-closed", () => {
@@ -299,6 +398,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   globalShortcut.unregisterAll();
   codexController.stop();
+  webServer?.stop();
   chat.close();
   pet.close();
   persistSettings();

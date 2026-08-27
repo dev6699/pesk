@@ -7,14 +7,12 @@
     "rootDir": "src/renderer",
     "strict": true,
     "skipLibCheck": true,
-    "lib": [
-      "ES2022",
-      "DOM"
-    ]
+    "lib": ["ES2022", "DOM"]
   },
   "include": [
     "src/renderer/renderer.ts",
     "src/renderer/chat-renderer.ts",
+    "src/renderer/web-adapter.ts",
     "src/renderer/menu.ts",
     "src/renderer/types.d.ts"
   ]

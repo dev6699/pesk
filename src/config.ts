@@ -29,6 +29,9 @@ export interface AppConfig {
   petFocusShortcut: string;
   codexAppServerUrl: string;
   codexStatusSound: string;
+  webAccessEnabled: boolean;
+  webPort: number;
+  webToken: string;
 }
 
 export function loadRawConfig(): Record<string, any> {
@@ -75,6 +78,9 @@ const defaultConfig: AppConfig = {
   petFocusShortcut: "Ctrl+Up",
   codexAppServerUrl: "ws://127.0.0.1:4500",
   codexStatusSound: "",
+  webAccessEnabled: false,
+  webPort: 4587,
+  webToken: "",
 };
 
 function settingsPath(): string {
@@ -120,6 +126,18 @@ export function loadConfig(): AppConfig {
         config.codexStatusSound.trim()
           ? path.resolve(getConfigDirectory(), config.codexStatusSound.trim())
           : defaultConfig.codexStatusSound,
+      webAccessEnabled: config.webAccessEnabled === true,
+      webPort:
+        typeof config.webPort === "number" &&
+        Number.isInteger(config.webPort) &&
+        config.webPort >= 1024 &&
+        config.webPort <= 65535
+          ? config.webPort
+          : defaultConfig.webPort,
+      webToken:
+        typeof config.webToken === "string"
+          ? config.webToken.trim()
+          : defaultConfig.webToken,
     };
   } catch {
     return { ...defaultConfig };
