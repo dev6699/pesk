@@ -14,6 +14,133 @@ Pesk is a lightweight Windows desktop pet built with Electron and TypeScript. It
 - Productivity automation through configurable Windows application presets
 - Native Windows integration through the system tray, keyboard shortcuts, and login startup
 
+## Architecture
+
+Pesk is a Windows Electron desktop pet with a terminal-first Codex companion. The pet remains a lightweight, always-on-top visual and notification surface; the chat window and optional browser client provide focused ways to observe or submit Codex work.
+
+### Runtime topology
+
+```mermaid
+flowchart LR
+  Desktop((Desktop))
+  Browser((Browser))
+
+  subgraph Windows[Desktop windows]
+    Pet[[Pet]]
+    Chat[[Codex chat]]
+    Menu[[Pesk menu]]
+  end
+
+  subgraph Electron[Electron main process]
+    direction TB
+    Bridge{{Secure IPC bridge}}
+    Services{{Application services}}
+    Codex([Codex client])
+    Web([Chat web server])
+    Bridge <--> Services
+    Services <--> Codex
+    Services <--> Web
+  end
+
+  Storage[(User data)]
+  AppServer[/Codex app-server/]
+  Push[/Browser push service/]
+
+  Desktop --> Pet
+  Desktop --> Chat
+  Desktop --> Menu
+  Windows <--> Bridge
+  Codex <-->|JSON-RPC over WebSocket| AppServer
+  Browser <-->|Chat WebSocket| Web
+  Web -->|Push notification| Push
+  Push -->|Browser delivery| Browser
+  Services --> Storage
+
+  classDef user fill:#ede9fe,stroke:#7c3aed,color:#2e1065
+  classDef window fill:#dbeafe,stroke:#2563eb,color:#172554
+  classDef process fill:#ffedd5,stroke:#ea580c,color:#431407
+  classDef service fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef external fill:#f3f4f6,stroke:#6b7280,color:#111827
+  classDef storage fill:#fef3c7,stroke:#d97706,color:#451a03
+  class Desktop,Browser user
+  class Pet,Chat,Menu window
+  class Bridge,Services process
+  class Codex,Web service
+  class AppServer,Push external
+  class Storage storage
+```
+
+`main.ts` is the composition root. It loads configuration and settings, creates the controllers, registers IPC handlers and global shortcuts, starts the Codex controller and optional web server, and performs shutdown cleanup. Business ownership stays in the focused controller modules rather than in renderer code or `main.ts`.
+
+### Component ownership
+
+| Diagram component    | Ownership and responsibility                                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Desktop windows      | Electron-owned pet, Codex chat, and Pesk menu surfaces for desktop interaction.                                               |
+| Secure IPC bridge    | The preload boundary that safely carries window requests and main-process state updates.                                      |
+| Application services | Main-process coordination for configuration, settings, animations, presets, window lifecycle, and cross-component behavior.   |
+| Codex client         | Main-process connection and state owner for JSON-RPC requests, threads, turns, streaming, approvals, and user-input requests. |
+| Chat web server      | Main-process LAN server for pairing, authenticated browser chat, state broadcasts, and push notification requests.            |
+| User data            | Local persisted configuration, settings, device credentials, VAPID keys, subscriptions, and external content.                 |
+| Codex app-server     | External service that receives and streams Codex JSON-RPC traffic.                                                            |
+| Browser push service | External browser-vendor delivery service used for Web Push notifications.                                                     |
+
+### Interaction flow
+
+Desktop windows communicate with the Electron main process through the secure preload IPC bridge. The main process publishes shared pet and Codex state back to the desktop surfaces and, when enabled, the browser client.
+
+The Codex client uses JSON-RPC over WebSocket with the app-server. It initializes the connection before other requests, handles streamed thread and turn events, and answers server-initiated approvals and user-input requests with their original request IDs. The terminal remains the primary Codex interaction; Pesk mirrors relevant activity and provides a focused companion chat.
+
+The Electron main-process services own configuration, persisted data, browser pairing, browser WebSocket access, and Web Push. These remain within the Electron main-process boundary and use the user-data directory for local state.
+
+### Build and packaging
+
+```mermaid
+flowchart LR
+  subgraph Inputs[Source inputs]
+    MainSource[Main-process source]
+    RendererSource[Renderer source]
+    StaticAssets[Pages and static assets]
+  end
+
+  subgraph Build[Build steps]
+    MainBuild[Compile main process]
+    RendererBuild[Compile renderers]
+    Copy[Copy static assets]
+  end
+
+  Runtime[(Build output)]
+  App[Electron application]
+  Installer[Windows installer]
+
+  MainSource --> MainBuild
+  RendererSource --> RendererBuild
+  StaticAssets --> Copy
+  MainBuild --> Runtime
+  RendererBuild --> Runtime
+  Copy --> Runtime
+  Runtime --> App --> Installer
+
+  classDef input fill:#dbeafe,stroke:#2563eb,color:#172554
+  classDef build fill:#ffedd5,stroke:#ea580c,color:#431407
+  classDef runtime fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef package fill:#ede9fe,stroke:#7c3aed,color:#2e1065
+  class MainSource,RendererSource,StaticAssets input
+  class MainBuild,RendererBuild,Copy build
+  class Runtime,App runtime
+  class Installer package
+```
+
+`npm run build` compiles the main/preload and renderer TypeScript, then copies renderer HTML, CSS, web assets, and required vendor files into `build/renderer`. Electron executes `build/main.js`, so source changes affecting runtime behavior require a rebuild. Electron Builder packages `build/**/*`, `assets/**/*`, and `package.json`; installer artifacts belong in `dist/`. User configuration and mutable animations are intentionally external to the packaged executable.
+
+### Extension and maintenance rules
+
+- Keep `main.ts` focused on composition, lifecycle, IPC registration, and cross-controller wiring.
+- Put new window behavior in the owning controller and expose only the smallest preload method or event needed by a renderer.
+- Treat generated app-server schemas as the protocol authority; do not hand-invent wire fields when a generated type exists.
+- Preserve separate pet, desktop chat, menu, and browser entrypoints when changing UI behavior.
+- Validate source with the relevant TypeScript/Jest checks, then distinguish those results from Windows GUI, installer, browser, LAN, and live app-server verification.
+
 ## Requirements
 
 - Windows for the packaged application and monitor-placement presets
@@ -54,7 +181,7 @@ When both configuration files exist, values in the user configuration override t
 
 ### Application configuration
 
-The following example shows the main supported options:
+Example application configuration:
 
 ```json
 {
@@ -90,10 +217,8 @@ Configuration fields:
 - `animations` provides per-animation overrides such as `fps`. Animation folders contain numbered PNG frames, for example:
 
 ```text
-%APPDATA%\pesk\animations\dance\001.png
+<active-config-directory>\animations\dance\001.png
 ```
-
-`codexStatusSound` is an optional sound-file path. Relative paths resolve beside the active configuration file. Leave it empty to disable the sound.
 
 ### Presets
 
