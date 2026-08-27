@@ -1838,6 +1838,39 @@ describe("CodexController", () => {
     expect(controller.getState().status).toBe("working");
   });
 
+  test("shows the next approval when it arrives after the current one is answered", () => {
+    const { controller, socket } = connectedController();
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: "approval-1",
+        method: "item/commandExecution/requestApproval",
+        params: { command: "first command", reason: "first permission" },
+      }),
+    );
+
+    controller.respondPermission("approval-1", "decline");
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: "approval-2",
+        method: "item/fileChange/requestApproval",
+        params: { reason: "second permission", changes: ["file.txt"] },
+      }),
+    );
+
+    expect(controller.getState().pendingApproval).toMatchObject({
+      requestId: "approval-2",
+      reason: "second permission",
+    });
+    expect(controller.getState().status).toBe("waiting");
+
+    controller.respondPermission("approval-2", "accept");
+    expect(controller.getState().pendingApproval).toBeUndefined();
+    expect(controller.getState().status).toBe("working");
+  });
+
   test("exposes and sends schema-backed command approval options", () => {
     const { controller, socket } = connectedController();
     socket.emit(

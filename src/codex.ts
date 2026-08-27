@@ -630,8 +630,20 @@ export class CodexController {
       optionId === "decline" || optionId === "cancel"
         ? "denied"
         : "approved";
-    if (this.pendingApproval?.requestId === requestId) {
-      this.pendingApproval = undefined;
+    const wasDisplayed = this.pendingApproval?.requestId === requestId;
+    this.pendingApprovals.delete(key);
+    if (wasDisplayed) {
+      const next = this.pendingApprovals.values().next().value as
+        | PendingApproval
+        | undefined;
+      this.pendingApproval = next
+        ? {
+            requestId: next.requestId,
+            command: next.command,
+            reason: next.reason,
+            options: approvalOptions(next.decisions),
+          }
+        : undefined;
     }
     this.history.push({
       role: "system",
@@ -647,8 +659,9 @@ export class CodexController {
     });
     this.trim();
     this.options.publishRendererState();
-    this.options.clearApproval?.();
-    this.pendingApprovals.delete(key);
+    if (!this.pendingApprovals.size) {
+      this.options.clearApproval?.();
+    }
     this.setStatus("working");
   }
 
