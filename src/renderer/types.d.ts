@@ -152,6 +152,7 @@ interface Window {
       optionId: string,
     ) => void;
     submitCodexPrompt: (prompt: string) => Promise<PeskSettings>;
+    startCodexReview: (instructions: string) => Promise<PeskSettings>;
     fuzzyFileSearch: (
       query: string,
       roots: string[],

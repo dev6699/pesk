@@ -115,6 +115,13 @@ function handleWebCommand(
         replyCommand(false);
       }
       break;
+    case "startReview":
+      if (typeof command.instructions === "string") {
+        replyCommand(codexController.startReview(command.instructions));
+      } else {
+        replyCommand(false);
+      }
+      break;
     case "implementPlan":
       if (
         typeof command.planText === "string" &&
@@ -410,6 +417,12 @@ app.whenReady().then(() => {
   ipcMain.handle("interrupt-codex-turn", () => codexController.interruptTurn());
   ipcMain.handle("steer-codex-turn", (_event, prompt: unknown) => {
     if (typeof prompt === "string") codexController.steerPrompt(prompt);
+    return rendererSettings();
+  });
+  ipcMain.handle("start-codex-review", (_event, instructions: unknown) => {
+    if (typeof instructions === "string") {
+      codexController.startReview(instructions);
+    }
     return rendererSettings();
   });
   ipcMain.on("move-pet", (_event, dx: number, dy: number) => pet.move(dx, dy));

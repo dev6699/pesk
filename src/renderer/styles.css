@@ -364,6 +364,17 @@ body.chat-only #codex-chat {
   display: block;
 }
 
+.codex-review-input-area {
+  position: relative;
+}
+
+.codex-review-input-area #codex-file-suggestions {
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+}
+
 .codex-user-input-instructions {
   display: block;
   margin: 3px 0 5px;
@@ -416,12 +427,16 @@ body.chat-only #codex-chat {
 }
 
 .codex-user-input-form input[type="text"],
-.codex-user-input-form input[type="password"] {
+.codex-user-input-form input[type="password"],
+.codex-user-input-form textarea {
   box-sizing: border-box;
   width: 100%;
   padding: 3px 5px;
   border: 1px solid #ffffff88;
   border-radius: 4px;
+  background: #00000099;
+  color: #fff;
+  resize: vertical;
 }
 
 .codex-user-input-form button {
@@ -434,6 +449,11 @@ body.chat-only #codex-chat {
   background: #2458a8;
   color: #fff;
   cursor: pointer;
+}
+
+.codex-user-input-form button + button {
+  margin-left: 4px;
+  background: #555;
 }
 
 .codex-plan-implementation-prompt {
@@ -799,6 +819,15 @@ body.chat-only #codex-chat {
   border-color: #ffffff55;
 }
 
+.codex-activity-review {
+  border-color: #ffb347;
+  background: #2b1d08cc;
+}
+
+.codex-activity-review .codex-activity-details-block summary {
+  color: #ffcf7a;
+}
+
 .codex-activity-output {
   font-family: ui-monospace, monospace;
 }
@@ -1067,11 +1096,12 @@ body.chat-only #codex-chat {
   left: 0;
   z-index: 5;
   max-height: 180px;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 4px;
   border: 1px solid #ffffff55;
   border-radius: 8px;
-  background: #111d;
+  background: #111;
   box-shadow: 0 4px 16px #0008;
 }
 
@@ -1080,6 +1110,9 @@ body.chat-only #codex-chat {
 }
 
 .codex-file-suggestion {
+  position: static;
+  align-self: stretch;
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px;
   align-items: center;
@@ -1122,6 +1155,24 @@ body.chat-only #codex-chat {
 
 .codex-file-suggestion[aria-selected="true"],
 .codex-file-suggestion:hover {
+  background: #d97706e6;
+}
+
+.codex-user-input-form .codex-file-suggestion {
+  position: static;
+  flex: none;
+  margin-left: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+}
+
+.codex-review-prompt .codex-file-suggestion {
+  background: transparent;
+}
+
+.codex-review-prompt .codex-file-suggestion[aria-selected="true"],
+.codex-review-prompt .codex-file-suggestion:hover {
   background: #d97706e6;
 }
 

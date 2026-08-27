@@ -4,6 +4,7 @@ const slashCommands = [
   { command: "/plan", description: "Switch to Plan mode" },
   { command: "/default", description: "Switch to Default mode" },
   { command: "/new", description: "Start a new Codex session" },
+  { command: "/review", description: "Review current changes" },
 ];
 
 export class CodexRenderer {
@@ -16,6 +17,7 @@ export class CodexRenderer {
   private selectedMessageIndex = -1;
   private readonly rateLimit: HTMLElement;
   private readonly fileSuggestions: HTMLElement;
+  private suggestionInput: HTMLTextAreaElement;
   private fileSearchSerial = 0;
   private fileSuggestionResults: FuzzyFileSearchResult[] = [];
   private slashCommandResults: typeof slashCommands = [];
@@ -27,6 +29,7 @@ export class CodexRenderer {
   private userInputAnswers: Record<string, string[]> = {};
   private readonly dismissedPlanConfirmations = new Set<string>();
   private activePlanConfirmation: { key: string; planText: string } | undefined;
+  private reviewPromptOpen = false;
   private renderedHistoryStructureKey = "";
   private renderedPlanDetails = new Map<string, string>();
   private planRenderTimer: number | undefined;
@@ -59,6 +62,7 @@ export class CodexRenderer {
     this.settings = settings;
     this.rateLimit = rateLimit ?? document.createElement("div");
     this.fileSuggestions = fileSuggestions ?? document.createElement("div");
+    this.suggestionInput = input;
     this.renderWorkingStatus();
     sessionSelect.addEventListener("change", () => {
       if (sessionSelect.value)
@@ -84,8 +88,9 @@ export class CodexRenderer {
     chat.addEventListener("wheel", (event) => event.stopPropagation());
     form.addEventListener("submit", (event) => void this.submit(event));
     input.addEventListener("input", () => {
+      this.suggestionInput = input;
       this.resizeInput();
-      void this.updateSuggestions();
+      void this.updateSuggestions(input);
     });
     input.addEventListener("keydown", (event) =>
       this.handleInputKeydown(event),
@@ -257,7 +262,8 @@ export class CodexRenderer {
     this.form.hidden = Boolean(
       next.codexPendingUserInput ||
       next.codexPendingApproval ||
-      this.activePlanConfirmation,
+      this.activePlanConfirmation ||
+      this.reviewPromptOpen,
     );
     if (this.modeToggle) {
       const plan = next.codexCollaborationMode === "plan";
@@ -293,6 +299,18 @@ export class CodexRenderer {
     }
     const prompt = this.input.value.trim();
     if (!prompt) return;
+    if (/^\/review$/i.test(prompt)) {
+      if (this.settings.codexStatus !== "idle" || !this.settings.codexThreadId) {
+        return;
+      }
+      this.input.value = "";
+      this.hideFileSuggestions();
+      this.resizeInput();
+      this.reviewPromptOpen = true;
+      this.form.hidden = true;
+      this.renderUserInput(true);
+      return;
+    }
     const keepInputFocused = this.webChat;
     if (keepInputFocused) this.input.focus();
     const next = await window.peskApi.submitCodexPrompt(prompt);
@@ -314,13 +332,17 @@ export class CodexRenderer {
     const pendingApproval = this.settings.codexPendingApproval;
     const planConfirmation = this.activePlanConfirmation;
     if (!container) return;
-    if (!pending && !pendingApproval && !planConfirmation) {
+    if (!pending && !pendingApproval && !planConfirmation && !this.reviewPromptOpen) {
       container.replaceChildren();
       container.hidden = true;
       this.renderedUserInputRequestId = undefined;
       this.activeUserInputQuestionId = undefined;
       this.userInputQuestionIndex = 0;
       this.userInputAnswers = {};
+      return;
+    }
+    if (!pending && !pendingApproval && !planConfirmation && this.reviewPromptOpen) {
+      this.renderReviewPrompt(force);
       return;
     }
     if (!pending && !pendingApproval && planConfirmation) {
@@ -570,6 +592,129 @@ export class CodexRenderer {
         if (requestChanged) {
           this.history.scrollTop = this.history.scrollHeight;
         }
+      });
+    }
+  }
+
+  private renderReviewPrompt(force: boolean): void {
+    const container = this.userInput;
+    if (!container) return;
+    if (!force && container.querySelector(".codex-review-prompt")) return;
+    container.replaceChildren();
+    container.hidden = false;
+    const title = document.createElement("strong");
+    title.textContent = "Review current changes";
+    container.append(title);
+    const instructions = document.createElement("small");
+    instructions.className = "codex-user-input-instructions";
+    instructions.textContent =
+      "Codex will use this conversation and the current project changes.";
+    container.append(instructions);
+    const form = document.createElement("form");
+    form.className = "codex-user-input-form codex-review-prompt";
+    const fieldset = document.createElement("fieldset");
+    const legend = document.createElement("legend");
+    legend.textContent = "What would you like Codex to review?";
+    fieldset.append(legend);
+    const input = document.createElement("textarea");
+    input.rows = 4;
+    input.placeholder = "For example: Check for bugs and missing tests.";
+    input.setAttribute("aria-label", "Review instructions");
+    input.addEventListener("input", () => {
+      this.suggestionInput = input;
+      void this.updateSuggestions(input, false);
+    });
+    input.addEventListener("keydown", (event) => {
+      this.suggestionInput = input;
+      if (this.handleSuggestionKeydown(event)) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.hideFileSuggestions();
+        cancel.click();
+        return;
+      }
+      if (event.key !== "Enter") return;
+      if (
+        this.webChat &&
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault();
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? start;
+        input.value = `${input.value.slice(0, start)}\n${input.value.slice(end)}`;
+        input.selectionStart = start + 1;
+        input.selectionEnd = start + 1;
+        return;
+      }
+      if (
+        event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault();
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? start;
+        input.value = `${input.value.slice(0, start)}\n${input.value.slice(end)}`;
+        input.selectionStart = start + 1;
+        input.selectionEnd = start + 1;
+        return;
+      }
+      if (
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+    const inputArea = document.createElement("div");
+    inputArea.className = "codex-review-input-area";
+    inputArea.append(input, this.fileSuggestions);
+    fieldset.append(inputArea);
+    form.append(fieldset);
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.textContent = "Submit review";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => {
+      this.reviewPromptOpen = false;
+      this.hideFileSuggestions();
+      this.form.hidden = false;
+      this.form.append(this.fileSuggestions);
+      this.renderUserInput(true);
+      this.input.focus();
+    });
+    form.append(submit, cancel);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const value = input.value.trim();
+      if (!value) {
+        input.focus();
+        return;
+      }
+      submit.disabled = true;
+      cancel.disabled = true;
+      this.reviewPromptOpen = false;
+      this.hideFileSuggestions();
+      this.form.hidden = false;
+      this.form.append(this.fileSuggestions);
+      const next = await window.peskApi.startCodexReview(value);
+      this.updateSettings(next);
+      this.input.focus();
+    });
+    container.append(form);
+    if (force) {
+      input.focus();
+      requestAnimationFrame(() => {
+        input.focus();
+        this.history.scrollTop = this.history.scrollHeight;
       });
     }
   }
@@ -961,34 +1106,40 @@ export class CodexRenderer {
     return Boolean(selection && !selection.isCollapsed && selection.toString());
   }
 
+  private handleSuggestionKeydown(event: KeyboardEvent): boolean {
+    if (!this.suggestionCount()) return false;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      const suggestionCount = this.suggestionCount();
+      this.fileSuggestionIndex =
+        (this.fileSuggestionIndex + direction + suggestionCount) %
+        suggestionCount;
+      this.renderFileSuggestions();
+      return true;
+    }
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey
+    ) {
+      event.preventDefault();
+      this.selectSuggestion(this.fileSuggestionIndex);
+      return true;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this.hideFileSuggestions();
+      return true;
+    }
+    return false;
+  }
+
   private handleInputKeydown(event: KeyboardEvent): void {
-    if (this.suggestionCount()) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        const direction = event.key === "ArrowDown" ? 1 : -1;
-        const suggestionCount = this.suggestionCount();
-        this.fileSuggestionIndex =
-          (this.fileSuggestionIndex + direction + suggestionCount) %
-          suggestionCount;
-        this.renderFileSuggestions();
-        return;
-      }
-      if (
-        event.key === "Enter" &&
-        !event.shiftKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.metaKey
-      ) {
-        event.preventDefault();
-        this.selectSuggestion(this.fileSuggestionIndex);
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        this.hideFileSuggestions();
-        return;
-      }
+    if (this.handleSuggestionKeydown(event)) {
+      return;
     }
     if (
       event.key.toLowerCase() === "c" &&
@@ -1004,6 +1155,22 @@ export class CodexRenderer {
       return;
     }
     if (event.key !== "Enter") return;
+    if (
+      this.webChat &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey
+    ) {
+      event.preventDefault();
+      const start = this.input.selectionStart;
+      const end = this.input.selectionEnd;
+      this.input.value = `${this.input.value.slice(0, start)}\n${this.input.value.slice(end)}`;
+      this.input.selectionStart = start + 1;
+      this.input.selectionEnd = start + 1;
+      this.resizeInput();
+      return;
+    }
     if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
       event.preventDefault();
       const start = this.input.selectionStart;
@@ -1032,11 +1199,15 @@ export class CodexRenderer {
     }
   }
 
-  private async updateSuggestions(): Promise<void> {
-    const cursor = this.input.selectionStart ?? this.input.value.length;
-    const beforeCursor = this.input.value.slice(0, cursor);
+  private async updateSuggestions(
+    input: HTMLTextAreaElement = this.suggestionInput,
+    allowCommands = true,
+  ): Promise<void> {
+    this.suggestionInput = input;
+    const cursor = input.selectionStart ?? input.value.length;
+    const beforeCursor = input.value.slice(0, cursor);
     const commandMatch = beforeCursor.match(/^\/([^\s]*)$/);
-    if (commandMatch) {
+    if (allowCommands && commandMatch) {
       const query = commandMatch[1].toLowerCase();
       this.fileSearchSerial += 1;
       this.suggestionKind = "command";
@@ -1098,7 +1269,7 @@ export class CodexRenderer {
         button.addEventListener("click", () => this.selectSuggestion(index));
         this.fileSuggestions.append(button);
         if (index === this.fileSuggestionIndex) {
-          button.scrollIntoView?.({ block: "nearest" });
+          this.scrollSuggestionIntoView(button);
         }
       });
       return;
@@ -1132,40 +1303,55 @@ export class CodexRenderer {
       button.addEventListener("click", () => this.selectSuggestion(index));
       this.fileSuggestions.append(button);
       if (index === this.fileSuggestionIndex) {
-        button.scrollIntoView?.({ block: "nearest" });
+        this.scrollSuggestionIntoView(button);
       }
     });
   }
 
+  private scrollSuggestionIntoView(button: HTMLElement): void {
+    button.scrollIntoView?.({ block: "nearest" });
+    const top = button.offsetTop;
+    const bottom = top + button.offsetHeight;
+    if (top < this.fileSuggestions.scrollTop) {
+      this.fileSuggestions.scrollTop = top;
+    } else if (
+      bottom >
+      this.fileSuggestions.scrollTop + this.fileSuggestions.clientHeight
+    ) {
+      this.fileSuggestions.scrollTop = bottom - this.fileSuggestions.clientHeight;
+    }
+  }
+
   private selectSuggestion(index: number): void {
+    const input = this.suggestionInput;
     if (this.suggestionKind === "command") {
       const result = this.slashCommandResults[index];
       if (!result) return;
-      this.input.value = `${result.command} `;
-      this.input.selectionStart = this.input.value.length;
-      this.input.selectionEnd = this.input.value.length;
+      input.value = `${result.command} `;
+      input.selectionStart = input.value.length;
+      input.selectionEnd = input.value.length;
       this.hideFileSuggestions();
-      this.resizeInput();
-      this.input.focus();
+      if (input === this.input) this.resizeInput();
+      input.focus();
       return;
     }
     const result = this.fileSuggestionResults[index];
     if (!result) return;
-    const cursor = this.input.selectionStart ?? this.input.value.length;
-    const beforeCursor = this.input.value.slice(0, cursor);
+    const cursor = input.selectionStart ?? input.value.length;
+    const beforeCursor = input.value.slice(0, cursor);
     const match = beforeCursor.match(/(?:^|\s)@([^\s]*)$/);
     if (!match) {
       this.hideFileSuggestions();
       return;
     }
     const tokenStart = cursor - match[1].length - 1;
-    this.input.value = `${this.input.value.slice(0, tokenStart)}${result.path} ${this.input.value.slice(cursor)}`;
+    input.value = `${input.value.slice(0, tokenStart)}${result.path} ${input.value.slice(cursor)}`;
     const nextCursor = tokenStart + result.path.length + 1;
-    this.input.selectionStart = nextCursor;
-    this.input.selectionEnd = nextCursor;
+    input.selectionStart = nextCursor;
+    input.selectionEnd = nextCursor;
     this.hideFileSuggestions();
-    this.resizeInput();
-    this.input.focus();
+    if (input === this.input) this.resizeInput();
+    input.focus();
   }
 
   private hideFileSuggestions(): void {
@@ -1250,6 +1436,9 @@ export class CodexRenderer {
       bubble.className = `codex-message codex-message-${message.role}`;
       if (message.activity) {
         bubble.classList.add(`codex-activity-${message.activity.kind}`);
+        if (isReviewActivity(message.activity)) {
+          bubble.classList.add("codex-activity-review");
+        }
         if (message.activity.output)
           bubble.classList.add("codex-activity-output");
       }
@@ -1441,7 +1630,8 @@ export class CodexRenderer {
       const details = document.createElement("details");
       details.className = "codex-activity-details-block";
       details.dataset.activityKey = activityKey;
-      details.open = openActivityKeys.has(activityKey);
+      details.open =
+        openActivityKeys.has(activityKey) || isReviewActivity(message.activity);
       const summary = document.createElement("summary");
       const label = activityLabel(message.activity.kind);
       summary.textContent = `${label} · ${message.activity.status ?? "in progress"}`;
@@ -1718,6 +1908,15 @@ function activityLabel(
     default:
       return kind === "fileChange" ? "File change" : "Command";
   }
+}
+
+function isReviewActivity(
+  activity: NonNullable<PeskSettings["codexHistory"][number]["activity"]>,
+): boolean {
+  return (
+    activity.label === "enteredReviewMode" ||
+    activity.label === "exitedReviewMode"
+  );
 }
 
 function formatElapsed(milliseconds: number): string {

@@ -22,6 +22,7 @@ import type {
   ThreadTokenUsage,
   TokenUsageBreakdown,
   TurnStartResponse,
+  ReviewStartResponse,
   ToolRequestUserInputParams,
   GetAccountRateLimitsResponse,
   RateLimitSnapshot,
@@ -32,6 +33,11 @@ import type {
 } from "./codex-schema";
 
 const MAX_HISTORY = 20;
+
+// Temporarily disabled because reconciling the full thread history on idle is
+// too heavy during normal use. Re-enable after a lighter reconciliation path
+// is available.
+const RECONCILE_ON_IDLE = false;
 
 const STEER_INSTRUCTIONS = `Treat this message as a steer to the currently active request.
 
@@ -235,9 +241,9 @@ type InitializeRequest = RequestOf<"initialize">;
 type ThreadStartRequest = RequestOf<"thread/start">;
 type ThreadResumeRequest = RequestOf<"thread/resume">;
 type ThreadListRequest = RequestOf<"thread/list">;
-type ThreadLoadedListRequest = RequestOf<"thread/loaded/list">;
 type ThreadReadRequest = RequestOf<"thread/read">;
 type TurnStartRequest = RequestOf<"turn/start">;
+type ReviewStartRequest = RequestOf<"review/start">;
 type PlanTurnStartParams = TurnStartRequest["params"] & {
   collaborationMode?: CollaborationMode | null;
 };
@@ -328,6 +334,7 @@ export class CodexController {
   private pendingUserInput: CodexPendingUserInput | undefined;
   private pendingApproval: CodexPendingApproval | undefined;
   private queuedSubmissions: CodexQueuedSubmission[] = [];
+  private reviewInProgress = false;
   /** Prevents duplicate initial rate-limit reads from multiple renderer windows. */
   private rateLimitsReadPending = false;
   /** Index of the assistant message currently receiving deltas. */
@@ -542,6 +549,45 @@ export class CodexController {
         turnId: this.activeTurnId,
       },
     } satisfies TurnInterruptRequest);
+    return true;
+  }
+
+  /** Starts an inline custom review on the selected thread. */
+  startReview(instructions: string): boolean {
+    const value = instructions.trim();
+    if (
+      !value ||
+      !this.initialized ||
+      this.socket?.readyState !== WebSocket.OPEN ||
+      !this.threadId ||
+      this.status !== "idle"
+    ) {
+      return false;
+    }
+    this.reviewInProgress = true;
+    this.workingSince = undefined;
+    this.workedElapsed = undefined;
+    this.interrupted = false;
+    this.needsReconcile = true;
+    this.ensureWorking();
+    const id = ++this.nextId;
+    this.setRequest<ReviewStartResponse>(id, (message) => {
+      this.activeTurnId = message.result?.turn.id;
+      if (message.error) {
+        this.reviewInProgress = false;
+        this.setStatus("idle");
+      }
+    });
+    this.send({
+      method: "review/start",
+      id,
+      params: {
+        threadId: this.threadId,
+        delivery: "inline",
+        target: { type: "custom", instructions: value },
+      },
+    } satisfies ReviewStartRequest);
+    this.setStatus("working");
     return true;
   }
 
@@ -922,6 +968,7 @@ export class CodexController {
       this.connected = false;
       this.threadId = undefined;
       this.activeTurnId = undefined;
+      this.reviewInProgress = false;
       this.queuedSubmissions = [];
       this.threads = [];
       this.pendingThreadStarts = 0;
@@ -1007,6 +1054,7 @@ export class CodexController {
     }
     this.threadId = id;
     this.activeTurnId = undefined;
+    this.reviewInProgress = false;
     this.queuedSubmissions = [];
     this.tokenUsage = undefined;
     if (!preserveHistory) this.history = [];
@@ -1102,6 +1150,19 @@ export class CodexController {
       if (restoredTokenUsage) {
         this.tokenUsage = restoredTokenUsage;
       }
+      const reviewPromptTexts = new Set<string>();
+      for (const turn of turns) {
+        for (const item of this.records(turn.items)) {
+          if (
+            (item.type === "enteredReviewMode" ||
+              item.type === "exitedReviewMode") &&
+            typeof item.review === "string" &&
+            item.review.trim()
+          ) {
+            reviewPromptTexts.add(item.review.trim());
+          }
+        }
+      }
       const restored: CodexMessage[] = [];
       for (const turn of turns) {
         const timestamp =
@@ -1110,10 +1171,26 @@ export class CodexController {
               ? turn.createdAt * 1000
               : turn.createdAt
             : Date.now();
-        for (const item of this.records(turn.items)) {
+        const items = this.records(turn.items);
+        const isReviewTurn = items.some(
+          (item) =>
+            item.type === "enteredReviewMode" ||
+            item.type === "exitedReviewMode",
+        );
+        const orderedItems = isReviewTurn
+          ? [
+            ...items.filter((item) => item.type === "userMessage"),
+            ...items.filter((item) => item.type !== "userMessage"),
+          ]
+          : items;
+        for (const item of orderedItems) {
           if (item.type === "userMessage") {
             for (const content of this.records(item.content)) {
-              if (typeof content.text === "string" && content.text.trim()) {
+              if (
+                typeof content.text === "string" &&
+                content.text.trim() &&
+                !reviewPromptTexts.has(content.text.trim())
+              ) {
                 restored.push({
                   role: "user",
                   text: content.text.trim(),
@@ -1136,6 +1213,7 @@ export class CodexController {
                 role: "assistant",
                 text: text.trim(),
                 timestamp,
+                itemId: stringValue(item.id),
               });
             }
           }
@@ -1311,9 +1389,11 @@ export class CodexController {
     const item = isRecord(message.params.item)
       ? (message.params.item as Record<string, unknown>)
       : undefined;
-    for (const content of this.records(item?.content)) {
-      if (typeof content.text === "string" && !this.consume(content.text)) {
-        this.insertUser(content.text, message.params.turnId);
+    if (!(this.reviewInProgress && item?.type === "userMessage")) {
+      for (const content of this.records(item?.content)) {
+        if (typeof content.text === "string" && !this.consume(content.text)) {
+          this.insertUser(content.text, message.params.turnId);
+        }
       }
     }
     if (item && this.isActivityItem(item)) {
@@ -1333,6 +1413,7 @@ export class CodexController {
       this.pendingUserInput = undefined;
     }
     this.activeTurnId = undefined;
+    this.reviewInProgress = false;
     this.interrupted = message.params.turn?.status === "interrupted";
     if (this.threadId === message.params.threadId) {
       this.refreshQueue(message.params.threadId);
@@ -1678,6 +1759,7 @@ export class CodexController {
         role: "assistant",
         text: value,
         timestamp: Date.now(),
+        itemId,
       });
     }
     this.streamingAssistant = -1;
@@ -1763,6 +1845,7 @@ export class CodexController {
     timestamp: number,
   ): CodexMessage {
     const type = typeof item.type === "string" ? item.type : "unknown";
+    const isReviewCompletion = type === "exitedReviewMode";
     const kind: NonNullable<CodexMessage["activity"]>["kind"] =
       type === "commandExecution"
         ? "command"
@@ -1804,14 +1887,17 @@ export class CodexController {
             : undefined,
       command: typeof item.command === "string" ? item.command : undefined,
       cwd: typeof item.cwd === "string" ? item.cwd : undefined,
-      summary: firstText(item, ["query", "title", "name", "url", "message"]),
+      summary:
+        firstText(item, ["query", "title", "name", "url", "message"]) ??
+        (isReviewCompletion ? "Review completed" : undefined),
       output:
         typeof item.aggregatedOutput === "string"
           ? item.aggregatedOutput
           : undefined,
       changes,
-      details:
-        kind === "plan"
+      details: isReviewCompletion
+        ? undefined
+        : kind === "plan"
           ? typeof item.text === "string"
             ? item.text
             : undefined
@@ -2153,6 +2239,8 @@ export function shouldReconcileOnIdle(
   needsReconcile: boolean,
 ): boolean {
   return (
-    status?.type === "idle" && (previousStatus === "working" || needsReconcile)
+    RECONCILE_ON_IDLE &&
+    status?.type === "idle" &&
+    (previousStatus === "working" || needsReconcile)
   );
 }

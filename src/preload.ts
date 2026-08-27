@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld("peskApi", {
   ) => ipcRenderer.send("respond-codex-permission", requestId, optionId),
   submitCodexPrompt: (prompt: string) =>
     ipcRenderer.invoke("submit-codex-prompt", prompt),
+  startCodexReview: (instructions: string) =>
+    ipcRenderer.invoke("start-codex-review", instructions),
   fuzzyFileSearch: (query: string, roots: string[]) =>
     ipcRenderer.invoke("fuzzy-file-search", query, roots),
   getPresets: () => ipcRenderer.invoke("get-presets"),

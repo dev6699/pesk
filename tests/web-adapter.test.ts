@@ -2,18 +2,29 @@
 /// <reference types="jest" />
 /// <reference path="../src/renderer/types.d.ts" />
 
+type FakeWebSocketEvent = {
+  data?: unknown;
+  [key: string]: unknown;
+};
+
 class FakeWebSocket {
   static readonly OPEN = 1;
   static instances: FakeWebSocket[] = [];
   readyState = FakeWebSocket.OPEN;
   readonly sent: string[] = [];
-  private readonly listeners = new Map<string, Array<(event: any) => void>>();
+  private readonly listeners = new Map<
+    string,
+    Array<(event: FakeWebSocketEvent) => void>
+  >();
 
   constructor(readonly url: string) {
     FakeWebSocket.instances.push(this);
   }
 
-  addEventListener(event: string, callback: (event: any) => void): void {
+  addEventListener(
+    event: string,
+    callback: (event: FakeWebSocketEvent) => void,
+  ): void {
     this.listeners.set(event, [...(this.listeners.get(event) ?? []), callback]);
   }
 
@@ -22,7 +33,9 @@ class FakeWebSocket {
   }
 
   emit(event: string, value: unknown = {}): void {
-    for (const callback of this.listeners.get(event) ?? []) callback(value);
+    for (const callback of this.listeners.get(event) ?? []) {
+      callback((value ?? {}) as FakeWebSocketEvent);
+    }
   }
 }
 
@@ -40,6 +53,7 @@ function state(): PeskSettings {
     codexConnected: true,
     codexThreads: [],
     codexHistory: [],
+    codexQueuedSubmissions: [],
     codexCollaborationMode: "default",
   };
 }
@@ -72,8 +86,8 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.resetModules();
-  delete (window as Window & { Notification?: unknown }).Notification;
-  delete (navigator as Navigator & { serviceWorker?: unknown }).serviceWorker;
+  delete (window as { Notification?: unknown }).Notification;
+  delete (navigator as { serviceWorker?: unknown }).serviceWorker;
 });
 
 test("authenticates and publishes the initial state", async () => {
@@ -168,6 +182,23 @@ test("round-trips web commands and returns the server result", async () => {
     }),
   });
   await expect(plan).resolves.toEqual(next);
+
+  const review = api.startCodexReview("Review styles.css changes");
+  const reviewRequest = JSON.parse(socket.sent.at(-1) as string);
+  expect(reviewRequest).toMatchObject({
+    type: "startReview",
+    requestId: 3,
+    instructions: "Review styles.css changes",
+  });
+  socket.emit("message", {
+    data: JSON.stringify({
+      type: "commandResult",
+      requestId: 3,
+      ok: true,
+      state: next,
+    }),
+  });
+  await expect(review).resolves.toEqual(next);
 });
 
 test("reconnects after a transient socket close", () => {
@@ -211,5 +242,7 @@ test("prompts when notification permission is undecided", () => {
   expect(document.getElementById("web-notification-status")?.textContent).toBe(
     "Web Push not configured",
   );
-  expect(document.getElementById("web-notification-status")?.hasAttribute("hidden")).toBe(false);
+  expect(
+    document.getElementById("web-notification-status")?.hasAttribute("hidden"),
+  ).toBe(false);
 });

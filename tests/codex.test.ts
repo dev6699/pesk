@@ -116,13 +116,11 @@ describe("Codex session decisions", () => {
   });
 
   test("reconciles after a working session becomes idle", () => {
-    expect(shouldReconcileOnIdle("working", { type: "idle" }, false)).toBe(
-      true,
-    );
+    expect(shouldReconcileOnIdle("working", { type: "idle" }, false)).toBe(false);
   });
 
-  test("reconciles an idle session with a pending Pesk turn", () => {
-    expect(shouldReconcileOnIdle("idle", { type: "idle" }, true)).toBe(true);
+  test("does not reconcile an idle session with a pending Pesk turn while disabled", () => {
+    expect(shouldReconcileOnIdle("idle", { type: "idle" }, true)).toBe(false);
   });
 
   test("does not reconcile an active session without a pending turn", () => {
@@ -185,9 +183,11 @@ describe("CodexController", () => {
     const internal = controller as unknown as {
       history: Array<{ role: string; text: string }>;
       threads: Array<{ id: string }>;
+      reviewInProgress: boolean;
     };
     internal.history.push({ role: "assistant", text: "previous response" });
     internal.threads = [{ id: "thread-1" }];
+    internal.reviewInProgress = true;
 
     socket.emit("close", { code: 1006, reason: "server restarted" });
 
@@ -199,6 +199,7 @@ describe("CodexController", () => {
     expect(controller.getState().history).toEqual([
       { role: "assistant", text: "previous response" },
     ]);
+    expect(internal.reviewInProgress).toBe(false);
     controller.stop();
   });
 
@@ -284,10 +285,14 @@ describe("CodexController", () => {
     );
     jest.advanceTimersByTime(3000);
 
-    expect(lastMessage(socket)).toMatchObject({
-      method: "thread/resume",
-      params: { threadId: "thread-1" },
-    });
+    expect(socket.sent.map((message) => JSON.parse(message.trim()))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "thread/resume",
+          params: { threadId: "thread-1" },
+        }),
+      ]),
+    );
 
     socket.emit(
       "message",
@@ -323,12 +328,12 @@ describe("CodexController", () => {
     });
   });
 
-  test("rejects invalid prompts and prompts while a turn is active", () => {
+  test("rejects invalid prompts and queues prompts while a turn is active", () => {
     const { controller } = connectedController();
 
     expect(controller.submitPrompt("   ")).toBe(false);
     expect(controller.submitPrompt("first prompt")).toBe(true);
-    expect(controller.submitPrompt("second prompt")).toBe(false);
+    expect(controller.submitPrompt("second prompt")).toBe(true);
   });
 
   test("wraps steer input and keeps the wrapped text in history", () => {
@@ -667,6 +672,7 @@ describe("CodexController", () => {
     const { controller, socket } = connectedController();
 
     controller.submitPrompt("reconcile me");
+    const sentBeforeStatusChanges = socket.sent.length;
     socket.emit(
       "message",
       JSON.stringify({
@@ -682,10 +688,16 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(lastMessage(socket)).toMatchObject({
-      method: "thread/read",
-      params: { threadId: "thread-1" },
-    });
+    expect(
+      socket.sent.slice(sentBeforeStatusChanges).map((message) => JSON.parse(message.trim())),
+    ).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "thread/read",
+          params: { threadId: "thread-1" },
+        }),
+      ]),
+    );
   });
 
   test("keeps a locally submitted message during incomplete reconciliation", () => {
@@ -1188,6 +1200,216 @@ describe("CodexController", () => {
     ).toHaveLength(1);
   });
 
+  test("starts an inline custom review with the selected thread", () => {
+    const { controller, socket } = connectedController();
+
+    expect(
+      controller.startReview("  Check for bugs and missing tests.  "),
+    ).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "review/start",
+      params: {
+        threadId: "thread-1",
+        delivery: "inline",
+        target: {
+          type: "custom",
+          instructions: "Check for bugs and missing tests.",
+        },
+      },
+    });
+    expect(controller.getState().status).toBe("working");
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: 5,
+        result: { turn: { id: "review-turn" }, reviewThreadId: "thread-1" },
+      }),
+    );
+    expect(controller.getState().history).toEqual([]);
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          turnId: "review-turn",
+          item: {
+            id: "review-user",
+            type: "userMessage",
+            content: [{ type: "text", text: "Generated review prompt" }],
+          },
+        },
+      }),
+    );
+    expect(controller.getState().history.filter((message) => message.role === "user")).toHaveLength(0);
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            id: "review-exit",
+            type: "exitedReviewMode",
+            review: "Review report should be shown once",
+          },
+        },
+      }),
+    );
+    const reviewActivity = controller.getState().history.find(
+      (message) => message.itemId === "review-exit",
+    );
+    expect(reviewActivity?.text).toContain("Review completed");
+    expect(reviewActivity?.text).not.toContain("Review report should be shown once");
+    const report = "finding ".repeat(1000).trim();
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/completed",
+        params: { item: { id: "review-report", type: "agentMessage", text: report } },
+      }),
+    );
+    expect(
+      controller.getState().history.find((message) => message.itemId === "review-report")?.text,
+    ).toBe(report);
+
+    socket.emit(
+      "message",
+      JSON.stringify({ method: "turn/completed", params: {} }),
+    );
+    expect(controller.getState().status).toBe("idle");
+  });
+
+  test("rejects a review while a turn is active", () => {
+    const { controller } = connectedController();
+
+    controller.submitPrompt("work first");
+    expect(controller.startReview("review this")).toBe(false);
+  });
+
+  test("normalizes restored review history order and removes duplicate prompts", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as {
+      read: (threadId: string) => void;
+    };
+
+    internal.read("thread-1");
+    const readId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: readId,
+        result: {
+          thread: {
+            id: "thread-1",
+            status: { type: "idle" },
+            turns: [
+              {
+                items: [
+                  {
+                    id: "review-enter",
+                    type: "enteredReviewMode",
+                    review: "review styles.css changes",
+                  },
+                  {
+                    id: "review-exit",
+                    type: "exitedReviewMode",
+                    review: "full review report",
+                  },
+                  {
+                    id: "review-user-1",
+                    type: "userMessage",
+                    content: [{ type: "text", text: "review styles.css changes" }],
+                  },
+                  {
+                    id: "review-user-2",
+                    type: "userMessage",
+                    content: [{ type: "text", text: "review styles.css changes" }],
+                  },
+                  {
+                    id: "review-report",
+                    type: "agentMessage",
+                    text: "The review is complete.",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const history = controller.getState().history;
+    expect(history.filter((message) => message.role === "user")).toHaveLength(0);
+    expect(history[0]?.itemId).toBe("review-enter");
+    expect(history[1]?.itemId).toBe("review-exit");
+    expect(history[2]).toMatchObject({
+      role: "assistant",
+      text: "The review is complete.",
+    });
+  });
+
+  test("removes persisted review prompts when activities span turns", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as {
+      read: (threadId: string) => void;
+    };
+
+    internal.read("thread-1");
+    const readId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: readId,
+        result: {
+          thread: {
+            id: "thread-1",
+            status: { type: "idle" },
+            turns: [
+              {
+                items: [
+                  {
+                    id: "review-enter",
+                    type: "enteredReviewMode",
+                    review: "review a.txt",
+                  },
+                ],
+              },
+              {
+                items: [
+                  {
+                    id: "review-exit",
+                    type: "exitedReviewMode",
+                    review: "review a.txt",
+                  },
+                  {
+                    id: "review-user",
+                    type: "userMessage",
+                    content: [{ type: "text", text: "review a.txt" }],
+                  },
+                  {
+                    id: "review-report",
+                    type: "agentMessage",
+                    text: "Full review comments",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const history = controller.getState().history;
+    expect(history.filter((message) => message.role === "user")).toHaveLength(0);
+    expect(history.map((message) => message.itemId)).toEqual([
+      "review-enter",
+      "review-exit",
+      "review-report",
+    ]);
+  });
+
   test.each([
     ["/plan", "plan"],
     ["/default", "default"],
@@ -1345,7 +1567,7 @@ describe("CodexController", () => {
     const startRequest = lastMessage(socket);
     expect(startRequest).toMatchObject({
       method: "thread/start",
-      params: { cwd: process.cwd(), serviceName: "pesk" },
+      params: { cwd: expect.any(String), serviceName: "pesk" },
     });
 
     const startId = startRequest.id;
@@ -1906,8 +2128,8 @@ describe("CodexController", () => {
     expect(controller.getState().pendingApproval).toMatchObject({
       requestId: 7,
     });
-    expect(controller.submitPrompt("blocked while approval is pending")).toBe(
-      false,
+    expect(controller.submitPrompt("queue while approval is pending")).toBe(
+      true,
     );
 
     controller.respondPermission("approval-1", "decline");

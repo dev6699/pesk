@@ -87,6 +87,7 @@ function makeRenderer(
     implementCodexPlan: jest.fn(async () => settings),
     interruptCodexTurn: jest.fn(async () => true),
     submitCodexPrompt: jest.fn(async () => settings),
+    startCodexReview: jest.fn(async () => settings),
     fuzzyFileSearch: jest.fn(async (): Promise<FuzzyFileSearchResult[]> => [
       {
         root: "/tmp/project",
@@ -931,6 +932,7 @@ test("shows and selects slash commands", () => {
     "/planSwitch to Plan mode",
     "/defaultSwitch to Default mode",
     "/newStart a new Codex session",
+    "/reviewReview current changes",
   ]);
 
   elements.input.dispatchEvent(
@@ -944,7 +946,158 @@ test("shows and selects slash commands", () => {
   expect(elements.suggestions.hidden).toBe(true);
 });
 
-test("submits a prompt, rejects empty or working input, and handles input shortcuts", async () => {
+test("opens and submits the custom review form", async () => {
+  const next = { ...defaultSettings(), codexThreadId: "thread-review" };
+  const { elements } = makeRenderer(next);
+  const startReview = window.peskApi.startCodexReview as jest.Mock;
+
+  elements.input.value = "/review";
+  elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+
+  const reviewForm = elements.userInput.querySelector("form");
+  expect(reviewForm).not.toBeNull();
+  expect(elements.form.hidden).toBe(true);
+  expect(elements.userInput.textContent).toContain("What would you like Codex to review?");
+  const reviewInput = reviewForm?.querySelector("textarea");
+  expect(reviewInput).not.toBeNull();
+  reviewInput!.value = "@cod";
+  reviewInput!.selectionStart = reviewInput!.value.length;
+  reviewInput!.selectionEnd = reviewInput!.value.length;
+  reviewInput!.dispatchEvent(new Event("input"));
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(elements.suggestions.hidden).toBe(false);
+  reviewInput!.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", cancelable: true }),
+  );
+  expect(reviewInput!.value).toBe("src/codex.ts ");
+  reviewInput!.value = "Check the changes for bugs and missing tests.";
+  reviewForm!.dispatchEvent(new Event("submit", { cancelable: true }));
+  await Promise.resolve();
+
+  expect(startReview).toHaveBeenCalledWith(
+    "Check the changes for bugs and missing tests.",
+  );
+  expect(elements.userInput.hidden).toBe(true);
+  expect(elements.form.hidden).toBe(false);
+});
+
+test("does not open the review form without a selected thread", () => {
+  const { renderer, elements } = makeRenderer(defaultSettings());
+  renderer.updateSettings(defaultSettings());
+
+  elements.input.value = "/review";
+  elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+
+  expect(elements.userInput.hidden).toBe(true);
+  expect(elements.form.hidden).toBe(false);
+  expect(elements.input.value).toBe("/review");
+});
+
+test("cancels the custom review form and restores chat input", () => {
+  const { elements } = makeRenderer({
+    ...defaultSettings(),
+    codexThreadId: "thread-review",
+  });
+
+  elements.input.value = "/review";
+  elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+  const reviewForm = elements.userInput.querySelector("form");
+  reviewForm?.querySelector<HTMLButtonElement>("button[type='button']")?.click();
+
+  expect(elements.userInput.hidden).toBe(true);
+  expect(elements.form.hidden).toBe(false);
+});
+
+test("supports keyboard controls in the custom review form", async () => {
+  const next = { ...defaultSettings(), codexThreadId: "thread-review" };
+  const { elements } = makeRenderer(next);
+  const startReview = window.peskApi.startCodexReview as jest.Mock;
+
+  elements.input.value = "/review";
+  elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+  const reviewForm = elements.userInput.querySelector("form")!;
+  const reviewInput = reviewForm.querySelector("textarea")!;
+  reviewInput.value = "line";
+  reviewInput.selectionStart = 4;
+  reviewInput.selectionEnd = 4;
+  const newline = new KeyboardEvent("keydown", {
+    key: "Enter",
+    ctrlKey: true,
+    cancelable: true,
+  });
+  reviewInput.dispatchEvent(newline);
+  expect(newline.defaultPrevented).toBe(true);
+  expect(reviewInput.value).toBe("line\n");
+
+  reviewInput.value = "Submit this review";
+  const submit = new KeyboardEvent("keydown", {
+    key: "Enter",
+    cancelable: true,
+  });
+  reviewInput.dispatchEvent(submit);
+  await Promise.resolve();
+  expect(submit.defaultPrevented).toBe(true);
+  expect(startReview).toHaveBeenCalledWith("Submit this review");
+
+  elements.input.value = "/review";
+  elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+  const secondInput = elements.userInput.querySelector("textarea")!;
+  const escape = new KeyboardEvent("keydown", {
+    key: "Escape",
+    cancelable: true,
+  });
+  secondInput.dispatchEvent(escape);
+  expect(escape.defaultPrevented).toBe(true);
+  expect(elements.userInput.hidden).toBe(true);
+});
+
+test("keeps Enter as a newline in the web review textarea", () => {
+  const next = { ...defaultSettings(), codexThreadId: "thread-review" };
+  const { elements } = makeRenderer(next, true);
+  const startReview = window.peskApi.startCodexReview as jest.Mock;
+
+  elements.input.value = "/review";
+  elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+  const reviewInput = elements.userInput.querySelector("textarea")!;
+  reviewInput.value = "line";
+  reviewInput.selectionStart = reviewInput.value.length;
+  reviewInput.selectionEnd = reviewInput.value.length;
+  const enter = new KeyboardEvent("keydown", { key: "Enter", cancelable: true });
+  reviewInput.dispatchEvent(enter);
+
+  expect(enter.defaultPrevented).toBe(true);
+  expect(reviewInput.value).toBe("line\n");
+  expect(startReview).not.toHaveBeenCalled();
+});
+
+test("styles and expands review activities by default", () => {
+  const settings = {
+    ...defaultSettings(),
+    codexThreadId: "thread-review",
+    codexHistory: [
+      {
+        role: "system" as const,
+        text: "Activity",
+        itemId: "review-enter",
+        activity: {
+          kind: "other" as const,
+          label: "enteredReviewMode",
+          summary: "review changes in codex.ts",
+        },
+      },
+    ],
+  };
+  const { renderer, elements } = makeRenderer(settings);
+
+  renderer.updateSettings(settings);
+
+  const bubble = elements.history.querySelector(".codex-message");
+  expect(bubble?.classList.contains("codex-activity-review")).toBe(true);
+  expect(bubble?.querySelector("details")?.open).toBe(true);
+});
+
+test("submits a prompt, queues while working, and handles input shortcuts", async () => {
   const next = { ...defaultSettings(), codexThreadId: "thread-2" };
   const { renderer, elements } = makeRenderer(next);
   const submit = window.peskApi.submitCodexPrompt as jest.Mock;
@@ -984,7 +1137,8 @@ test("submits a prompt, rejects empty or working input, and handles input shortc
   elements.input.value = "blocked";
   elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
   await Promise.resolve();
-  expect(submit).toHaveBeenCalledTimes(1);
+  expect(submit).toHaveBeenCalledTimes(2);
+  expect(submit).toHaveBeenLastCalledWith("blocked");
 });
 
 test("keeps web chat input focused before and after an async submission", async () => {
@@ -1008,6 +1162,26 @@ test("keeps web chat input focused before and after an async submission", async 
   await Promise.resolve();
   expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
   expect(document.activeElement).toBe(elements.input);
+});
+
+test("keeps Enter as a newline in the web chat input", async () => {
+  const next = { ...defaultSettings(), codexThreadId: "thread-web" };
+  const { elements } = makeRenderer(next, true);
+  const submit = window.peskApi.submitCodexPrompt as jest.Mock;
+
+  elements.input.value = "line";
+  elements.input.selectionStart = elements.input.value.length;
+  elements.input.selectionEnd = elements.input.value.length;
+  const enter = new KeyboardEvent("keydown", { key: "Enter", cancelable: true });
+  elements.input.dispatchEvent(enter);
+
+  expect(enter.defaultPrevented).toBe(true);
+  expect(elements.input.value).toBe("line\n");
+  expect(submit).not.toHaveBeenCalled();
+
+  elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+  await Promise.resolve();
+  expect(submit).toHaveBeenCalledWith("line");
 });
 
 test("adjusts web chat form visibility on visual viewport resize", () => {

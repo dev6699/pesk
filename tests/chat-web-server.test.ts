@@ -19,6 +19,13 @@ jest.mock("web-push", () => ({
   },
 }));
 
+jest.mock("qrcode", () => ({
+  __esModule: true,
+  default: {
+    toDataURL: jest.fn(() => Promise.resolve("data:image/png;base64,test")),
+  },
+}));
+
 const mockedWebpush = webpush as jest.Mocked<typeof webpush>;
 
 interface Response {
@@ -57,6 +64,16 @@ function json(response: Response): any {
 
 function subscription(endpoint: string): Record<string, unknown> {
   return { endpoint, keys: { p256dh: "p256dh", auth: "auth" } };
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (!condition()) {
+    if (Date.now() >= deadline) {
+      throw new Error("Timed out waiting for the WebSocket test condition");
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
 }
 
 describe("ChatWebServer", () => {
@@ -212,14 +229,14 @@ describe("ChatWebServer", () => {
     client.on("message", (data) => messages.push(data.toString()));
     await new Promise<void>((resolve) => client.once("open", resolve));
     client.send(JSON.stringify({ type: "authenticate", credential: paired.credential }));
-    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    await waitFor(() => messages.some((message) => message.includes('"type":"state"')));
     expect(JSON.parse(messages[0])).toEqual({ type: "state", state });
     client.send(JSON.stringify({ type: "command", value: 1 }));
-    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    await waitFor(() => handleCommand.mock.calls.length > 0);
     expect(handleCommand).toHaveBeenCalled();
     const reply = handleCommand.mock.calls[0][1] as (value: unknown) => void;
     reply({ type: "reply", ok: true });
-    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    await waitFor(() => messages.some((message) => message.includes('"ok":true')));
     expect(messages.some((message) => message.includes('"ok":true'))).toBe(true);
     client.close();
   });
@@ -241,10 +258,12 @@ describe("ChatWebServer", () => {
   test("immediately closes a revoked WebSocket client", async () => {
     const paired = await pair("Revoked live");
     const client = new ClientWebSocket(`ws://127.0.0.1:${port}/web-socket`);
+    const messages: string[] = [];
+    client.on("message", (data) => messages.push(data.toString()));
     await new Promise<void>((resolve) => client.once("open", resolve));
     const closed = new Promise<number>((resolve) => client.once("close", (code) => resolve(code)));
     client.send(JSON.stringify({ type: "authenticate", credential: paired.credential }));
-    await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    await waitFor(() => messages.some((message) => message.includes('"type":"state"')));
     server.revokeDevice(paired.deviceId);
     expect(await closed).toBe(1008);
   });
