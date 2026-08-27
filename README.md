@@ -49,7 +49,7 @@ flowchart LR
   Desktop --> Pet
   Desktop --> Chat
   Desktop --> Menu
-  Windows <--> Bridge
+  Windows <-->|IPC| Bridge
   Codex <-->|JSON-RPC over WebSocket| AppServer
   Browser <-->|Chat WebSocket| Web
   Web -->|Push notification| Push
