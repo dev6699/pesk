@@ -3,7 +3,12 @@ const pendingFileSearches = new Map<
   number,
   (results: FuzzyFileSearchResult[]) => void
 >();
+const pendingCommands = new Map<
+  number,
+  (result: { ok: boolean; state?: PeskSettings }) => void
+>();
 let nextFileSearchId = 0;
+let nextCommandId = 0;
 let state: PeskSettings | undefined;
 let socket: WebSocket;
 function readCredential(): string {
@@ -249,6 +254,22 @@ function connect(): void {
       );
       return;
     }
+    if (type === "commandResult") {
+      const result = message as {
+        requestId?: unknown;
+        ok?: unknown;
+        state?: PeskSettings;
+      };
+      if (typeof result.requestId !== "number") return;
+      const resolve = pendingCommands.get(result.requestId);
+      if (!resolve) return;
+      pendingCommands.delete(result.requestId);
+      resolve({
+        ok: result.ok === true,
+        state: result.state,
+      });
+      return;
+    }
     if (type !== "state") return;
     authenticated = true;
     setConnectionStatus("connected");
@@ -263,6 +284,10 @@ function connect(): void {
     if (connection !== socket) return;
     for (const resolve of pendingFileSearches.values()) resolve([]);
     pendingFileSearches.clear();
+    for (const resolve of pendingCommands.values()) {
+      resolve({ ok: false, state });
+    }
+    pendingCommands.clear();
     if (event.code === 1008) {
       clearCredential();
       setConnectionStatus("failed");
@@ -316,6 +341,20 @@ function send(type: string, data: Record<string, unknown> = {}): void {
     socket.send(JSON.stringify({ type, ...data }));
 }
 
+function sendCommand(
+  type: string,
+  data: Record<string, unknown> = {},
+): Promise<{ ok: boolean; state?: PeskSettings }> {
+  const requestId = ++nextCommandId;
+  if (socket.readyState !== WebSocket.OPEN) {
+    return Promise.resolve({ ok: false, state });
+  }
+  return new Promise((resolve) => {
+    pendingCommands.set(requestId, resolve);
+    send(type, { ...data, requestId });
+  });
+}
+
 const webApi = {
   getSettings: () => (state ? Promise.resolve(state) : initialState),
   onSettingsChanged: (callback: (settings: PeskSettings) => void) =>
@@ -325,14 +364,12 @@ const webApi = {
   selectCodexThread: (threadId: string) => send("selectThread", { threadId }),
   setCodexCollaborationMode: (mode: "default" | "plan") =>
     send("setCollaborationMode", { mode }),
-  submitCodexPrompt: async (prompt: string) => {
-    send("submitPrompt", { prompt });
-    return state!;
-  },
-  interruptCodexTurn: async () => {
-    send("interruptTurn");
-    return true;
-  },
+  submitCodexPrompt: async (prompt: string) =>
+    (await sendCommand("submitPrompt", { prompt })).state ?? state!,
+  implementCodexPlan: async (planText: string, clearContext: boolean) =>
+    (await sendCommand("implementPlan", { planText, clearContext })).state ?? state!,
+  interruptCodexTurn: async () =>
+    (await sendCommand("interruptTurn")).ok,
   respondCodexPermission: (requestId: string | number, optionId: string) =>
     send("respondPermission", { requestId, optionId }),
   respondCodexUserInput: (

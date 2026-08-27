@@ -7,6 +7,7 @@ const slashCommands = [
 ];
 
 export class CodexRenderer {
+  private readonly webChat = document.body.classList.contains("web-chat");
   private settings: PeskSettings;
   private historyInitialized = false;
   private workingTimer: number | undefined;
@@ -78,6 +79,29 @@ export class CodexRenderer {
     input.addEventListener("keydown", (event) =>
       this.handleInputKeydown(event),
     );
+    if (this.webChat) {
+      const visualViewport = window.visualViewport;
+      const keepFormVisible = (): void => {
+        if (visualViewport && Number.isFinite(visualViewport.height)) {
+          document.documentElement.style.setProperty(
+            "--web-chat-viewport-height",
+            `${visualViewport.height}px`,
+          );
+        }
+        this.keepWebChatFormVisible();
+      };
+      input.addEventListener("focus", keepFormVisible);
+      visualViewport?.addEventListener("resize", keepFormVisible);
+      const removeListeners = (): void => {
+        input.removeEventListener("focus", keepFormVisible);
+        visualViewport?.removeEventListener("resize", keepFormVisible);
+        window.removeEventListener("pagehide", removeListeners);
+        document.documentElement.style.removeProperty(
+          "--web-chat-viewport-height",
+        );
+      };
+      window.addEventListener("pagehide", removeListeners, { once: true });
+    }
     this.resizeInput();
   }
 
@@ -228,6 +252,13 @@ export class CodexRenderer {
     requestAnimationFrame(() => this.input.focus());
   }
 
+  private keepWebChatFormVisible(): void {
+    if (!this.webChat) return;
+    requestAnimationFrame(() => {
+      this.history.scrollTop = this.history.scrollHeight;
+    });
+  }
+
   private focusChatInput(): void {
     window.peskApi.focusCodexInput();
     this.focusInput();
@@ -246,11 +277,19 @@ export class CodexRenderer {
       this.settings.codexStatus === "waiting"
     )
       return;
+    const keepInputFocused = this.webChat;
+    if (keepInputFocused) this.input.focus();
     const next = await window.peskApi.submitCodexPrompt(prompt);
     this.input.value = "";
     this.resizeInput();
     this.updateSettings(next);
-    this.input.focus();
+    this.history.scrollTop = this.history.scrollHeight;
+    if (keepInputFocused) {
+      this.input.focus();
+      this.keepWebChatFormVisible();
+    } else {
+      this.input.focus();
+    }
   }
 
   private renderUserInput(force = false): void {
@@ -382,12 +421,10 @@ export class CodexRenderer {
       );
       note.dataset.questionId = question.id;
       note.dataset.note = "true";
-      note.hidden = true;
       note.addEventListener("focus", () => {
         this.activeUserInputQuestionId = question.id;
       });
       noteLabel.append(note);
-      noteLabel.hidden = true;
       fieldset.append(noteLabel);
     }
     if (!question.options?.length) {
@@ -475,8 +512,6 @@ export class CodexRenderer {
         const noteLabel = note?.closest("label");
         if (note && noteLabel) {
           event.preventDefault();
-          noteLabel.hidden = false;
-          note.hidden = false;
           note.focus();
         }
         return;
@@ -492,9 +527,7 @@ export class CodexRenderer {
         );
         event.preventDefault();
         event.target.value = "";
-        event.target.hidden = true;
         const noteLabel = event.target.closest("label");
-        if (noteLabel) noteLabel.hidden = true;
         selected?.focus();
         return;
       }

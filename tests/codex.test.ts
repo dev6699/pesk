@@ -1823,7 +1823,10 @@ describe("CodexController", () => {
     expect(controller.getState().history).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          approval: { requestId: "approval-1", state: "denied" },
+          approval: expect.objectContaining({
+            requestId: "approval-1",
+            state: "denied",
+          }),
         }),
       ]),
     );
@@ -1888,15 +1891,17 @@ describe("CodexController", () => {
       }),
     );
 
-    const approval = controller.getState().history.at(-1)?.approval;
-    expect(approval?.options?.map((option) => option.id)).toEqual([
-      "accept",
-      "acceptForSession",
-      "applyNetworkPolicyAmendment:0",
-      "acceptWithExecpolicyAmendment",
-      "decline",
-      "cancel",
-    ]);
+    const approval = controller.getState().pendingApproval;
+    expect(approval?.options.map((option) => option.id)).toEqual(
+      expect.arrayContaining([
+        "accept",
+        "acceptForSession",
+        "applyNetworkPolicyAmendment:0",
+        "acceptWithExecpolicyAmendment",
+        "decline",
+        "cancel",
+      ]),
+    );
 
     controller.respondPermission("command-approval", "acceptForSession");
     expect(lastMessage(socket)).toEqual({

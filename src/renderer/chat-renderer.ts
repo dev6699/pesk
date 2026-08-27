@@ -19,6 +19,17 @@ const codex = new CodexRenderer(
   document.getElementById("codex-user-input") as HTMLElement,
 );
 
+if (document.body.classList.contains("web-chat")) {
+  requestAnimationFrame(() => {
+    if (
+      document.activeElement === document.body ||
+      document.activeElement === document.documentElement
+    ) {
+      codex.focusInput();
+    }
+  });
+}
+
 const interruptButton = document.getElementById(
   "codex-chat-interrupt",
 ) as HTMLButtonElement | null;

@@ -132,6 +132,44 @@ test("round-trips fuzzy file search results", async () => {
   await expect(search).resolves.toEqual(files);
 });
 
+test("round-trips web commands and returns the server result", async () => {
+  const api = loadAdapter();
+  const socket = FakeWebSocket.instances[0];
+  socket.emit("open");
+
+  const next = { ...state(), codexStatus: "working" as const };
+  const interrupt = api.interruptCodexTurn();
+  const request = JSON.parse(socket.sent.at(-1) as string);
+  expect(request).toMatchObject({ type: "interruptTurn", requestId: 1 });
+  socket.emit("message", {
+    data: JSON.stringify({
+      type: "commandResult",
+      requestId: 1,
+      ok: true,
+      state: next,
+    }),
+  });
+  await expect(interrupt).resolves.toBe(true);
+
+  const plan = api.implementCodexPlan("Do it", false);
+  const planRequest = JSON.parse(socket.sent.at(-1) as string);
+  expect(planRequest).toMatchObject({
+    type: "implementPlan",
+    requestId: 2,
+    planText: "Do it",
+    clearContext: false,
+  });
+  socket.emit("message", {
+    data: JSON.stringify({
+      type: "commandResult",
+      requestId: 2,
+      ok: true,
+      state: next,
+    }),
+  });
+  await expect(plan).resolves.toEqual(next);
+});
+
 test("reconnects after a transient socket close", () => {
   jest.useFakeTimers();
   loadAdapter();

@@ -4,6 +4,7 @@
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { request } from "node:http";
+import * as os from "node:os";
 import * as path from "node:path";
 import webpush from "web-push";
 import { WebSocket as ClientWebSocket } from "ws";
@@ -65,11 +66,11 @@ describe("ChatWebServer", () => {
   let state: Record<string, unknown>;
 
   beforeEach(async () => {
-    directory = mkdtempSync(path.join("/dev/shm", "pesk-web-test-"));
+    directory = mkdtempSync(path.join(os.tmpdir(), "pesk-web-test-"));
     state = { codexStatus: "idle", codexPendingApproval: false, codexPendingUserInput: false };
     const options: ChatWebServerOptions = {
       enabled: true,
-      port: 4611,
+      port: 0,
       listenHost: "127.0.0.1",
       rendererDirectory: path.join(process.cwd(), "src", "renderer"),
       webPushVapidPath: path.join(directory, "vapid.json"),
@@ -81,11 +82,11 @@ describe("ChatWebServer", () => {
     };
     server = new ChatWebServer(options);
     await server.start();
-    port = 4611;
+    port = server.getPort();
   });
 
-  afterEach(() => {
-    server.stop();
+  afterEach(async () => {
+    await server.stop();
     rmSync(directory, { recursive: true, force: true });
     jest.clearAllMocks();
   });

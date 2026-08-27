@@ -19,7 +19,10 @@ jest.mock(
 
 type Settings = ReturnType<typeof defaultSettings>;
 
-function makeRenderer(settings: Settings = defaultSettings()): {
+function makeRenderer(
+  settings: Settings = defaultSettings(),
+  webChat = false,
+): {
   renderer: CodexRenderer;
   elements: {
     chat: HTMLElement;
@@ -36,6 +39,7 @@ function makeRenderer(settings: Settings = defaultSettings()): {
     userInput: HTMLElement;
   };
 } {
+  document.body.className = webChat ? "web-chat" : "";
   document.body.innerHTML = `
     <section id="chat"></section>
     <select id="select"></select>
@@ -781,7 +785,10 @@ test("navigates options with arrows and submits the selected option with a note"
   expect(
     elements.userInput.querySelector("input[data-other='true']"),
   ).toBeNull();
-  expect(note.hidden).toBe(true);
+  expect(note.hidden).toBe(false);
+  note.click();
+  note.focus();
+  expect(document.activeElement).toBe(note);
   options[1].dispatchEvent(
     new KeyboardEvent("keydown", {
       key: "Tab",
@@ -789,7 +796,6 @@ test("navigates options with arrows and submits the selected option with a note"
       cancelable: true,
     }),
   );
-  expect(note.hidden).toBe(false);
   expect(document.activeElement).toBe(note);
   note.value = "Discard this note.";
   note.dispatchEvent(
@@ -799,7 +805,6 @@ test("navigates options with arrows and submits the selected option with a note"
       cancelable: true,
     }),
   );
-  expect(note.hidden).toBe(true);
   expect(note.value).toBe("");
   expect(document.activeElement).toBe(options[1]);
   renderer.handleKeydown(
@@ -982,6 +987,50 @@ test("submits a prompt, rejects empty or working input, and handles input shortc
   expect(submit).toHaveBeenCalledTimes(1);
 });
 
+test("keeps web chat input focused before and after an async submission", async () => {
+  const next = { ...defaultSettings(), codexThreadId: "thread-web" };
+  const { renderer, elements } = makeRenderer(next, true);
+  renderer.updateSettings(next);
+  elements.history.scrollTop = 0;
+  let resolveSubmit!: (settings: Settings) => void;
+  const submit = window.peskApi.submitCodexPrompt as jest.Mock;
+  submit.mockImplementation(
+    () => new Promise<Settings>((resolve) => (resolveSubmit = resolve)),
+  );
+  elements.input.value = "hello";
+  elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+  await Promise.resolve();
+
+  expect(document.activeElement).toBe(elements.input);
+  expect(submit).toHaveBeenCalledWith("hello");
+
+  resolveSubmit(next);
+  await Promise.resolve();
+  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+  expect(document.activeElement).toBe(elements.input);
+});
+
+test("adjusts web chat form visibility on visual viewport resize", () => {
+  const resizeListeners = new Set<() => void>();
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    value: {
+      addEventListener: (_type: string, listener: () => void) =>
+        resizeListeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) =>
+        resizeListeners.delete(listener),
+    },
+  });
+  const { elements } = makeRenderer(defaultSettings(), true);
+
+  for (const listener of resizeListeners) listener();
+
+  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+  expect(resizeListeners.size).toBe(1);
+  window.dispatchEvent(new Event("pagehide"));
+  expect(resizeListeners.size).toBe(0);
+});
+
 test("renders approval options and completed approval states", () => {
   const { renderer, elements } = makeRenderer();
   renderer.updateSettings({
@@ -998,17 +1047,19 @@ test("renders approval options and completed approval states", () => {
     },
   });
   const approve = elements.userInput.querySelector(
-    "[data-decision='accept']",
-  ) as HTMLButtonElement;
+    "input[type='radio'][value='accept']",
+  ) as HTMLInputElement;
   const deny = elements.userInput.querySelector(
-    "[data-decision='decline']",
-  ) as HTMLButtonElement;
+    "input[type='radio'][value='decline']",
+  ) as HTMLInputElement;
   approve.click();
-  expect(window.peskApi.respondCodexPermission).toHaveBeenCalledWith(7, "accept");
-  deny.click();
-  expect(window.peskApi.respondCodexPermission).toHaveBeenCalledWith(7, "decline");
-  expect(approve.textContent).toBe("Approve once");
-  expect(deny.textContent).toBe("Decline");
+  (elements.userInput.querySelector("form") as HTMLFormElement).requestSubmit();
+  expect(window.peskApi.respondCodexPermission).toHaveBeenCalledWith(
+    7,
+    "accept",
+  );
+  expect(approve.value).toBe("accept");
+  expect(deny.value).toBe("decline");
   expect(approve).toBeTruthy();
   expect(deny).toBeTruthy();
 

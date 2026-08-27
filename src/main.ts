@@ -99,10 +99,33 @@ function handleWebCommand(
 ): void {
   if (!message || typeof message !== "object") return;
   const command = message as Record<string, unknown>;
+  const requestId = command.requestId;
+  const replyCommand = (ok: boolean): void => {
+    if (typeof requestId !== "number") return;
+    reply({ type: "commandResult", requestId, ok, state: rendererSettings() });
+  };
   switch (command.type) {
     case "submitPrompt":
-      if (typeof command.prompt === "string")
-        codexController.submitPrompt(command.prompt);
+      if (typeof command.prompt === "string") {
+        replyCommand(codexController.submitPrompt(command.prompt));
+      } else {
+        replyCommand(false);
+      }
+      break;
+    case "implementPlan":
+      if (
+        typeof command.planText === "string" &&
+        typeof command.clearContext === "boolean"
+      ) {
+        replyCommand(
+          codexController.implementPlan(
+            command.planText,
+            command.clearContext,
+          ),
+        );
+      } else {
+        replyCommand(false);
+      }
       break;
     case "selectThread":
       if (typeof command.threadId === "string")
@@ -114,7 +137,7 @@ function handleWebCommand(
       }
       break;
     case "interruptTurn":
-      codexController.interruptTurn();
+      replyCommand(codexController.interruptTurn());
       break;
     case "respondPermission":
       if (

@@ -8,6 +8,7 @@ import {
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { createServer as createTlsServer } from "node:https";
+import type { AddressInfo } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
@@ -84,6 +85,7 @@ export class ChatWebServer {
   private devices = new Map<string, StoredDevice>();
   private pairing: { codeHash: string; expiresAt: number; deviceName: string } | undefined;
   private completedPairingName: string | undefined;
+  private listeningPort: number | undefined;
 
   constructor(private readonly options: ChatWebServerOptions) {
     const requestHandler = (
@@ -149,8 +151,9 @@ export class ChatWebServer {
         this.options.debug("web chat error", error),
       );
       this.server.listen(this.options.port, this.options.listenHost ?? "0.0.0.0", () => {
+        this.listeningPort = (this.server.address() as AddressInfo).port;
         this.options.debug("web chat", {
-          urls: accessUrls(this.options.port, this.isSecure(), this.preferredAddress),
+          urls: accessUrls(this.listeningPort, this.isSecure(), this.preferredAddress),
         });
         resolve();
       });
@@ -166,20 +169,31 @@ export class ChatWebServer {
     }
   }
 
-  stop(): void {
-    if (!this.started) return;
+  stop(): Promise<void> {
+    if (!this.started) return Promise.resolve();
     for (const client of this.clients.keys()) client.close();
     this.clients.clear();
     this.sockets.close();
-    this.server.close();
     this.started = false;
+    return new Promise((resolve, reject) => {
+      this.server.close((error) => (error ? reject(error) : resolve()));
+    });
   }
 
   getAccessInfo(): { urls: string[] } | undefined {
     if (!this.options.enabled) return undefined;
     return {
-      urls: accessUrls(this.options.port, this.isSecure(), this.preferredAddress),
+      urls: accessUrls(
+        this.listeningPort ?? this.options.port,
+        this.isSecure(),
+        this.preferredAddress,
+      ),
     };
+  }
+
+  /** Returns the actual bound port, including when configured with port zero. */
+  getPort(): number {
+    return this.listeningPort ?? this.options.port;
   }
 
   async createPairing(deviceName: string): Promise<PairingInfo | undefined> {
