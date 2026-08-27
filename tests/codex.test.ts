@@ -331,6 +331,101 @@ describe("CodexController", () => {
     expect(controller.submitPrompt("second prompt")).toBe(false);
   });
 
+  test("wraps steer input and keeps the wrapped text in history", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as {
+      activeTurnId: string;
+      status: "working" | "waiting";
+    };
+    internal.activeTurnId = "turn-1";
+    internal.status = "working";
+
+    expect(controller.steerPrompt("Change New York to Osaka instead.")).toBe(
+      true,
+    );
+
+    expect(lastMessage(socket)).toMatchObject({
+      method: "turn/steer",
+      params: {
+        input: [
+          {
+            type: "text",
+            text: expect.stringContaining(
+              "Preserve all existing requirements, constraints, entities, and output formats",
+            ),
+          },
+        ],
+      },
+    });
+    expect(lastMessage(socket).params).toEqual(
+      expect.objectContaining({
+        input: [
+          expect.objectContaining({
+            text: expect.stringContaining("Change New York to Osaka instead."),
+          }),
+        ],
+      }),
+    );
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          text: expect.stringContaining(
+            "Treat this message as a steer to the currently active request.",
+          ),
+        }),
+      ]),
+    );
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          turnId: "turn-1",
+          item: {
+            type: "userMessage",
+            content: [{ text: "Change New York to Osaka instead." }],
+          },
+        },
+      }),
+    );
+    expect(
+      controller.getState().history.filter((message) => message.role === "user"),
+    ).toHaveLength(1);
+  });
+
+  test("queues a normal prompt while a turn is active", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as {
+      activeTurnId: string;
+      status: "working" | "waiting";
+    };
+    internal.activeTurnId = "turn-1";
+    internal.status = "working";
+
+    expect(controller.submitPrompt("run this after the current turn")).toBe(
+      true,
+    );
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/queue/add",
+      params: {
+        threadId: "thread-1",
+        input: [
+          {
+            type: "text",
+            text: "run this after the current turn",
+          },
+        ],
+      },
+    });
+    expect(controller.getState().queuedSubmissions).toEqual([
+      expect.objectContaining({
+        text: "run this after the current turn",
+      }),
+    ]);
+  });
+
   test("starts a new session when no session is selected", () => {
     const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =

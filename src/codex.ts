@@ -6,6 +6,7 @@ import type {
   ServerNotification,
   ServerRequest,
 } from "./codex-schema";
+import { randomUUID } from "node:crypto";
 import type { CollaborationMode } from "./codex-schema/CollaborationMode";
 import type {
   CommandExecutionRequestApprovalResponse,
@@ -31,6 +32,15 @@ import type {
 } from "./codex-schema";
 
 const MAX_HISTORY = 20;
+
+const STEER_INSTRUCTIONS = `Treat this message as a steer to the currently active request.
+
+Preserve all existing requirements, constraints, entities, and output formats unless this steer explicitly changes, removes, cancels, or replaces them. Apply only the requested change and continue the complete updated request.
+
+If the steer is materially ambiguous, ask one concise clarifying question. Otherwise, use the most natural interpretation and proceed.
+
+Steer message:
+`;
 
 /** A message displayed in the Pesk Codex conversation. */
 export interface CodexMessage {
@@ -74,6 +84,12 @@ export interface CodexPendingApproval {
   options: Array<{ id: string; label: string; description: string }>;
 }
 
+export interface CodexQueuedSubmission {
+  id: string;
+  text: string;
+  clientUserMessageId: string;
+}
+
 export interface CodexModelInfo {
   model?: string;
   provider?: string;
@@ -100,6 +116,7 @@ export interface CodexState {
   collaborationMode: "default" | "plan";
   pendingUserInput?: CodexPendingUserInput;
   pendingApproval?: CodexPendingApproval;
+  queuedSubmissions: CodexQueuedSubmission[];
 }
 
 interface Options {
@@ -226,9 +243,42 @@ type PlanTurnStartParams = TurnStartRequest["params"] & {
 };
 type AccountRateLimitsRequest = RequestOf<"account/rateLimits/read">;
 type TurnInterruptRequest = RequestOf<"turn/interrupt">;
+type TurnSteerRequest = {
+  method: "turn/steer";
+  id: number;
+  params: {
+    threadId: string;
+    input: LocalTextInput[];
+    expectedTurnId: string;
+    clientUserMessageId: string;
+  };
+};
 type FuzzyFileSearchRequest = RequestOf<"fuzzyFileSearch">;
+type LocalTextInput = { type: "text"; text: string; text_elements: [] };
+type LocalQueueAddRequest = {
+  method: "thread/queue/add";
+  id: number;
+  params: { threadId: string; input: LocalTextInput[]; clientUserMessageId: string };
+};
+type LocalQueueListRequest = {
+  method: "thread/queue/list";
+  id: number;
+  params: { threadId: string; cursor?: string | null; limit?: number | null };
+};
+type LocalQueueAddResponse = {
+  queuedSubmission?: { id: string; input: LocalTextInput[]; clientUserMessageId: string };
+};
+type LocalQueueListResponse = {
+  data?: Array<{ id: string; input: LocalTextInput[]; clientUserMessageId: string }>;
+  nextCursor?: string | null;
+};
 
-type OutgoingMessage = ClientRequest | ClientNotification | JsonRpcResponse;
+type OutgoingMessage =
+  | ClientRequest
+  | ClientNotification
+  | LocalQueueAddRequest
+  | LocalQueueListRequest
+  | JsonRpcResponse;
 
 /**
  * Owns the Codex app-server connection and translates protocol events into
@@ -277,6 +327,7 @@ export class CodexController {
   private collaborationMode: "default" | "plan" = "default";
   private pendingUserInput: CodexPendingUserInput | undefined;
   private pendingApproval: CodexPendingApproval | undefined;
+  private queuedSubmissions: CodexQueuedSubmission[] = [];
   /** Prevents duplicate initial rate-limit reads from multiple renderer windows. */
   private rateLimitsReadPending = false;
   /** Index of the assistant message currently receiving deltas. */
@@ -331,6 +382,7 @@ export class CodexController {
       collaborationMode: this.collaborationMode,
       pendingUserInput: this.pendingUserInput,
       pendingApproval: this.pendingApproval,
+      queuedSubmissions: this.queuedSubmissions,
     };
   }
 
@@ -493,9 +545,40 @@ export class CodexController {
     return true;
   }
 
-  /** Starts a prompt turn when the controller is initialized and idle. */
+  /** Steers the active turn, falling back to queueing when its ID is stale. */
+  steerPrompt(value: string): boolean {
+    const prompt = value.trim();
+    if (
+      !prompt ||
+      !this.initialized ||
+      this.socket?.readyState !== WebSocket.OPEN ||
+      !this.threadId ||
+      !this.activeTurnId ||
+      (this.status !== "working" && this.status !== "waiting")
+    ) {
+      return false;
+    }
+    const steerPrompt = `${STEER_INSTRUCTIONS}${prompt}`;
+    this.addMessage("user", steerPrompt);
+    const id = ++this.nextId;
+    this.prompts.set(prompt, Date.now());
+    this.prompts.set(steerPrompt, Date.now());
+    this.send({
+      method: "turn/steer",
+      id,
+      params: {
+        threadId: this.threadId,
+        input: [{ type: "text", text: steerPrompt, text_elements: [] }],
+        expectedTurnId: this.activeTurnId,
+        clientUserMessageId: randomUUID(),
+      },
+    } satisfies TurnSteerRequest);
+    return true;
+  }
+
+  /** Starts a turn while idle or persists a follow-up while a turn is active. */
   submitPrompt(value: string): boolean {
-    if (!value.trim() || !this.initialized || this.status !== "idle") {
+    if (!value.trim() || !this.initialized) {
       return false;
     }
 
@@ -512,7 +595,12 @@ export class CodexController {
     }
     const newThreadMatch = prompt.match(/^\/new(?:\s+(.+))?$/);
     if (newThreadMatch) {
+      if (this.status !== "idle") return false;
       return this.startNewThread(newThreadMatch[1]);
+    }
+
+    if (this.status !== "idle") {
+      return this.queuePrompt(prompt);
     }
 
     this.addMessage("user", prompt);
@@ -549,6 +637,81 @@ export class CodexController {
       }
     });
     return true;
+  }
+
+  private queuePrompt(prompt: string): boolean {
+    if (
+      !this.threadId ||
+      this.socket?.readyState !== WebSocket.OPEN ||
+      (this.status !== "working" && this.status !== "waiting")
+    ) return false;
+    const clientUserMessageId = randomUUID();
+    const id = ++this.nextId;
+    const threadId = this.threadId;
+    this.setRequest<LocalQueueAddResponse>(id, (message) => {
+      const submission = message.result?.queuedSubmission;
+      if (!submission || this.threadId !== threadId) return;
+      this.queuedSubmissions = this.queuedSubmissions.map((entry) =>
+        entry.clientUserMessageId === clientUserMessageId
+          ? { id: submission.id, text: prompt, clientUserMessageId }
+          : entry,
+      );
+      this.options.publishRendererState();
+    });
+    this.send({
+      method: "thread/queue/add",
+      id,
+      params: {
+        threadId: this.threadId,
+        input: [{ type: "text", text: prompt, text_elements: [] }],
+        clientUserMessageId,
+      },
+    });
+    this.queuedSubmissions = [
+      ...this.queuedSubmissions,
+      { id: `pending-${clientUserMessageId}`, text: prompt, clientUserMessageId },
+    ];
+    this.options.publishRendererState();
+    return true;
+  }
+
+  private refreshQueue(threadId: string): void {
+    if (!this.initialized || this.socket?.readyState !== WebSocket.OPEN) return;
+    const id = ++this.nextId;
+    this.setRequest<LocalQueueListResponse>(id, (message) => {
+      if (this.threadId !== threadId) return;
+      this.queuedSubmissions = (message.result?.data ?? []).map((submission) => ({
+        id: submission.id,
+        text: submission.input.find((input) => input.type === "text")?.text ?? "",
+        clientUserMessageId: submission.clientUserMessageId,
+      }));
+      this.options.publishRendererState();
+      if (message.result?.nextCursor) {
+        this.refreshQueuePage(threadId, message.result.nextCursor);
+      }
+    });
+    this.send({
+      method: "thread/queue/list",
+      id,
+      params: { threadId, limit: 100 },
+    });
+  }
+
+  private refreshQueuePage(threadId: string, cursor: string): void {
+    if (this.threadId !== threadId) return;
+    const id = ++this.nextId;
+    this.setRequest<LocalQueueListResponse>(id, (message) => {
+      if (this.threadId !== threadId) return;
+      const next = (message.result?.data ?? []).map((submission) => ({
+        id: submission.id,
+        text: submission.input.find((input) => input.type === "text")?.text ?? "",
+        clientUserMessageId: submission.clientUserMessageId,
+      }));
+      this.queuedSubmissions = [...this.queuedSubmissions, ...next];
+      this.options.publishRendererState();
+      if (message.result?.nextCursor) this.refreshQueuePage(threadId, message.result.nextCursor);
+    });
+    this.send({ method: "thread/queue/list", id, params: { threadId, cursor, limit: 100 } });
   }
 
   /** Starts and selects a fresh Codex session without sending a prompt. */
@@ -711,6 +874,7 @@ export class CodexController {
         this.connected = false;
         this.threadId = undefined;
         this.activeTurnId = undefined;
+        this.queuedSubmissions = [];
         this.pendingThreadResumeId = undefined;
         this.options.publishRendererState();
         this.discover();
@@ -758,6 +922,7 @@ export class CodexController {
       this.connected = false;
       this.threadId = undefined;
       this.activeTurnId = undefined;
+      this.queuedSubmissions = [];
       this.threads = [];
       this.pendingThreadStarts = 0;
       this.pendingThreadResumeId = undefined;
@@ -842,6 +1007,7 @@ export class CodexController {
     }
     this.threadId = id;
     this.activeTurnId = undefined;
+    this.queuedSubmissions = [];
     this.tokenUsage = undefined;
     if (!preserveHistory) this.history = [];
     this.streamingAssistant = -1;
@@ -925,6 +1091,7 @@ export class CodexController {
       this.rememberWorkingDirectory(thread);
       this.connected = true;
       this.setStatusFromStatus(thread?.status);
+      setTimeout(() => this.refreshQueue(threadId), 0);
       const turns = this.records(thread?.turns);
       const restoredTokenUsage = [...turns]
         .reverse()
@@ -1034,6 +1201,11 @@ export class CodexController {
     switch (method) {
       case "thread/started":
         this.handleThreadStarted(message);
+        break;
+      case "thread/queue/changed":
+        if (message.params.threadId === this.threadId) {
+          this.refreshQueue(message.params.threadId);
+        }
         break;
       case "turn/started":
         this.handleTurnStarted(message);
@@ -1162,6 +1334,9 @@ export class CodexController {
     }
     this.activeTurnId = undefined;
     this.interrupted = message.params.turn?.status === "interrupted";
+    if (this.threadId === message.params.threadId) {
+      this.refreshQueue(message.params.threadId);
+    }
     this.setStatus("idle");
     const turn = isRecord(message.params.turn)
       ? (message.params.turn as Record<string, unknown>)
@@ -1403,12 +1578,11 @@ export class CodexController {
     }
     this.clearStaleApprovals();
     if (
-      turnId &&
       this.history.some(
         (message) =>
           message.role === "user" &&
-          message.turnId === turnId &&
-          message.text === value,
+          message.text === value &&
+          (!turnId || message.turnId === undefined || message.turnId === turnId),
       )
     ) {
       return;

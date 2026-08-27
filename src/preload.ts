@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("peskApi", {
     answers: Record<string, string[]>,
   ) => ipcRenderer.send("respond-codex-user-input", requestId, answers),
   interruptCodexTurn: () => ipcRenderer.invoke("interrupt-codex-turn"),
+  steerCodexTurn: (prompt: string) =>
+    ipcRenderer.invoke("steer-codex-turn", prompt),
   selectAnimation: (name: string) => ipcRenderer.send("select-animation", name),
   setAnimationMode: (mode: "selected" | "shuffle") =>
     ipcRenderer.send("set-animation-mode", mode),

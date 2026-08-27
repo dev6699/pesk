@@ -17,6 +17,7 @@ const codex = new CodexRenderer(
   document.getElementById("codex-file-suggestions") as HTMLElement,
   document.getElementById("codex-mode-toggle") as HTMLButtonElement,
   document.getElementById("codex-user-input") as HTMLElement,
+  document.getElementById("codex-chat-steer") as HTMLButtonElement,
 );
 
 if (document.body.classList.contains("web-chat")) {
@@ -35,8 +36,10 @@ const interruptButton = document.getElementById(
 ) as HTMLButtonElement | null;
 function updateInterruptButton(settings: PeskSettings): void {
   if (!interruptButton) return;
-  interruptButton.disabled =
-    settings.codexStatus !== "working" && settings.codexStatus !== "waiting";
+  const active =
+    settings.codexStatus === "working" || settings.codexStatus === "waiting";
+  interruptButton.hidden = !active;
+  interruptButton.disabled = !active;
 }
 interruptButton?.addEventListener("click", () => {
   if (!confirm("Interrupt the current Codex turn?")) return;

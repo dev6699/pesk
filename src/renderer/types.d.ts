@@ -70,6 +70,11 @@ interface CodexRuntimeState {
     reason: string;
     options: Array<{ id: string; label: string; description: string }>;
   };
+  codexQueuedSubmissions: Array<{
+    id: string;
+    text: string;
+    clientUserMessageId: string;
+  }>;
   codexHistory: Array<{
     role: "user" | "assistant" | "system";
     text: string;
@@ -138,6 +143,7 @@ interface Window {
       answers: Record<string, string[]>,
     ) => void;
     interruptCodexTurn: () => Promise<boolean>;
+    steerCodexTurn: (prompt: string) => Promise<PeskSettings>;
     selectAnimation: (name: string) => void;
     setAnimationMode: (mode: "selected" | "shuffle") => void;
     quitPesk: () => void;

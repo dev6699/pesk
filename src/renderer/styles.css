@@ -756,6 +756,19 @@ body.chat-only #codex-chat {
   font-style: italic;
 }
 
+.codex-queued-submissions {
+  margin: 0.5rem 0;
+  padding: 0.45rem 0.65rem;
+  border: 1px dashed var(--codex-muted, #888);
+  border-radius: 0.4rem;
+  color: var(--codex-muted, #888);
+}
+
+.codex-queued-submission {
+  margin-top: 0.25rem;
+  white-space: pre-wrap;
+}
+
 .codex-message-system {
   border: 1px solid #ffc15a;
   background: #000000cc;
@@ -1112,7 +1125,8 @@ body.chat-only #codex-chat {
   background: #d97706e6;
 }
 
-#codex-chat-send {
+#codex-chat-send,
+#codex-chat-steer {
   align-self: flex-end;
   border: 0;
   border: 1px solid #ffffff66;
@@ -1124,6 +1138,14 @@ body.chat-only #codex-chat {
   font:
     700 12px/1 system-ui,
     sans-serif;
+}
+
+#codex-chat-send {
+  margin-top: auto;
+}
+
+#codex-chat-steer {
+  background: #16874f;
 }
 
 #codex-chat-actions {
@@ -1165,7 +1187,6 @@ body.chat-only #codex-chat {
   cursor: default;
 }
 
-#codex-chat-send:hover,
 #codex-chat-send:focus-visible {
   border-color: #7db7ff;
   background: #2563eb;

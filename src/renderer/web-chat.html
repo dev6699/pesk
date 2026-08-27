@@ -97,7 +97,16 @@
             autofocus
           ></textarea>
           <div id="codex-chat-actions">
-            <button id="codex-chat-interrupt" type="button" disabled>
+            <button
+              id="codex-chat-steer"
+              type="button"
+              aria-label="Steer the active turn"
+              title="Send this message as a steer"
+              hidden
+            >
+              Steer
+            </button>
+            <button id="codex-chat-interrupt" type="button" hidden disabled>
               Interrupt
             </button>
             <button id="codex-chat-send" type="submit">Send</button>

@@ -6,6 +6,7 @@ import type {
   CodexModelInfo,
   CodexPendingApproval,
   CodexPendingUserInput,
+  CodexQueuedSubmission,
 } from "./codex";
 import type { Thread, ThreadTokenUsage } from "./codex-schema/v2";
 import { ChatWindowController } from "./chat";
@@ -34,6 +35,7 @@ interface RendererSettings extends PeskSettings {
   codexCollaborationMode: "default" | "plan";
   codexPendingUserInput?: CodexPendingUserInput;
   codexPendingApproval?: CodexPendingApproval;
+  codexQueuedSubmissions: CodexQueuedSubmission[];
   codexStatusSoundUrl: string;
 }
 
@@ -82,6 +84,7 @@ function rendererSettings(): RendererSettings {
     codexCollaborationMode: state.collaborationMode,
     codexPendingUserInput: state.pendingUserInput,
     codexPendingApproval: state.pendingApproval,
+    codexQueuedSubmissions: state.queuedSubmissions,
     codexStatusSoundUrl,
   };
 }
@@ -138,6 +141,11 @@ function handleWebCommand(
       break;
     case "interruptTurn":
       replyCommand(codexController.interruptTurn());
+      break;
+    case "steerTurn":
+      if (typeof command.prompt === "string") {
+        replyCommand(codexController.steerPrompt(command.prompt));
+      } else replyCommand(false);
       break;
     case "respondPermission":
       if (
@@ -400,6 +408,10 @@ app.whenReady().then(() => {
     },
   );
   ipcMain.handle("interrupt-codex-turn", () => codexController.interruptTurn());
+  ipcMain.handle("steer-codex-turn", (_event, prompt: unknown) => {
+    if (typeof prompt === "string") codexController.steerPrompt(prompt);
+    return rendererSettings();
+  });
   ipcMain.on("move-pet", (_event, dx: number, dy: number) => pet.move(dx, dy));
   ipcMain.on("drag-start", () => pet.startDragging());
   ipcMain.on("drag-end", () => pet.stopDragging());

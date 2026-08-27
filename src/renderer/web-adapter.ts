@@ -370,6 +370,8 @@ const webApi = {
     (await sendCommand("implementPlan", { planText, clearContext })).state ?? state!,
   interruptCodexTurn: async () =>
     (await sendCommand("interruptTurn")).ok,
+  steerCodexTurn: async (prompt: string) =>
+    (await sendCommand("steerTurn", { prompt })).state ?? state!,
   respondCodexPermission: (requestId: string | number, optionId: string) =>
     send("respondPermission", { requestId, optionId }),
   respondCodexUserInput: (

@@ -54,6 +54,7 @@ export class CodexRenderer {
     fileSuggestions?: HTMLElement,
     private readonly modeToggle?: HTMLButtonElement,
     private readonly userInput?: HTMLElement,
+    private readonly steerButton?: HTMLButtonElement,
   ) {
     this.settings = settings;
     this.rateLimit = rateLimit ?? document.createElement("div");
@@ -68,6 +69,16 @@ export class CodexRenderer {
       const mode =
         this.settings.codexCollaborationMode === "plan" ? "default" : "plan";
       window.peskApi.setCodexCollaborationMode(mode);
+    });
+    this.steerButton?.addEventListener("click", () => {
+      const prompt = this.input.value.trim();
+      if (!prompt) return;
+      void window.peskApi.steerCodexTurn(prompt).then((next) => {
+        this.input.value = "";
+        this.resizeInput();
+        this.updateSettings(next);
+        this.input.focus();
+      });
     });
     chat.addEventListener("mousedown", (event) => event.stopPropagation());
     chat.addEventListener("wheel", (event) => event.stopPropagation());
@@ -228,11 +239,21 @@ export class CodexRenderer {
     }
     this.sessionSelect.disabled = !next.codexThreads.length;
     this.sessionCopy.disabled = !next.codexThreadId;
-    this.renderHistory(next.codexHistory, Boolean(next.codexThreadId));
+    this.renderHistory(
+      next.codexHistory,
+      Boolean(next.codexThreadId),
+      next.codexQueuedSubmissions,
+    );
     this.renderWorkingStatus();
     this.renderTokenUsage();
     this.renderRateLimit();
     this.renderUserInput();
+    const steerable =
+      next.codexStatus === "working" || next.codexStatus === "waiting";
+    if (this.steerButton) {
+      this.steerButton.hidden = !steerable;
+      this.steerButton.disabled = !steerable;
+    }
     this.form.hidden = Boolean(
       next.codexPendingUserInput ||
       next.codexPendingApproval ||
@@ -271,12 +292,7 @@ export class CodexRenderer {
       return;
     }
     const prompt = this.input.value.trim();
-    if (
-      !prompt ||
-      this.settings.codexStatus === "working" ||
-      this.settings.codexStatus === "waiting"
-    )
-      return;
+    if (!prompt) return;
     const keepInputFocused = this.webChat;
     if (keepInputFocused) this.input.focus();
     const next = await window.peskApi.submitCodexPrompt(prompt);
@@ -988,20 +1004,6 @@ export class CodexRenderer {
       return;
     }
     if (event.key !== "Enter") return;
-    if (
-      document.body.classList.contains("web-chat") &&
-      !event.altKey &&
-      !event.metaKey
-    ) {
-      event.preventDefault();
-      const start = this.input.selectionStart;
-      const end = this.input.selectionEnd;
-      this.input.value = `${this.input.value.slice(0, start)}\n${this.input.value.slice(end)}`;
-      this.input.selectionStart = start + 1;
-      this.input.selectionEnd = start + 1;
-      this.resizeInput();
-      return;
-    }
     if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
       event.preventDefault();
       const start = this.input.selectionStart;
@@ -1015,6 +1017,18 @@ export class CodexRenderer {
     } else if (!event.altKey && !event.metaKey) {
       event.preventDefault();
       this.form.requestSubmit();
+    } else if (event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      const prompt = this.input.value.trim();
+      if (prompt && (this.settings.codexStatus === "working" || this.settings.codexStatus === "waiting") && this.settings.codexThreadId) {
+        void window.peskApi.steerCodexTurn(prompt).then((next) => {
+          this.input.value = "";
+          this.resizeInput();
+          this.updateSettings(next);
+        });
+      } else {
+        this.form.requestSubmit();
+      }
     }
   }
 
@@ -1167,9 +1181,12 @@ export class CodexRenderer {
   private renderHistory(
     history: PeskSettings["codexHistory"],
     sessionConnected = false,
+    queuedSubmissions: PeskSettings["codexQueuedSubmissions"] = [],
   ): void {
     this.updateActivePlanConfirmation(history);
-    const structureKey = historyStructureKey(history);
+    const structureKey = `${historyStructureKey(history)}|queue:${queuedSubmissions
+      .map((submission) => `${submission.id}:${submission.text}`)
+      .join("|")}`;
     const planContentChanged = (history ?? []).some((message, index) => {
       if (message.activity?.kind !== "plan") return false;
       const activityKey = message.itemId ?? `history-${index}`;
@@ -1261,6 +1278,21 @@ export class CodexRenderer {
       bubble.append(time);
       if (message.approval) this.renderApproval(bubble, message);
       this.history.append(bubble);
+    }
+    if (queuedSubmissions.length) {
+      const queue = document.createElement("section");
+      queue.className = "codex-queued-submissions";
+      const title = document.createElement("strong");
+      title.textContent = "Queued";
+      queue.append(title);
+      for (const submission of queuedSubmissions) {
+        const item = document.createElement("div");
+        item.className = "codex-queued-submission";
+        item.textContent = submission.text;
+        item.title = "Queued follow-up";
+        queue.append(item);
+      }
+      this.history.append(queue);
     }
     this.applySelectedMessage();
     if (!this.historyInitialized || wasAtBottom || planContentChanged) {
