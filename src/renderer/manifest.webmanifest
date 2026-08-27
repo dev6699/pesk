@@ -1,0 +1,17 @@
+{
+  "name": "Pesk Chat",
+  "short_name": "Pesk",
+  "start_url": "./web-chat.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "./pesk-tray.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

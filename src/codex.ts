@@ -30,7 +30,7 @@ import type {
   FuzzyFileSearchResult,
 } from "./codex-schema";
 
-const MAX_HISTORY = 100;
+const MAX_HISTORY = 20;
 
 /** A message displayed in the Pesk Codex conversation. */
 export interface CodexMessage {
@@ -149,8 +149,8 @@ function approvalDecisions(
     ServerMessage,
     {
       method:
-        | "item/commandExecution/requestApproval"
-        | "item/fileChange/requestApproval";
+      | "item/commandExecution/requestApproval"
+      | "item/fileChange/requestApproval";
     }
   >,
 ): Map<string, ApprovalDecision> {
@@ -310,7 +310,7 @@ export class CodexController {
   private readonly prompts = new Map<string, number>();
 
   /** Creates a controller with callbacks for renderer and window updates. */
-  constructor(private readonly options: Options) {}
+  constructor(private readonly options: Options) { }
 
   /** Returns the current state snapshot for renderer IPC responses. */
   getState(): CodexState {
@@ -397,9 +397,8 @@ export class CodexController {
         const displayed = question.isSecret
           ? values.map(() => "[hidden]")
           : values;
-        return `${question.header || question.question}: ${
-          displayed.join(", ") || "No answer"
-        }`;
+        return `${question.header || question.question}: ${displayed.join(", ") || "No answer"
+          }`;
       })
       .join("\n");
     this.history.push({
@@ -638,11 +637,11 @@ export class CodexController {
         | undefined;
       this.pendingApproval = next
         ? {
-            requestId: next.requestId,
-            command: next.command,
-            reason: next.reason,
-            options: approvalOptions(next.decisions),
-          }
+          requestId: next.requestId,
+          command: next.command,
+          reason: next.reason,
+          options: approvalOptions(next.decisions),
+        }
         : undefined;
     }
     this.history.push({
@@ -961,10 +960,10 @@ export class CodexController {
               typeof item.text === "string"
                 ? item.text
                 : this.records(item.content)
-                    .map((part) =>
-                      typeof part.text === "string" ? part.text : "",
-                    )
-                    .join("");
+                  .map((part) =>
+                    typeof part.text === "string" ? part.text : "",
+                  )
+                  .join("");
             if (text.trim()) {
               restored.push({
                 role: "assistant",
@@ -1310,8 +1309,8 @@ export class CodexController {
       ServerMessage,
       {
         method:
-          | "item/commandExecution/requestApproval"
-          | "item/fileChange/requestApproval";
+        | "item/commandExecution/requestApproval"
+        | "item/fileChange/requestApproval";
       }
     >,
   ): void {

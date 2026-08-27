@@ -14,6 +14,12 @@ contextBridge.exposeInMainWorld("peskApi", {
   togglePaused: () => ipcRenderer.send("toggle-paused"),
   toggleLocked: () => ipcRenderer.send("toggle-locked"),
   togglePetVisibility: () => ipcRenderer.send("toggle-pet-visibility"),
+  createPairing: (name: string) => ipcRenderer.invoke("create-pairing", name),
+  getPairingStatus: () => ipcRenderer.invoke("get-pairing-status"),
+  getPairingDevices: () => ipcRenderer.invoke("get-pairing-devices"),
+  revokePairingDevice: (id: string) => ipcRenderer.invoke("revoke-pairing-device", id),
+  setPairingDevicePush: (id: string, enabled: boolean) =>
+    ipcRenderer.invoke("set-pairing-device-push", id, enabled),
   toggleCodexStatusSound: () => ipcRenderer.send("toggle-codex-status-sound"),
   openConfigFolder: () => ipcRenderer.send("open-config-folder"),
   selectCodexThread: (threadId: string) =>

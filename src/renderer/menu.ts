@@ -17,6 +17,8 @@ interface AnimationFrames {
   name: string;
 }
 
+interface PairingInfo { expiresAt: number; qrDataUrl: string; deviceName: string; }
+
 const controls = document.getElementById("controls") as HTMLElement;
 const animations = document.getElementById("animations") as HTMLElement;
 const presetSearch = document.getElementById("preset-search") as HTMLInputElement;
@@ -24,15 +26,26 @@ const presetList = document.getElementById("preset-list") as HTMLElement;
 const sectionTitle = document.getElementById("section-title") as HTMLElement;
 const focusState = document.getElementById("focus-state") as HTMLElement;
 const sectionTabs = Array.from(document.querySelectorAll<HTMLButtonElement>("#sections button"));
-const sectionIds = ["presets", "animations", "controls"];
+const sectionIds = ["presets", "animations", "controls", "pairing"];
 let activeSection = 0;
-const lastActionIndices = [0, 0, 0];
+const lastActionIndices = [0, 0, 0, 0];
 let menuInitialized = false;
 let allPresets: Preset[] = [];
+let pairingActive = false;
+let pairingRenderInFlight = false;
+let lastPairingDevicesSignature = "";
 
 function updateFocusState(focused: boolean): void {
   focusState.classList.toggle("unfocused", !focused);
   focusState.setAttribute("aria-label", focused ? "Focused" : "Not focused");
+}
+
+function getFocusableActions(section: Element | null): HTMLElement[] {
+  return Array.from(
+    section?.querySelectorAll<HTMLElement>(
+      "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])",
+    ) ?? [],
+  );
 }
 
 function focusSectionAction(): void {
@@ -40,16 +53,20 @@ function focusSectionAction(): void {
     presetSearch.focus();
     return;
   }
+  if (activeSection === 3) {
+    (document.getElementById("pairing-device-name") as HTMLInputElement | null)?.focus();
+    return;
+  }
   const section = document.getElementById(sectionIds[activeSection]);
-  const actions = Array.from(section?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+  const actions = getFocusableActions(section);
   const index = Math.min(lastActionIndices[activeSection], Math.max(0, actions.length - 1));
   (actions[index] ?? sectionTabs[activeSection])?.focus();
 }
 
 function rememberCurrentAction(): void {
   const section = document.getElementById(sectionIds[activeSection]);
-  const actions = Array.from(section?.querySelectorAll<HTMLButtonElement>("button") ?? []);
-  const index = actions.indexOf(document.activeElement as HTMLButtonElement);
+  const actions = getFocusableActions(section);
+  const index = actions.indexOf(document.activeElement as HTMLElement);
   if (index >= 0) lastActionIndices[activeSection] = index;
 }
 
@@ -95,6 +112,115 @@ function renderControls(settings: MenuSettings): void {
   addAction("Open config folder", window.peskApi.openConfigFolder);
   addAction("Quit Pesk", window.peskApi.quitPesk);
 }
+
+async function renderPairing(focusDeviceId?: string, focusAction?: "push" | "revoke"): Promise<void> {
+  while (pairingRenderInFlight) {
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  }
+  pairingRenderInFlight = true;
+  try {
+  const devices = document.getElementById("pairing-devices") as HTMLElement;
+  const focused = document.activeElement as HTMLElement | null;
+  const focusedControl = focused?.closest<HTMLElement>("[data-device-id]");
+  const restoreDeviceId = focusDeviceId ?? focusedControl?.dataset.deviceId;
+  const restoreAction = focusAction ?? focusedControl?.dataset.action as "push" | "revoke" | undefined;
+  const values = await window.peskApi.getPairingDevices();
+  const signature = JSON.stringify(values);
+  if (!focusDeviceId && !focusAction && signature === lastPairingDevicesSignature) return;
+  lastPairingDevicesSignature = signature;
+  devices.replaceChildren();
+  if (!values.length) { devices.textContent = "No paired devices."; return; }
+  for (const device of values) {
+    const row = document.createElement("div"); row.className = "pairing-device";
+    const label = document.createElement("span"); label.textContent = device.name;
+    const status = document.createElement("small");
+    status.className = device.pushRegistered ? "push-configured" : "push-not-configured";
+    status.textContent = device.pushRegistered ? "Web Push configured" : "Web Push not configured";
+    const push = document.createElement("button"); push.type = "button"; push.dataset.deviceId = device.id; push.dataset.action = "push"; push.textContent = device.pushEnabled ? "Disable push" : "Enable push";
+    push.addEventListener("click", async () => { await window.peskApi.setPairingDevicePush(device.id, !device.pushEnabled); await renderPairing(device.id, "push"); });
+    const revoke = document.createElement("button"); revoke.type = "button"; revoke.textContent = "Revoke";
+    revoke.dataset.deviceId = device.id; revoke.dataset.action = "revoke";
+    revoke.addEventListener("click", async () => {
+      if (revoke.dataset.confirming !== "true") {
+        revoke.dataset.confirming = "true";
+        revoke.textContent = "Confirm revoke";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.textContent = "Cancel";
+        cancel.dataset.deviceId = device.id;
+        cancel.dataset.action = "cancel-revoke";
+        cancel.addEventListener("click", () => void renderPairing(device.id, "revoke"));
+        row.append(cancel);
+        revoke.focus();
+        return;
+      }
+      await window.peskApi.revokePairingDevice(device.id);
+      await renderPairing();
+      window.requestAnimationFrame(() => {
+        const input = document.getElementById("pairing-device-name") as HTMLInputElement;
+        input.focus();
+        window.setTimeout(() => input.focus(), 50);
+      });
+    });
+    row.append(label, status, push, revoke); devices.append(row);
+  }
+  if (restoreDeviceId && restoreAction) {
+    (devices.querySelector(`[data-device-id="${CSS.escape(restoreDeviceId)}"][data-action="${restoreAction}"]`) as HTMLElement | null)?.focus();
+  }
+  } finally {
+    pairingRenderInFlight = false;
+  }
+}
+
+async function generatePairing(): Promise<void> {
+  const details = document.getElementById("pairing-details") as HTMLElement;
+  const status = document.getElementById("pairing-status") as HTMLElement;
+  const name = (document.getElementById("pairing-device-name") as HTMLInputElement).value;
+  if (!name.trim()) return;
+  let info: PairingInfo | undefined;
+  try { info = await window.peskApi.createPairing(name) as PairingInfo | undefined; }
+  catch (error) { status.hidden = false; status.textContent = error instanceof Error ? error.message : "Unable to create pairing code."; return; }
+  if (!info) return;
+  status.hidden = true;
+  details.hidden = false;
+  pairingActive = true;
+  (document.getElementById("pairing-device-name") as HTMLInputElement).value = info.deviceName;
+  (document.getElementById("pairing-qr") as HTMLImageElement).src = info.qrDataUrl;
+}
+
+document.getElementById("pairing-device-name")?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  void generatePairing();
+});
+
+document.getElementById("pairing-device-name")?.addEventListener("input", () => {
+  if (!pairingActive) return;
+  pairingActive = false;
+  (document.getElementById("pairing-details") as HTMLElement).hidden = true;
+});
+
+window.setInterval(async () => {
+  if (document.querySelector("[data-confirming='true']")) return;
+  await renderPairing();
+  if (!pairingActive) return;
+  const pairingStatus = await window.peskApi.getPairingStatus();
+  if (pairingStatus.active) return;
+  pairingActive = false;
+  (document.getElementById("pairing-details") as HTMLElement).hidden = true;
+  const status = document.getElementById("pairing-status") as HTMLElement;
+  if (pairingStatus.pairedDeviceName) {
+    status.hidden = false;
+    status.replaceChildren();
+    const tick = document.createElement("span");
+    tick.className = "pairing-success-tick";
+    tick.textContent = "✓";
+    status.append(tick, ` Paired: ${pairingStatus.pairedDeviceName}`);
+    const nameInput = document.getElementById("pairing-device-name") as HTMLInputElement;
+    nameInput.value = "";
+    nameInput.focus();
+  }
+}, 1000);
 
 function renderAnimations(items: AnimationFrames[], selected: string, animationMode: MenuSettings["animationMode"]): void {
   animations.replaceChildren();
@@ -183,6 +309,7 @@ async function loadMenu(): Promise<void> {
   ]);
   renderControls(settings);
   renderAnimations(animations, settings.animation, settings.animationMode);
+  await renderPairing();
   allPresets = presets;
   renderPresets();
   if (!menuInitialized) {
@@ -234,8 +361,26 @@ window.addEventListener("keydown", (event) => {
   }
 
   const section = document.getElementById(sectionIds[activeSection]);
-  const buttons = Array.from(section?.querySelectorAll("button") ?? []);
-  const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
+  const buttons = getFocusableActions(section);
+  const currentIndex = buttons.indexOf(document.activeElement as HTMLElement);
+  if (event.key === "Home") {
+    event.preventDefault();
+    buttons[0]?.focus();
+    return;
+  }
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    const row = (document.activeElement as HTMLElement).closest(".pairing-device");
+    if (row) {
+      const rowActions = getFocusableActions(row);
+      const rowIndex = rowActions.indexOf(document.activeElement as HTMLElement);
+      if (rowIndex >= 0 && rowActions.length > 1) {
+        event.preventDefault();
+        const direction = event.key === "ArrowRight" ? 1 : -1;
+        rowActions[(rowIndex + direction + rowActions.length) % rowActions.length].focus();
+      }
+    }
+    return;
+  }
   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault();
     if (activeSection === 0 && document.activeElement === presetSearch) {

@@ -18,15 +18,15 @@ body {
 
 body {
   box-sizing: border-box;
-  padding: 24px;
+  padding: 16px;
   overflow: hidden;
 }
 
 main {
   position: relative;
-  min-height: calc(100vh - 48px);
+  min-height: calc(100vh - 32px);
   box-sizing: border-box;
-  padding: 20px;
+  padding: 16px;
   overflow: hidden;
   border: 1px solid #ffffff99;
   border-radius: 24px;
@@ -122,7 +122,8 @@ h2 {
 
 #controls,
 #animations,
-#presets {
+#presets,
+#pairing {
   display: grid;
   gap: 5px;
   max-height: calc(100vh - 220px);
@@ -167,6 +168,64 @@ h2 {
 #presets::-webkit-scrollbar {
   width: 8px;
 }
+
+#pairing-qr {
+  display: block;
+  width: 190px;
+  height: 190px;
+  margin: 8px auto;
+  background: #fff;
+}
+
+#pairing-device-name {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 6px 0 8px;
+  padding: 9px 11px;
+  border: 1px solid #ffffff66;
+  border-radius: 10px;
+  background: #ffffff2b;
+  color: #fff;
+  font: inherit;
+}
+
+#pairing-device-name:focus {
+  border-color: #1687d9cc;
+  outline: none;
+  background: #1687d9cc;
+}
+
+#pairing-status {
+  margin: 6px 0;
+  color: #d9ffd9;
+  font-size: 12px;
+}
+
+.pairing-success-tick {
+  color: #62e676;
+  -webkit-text-fill-color: #62e676;
+  font-size: 16px;
+}
+
+#pairing-devices {
+  display: grid;
+  gap: 5px;
+}
+
+.pairing-device {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  background: #0003;
+}
+
+.pairing-device span { flex: 1; }
+.pairing-device small { opacity: .85; font-size: 11px; }
+.pairing-device .push-configured { color: #62e676; -webkit-text-fill-color: #62e676; }
+.pairing-device .push-not-configured { color: #ff7777; -webkit-text-fill-color: #ff7777; }
+.pairing-device button { width: auto; padding: 5px 8px; font-size: 12px; }
 
 #controls::-webkit-scrollbar-thumb,
 #animations::-webkit-scrollbar-thumb,

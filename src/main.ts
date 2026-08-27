@@ -184,9 +184,18 @@ app.whenReady().then(() => {
   webServer = new ChatWebServer({
     enabled: config.webAccessEnabled,
     port: config.webPort,
-    token: config.webToken,
+    tlsKey: config.webTlsKey,
+    tlsCert: config.webTlsCert,
     rendererDirectory: path.join(__dirname, "renderer"),
-    tokenPath: path.join(app.getPath("userData"), "web-token"),
+    webPushVapidPath: path.join(app.getPath("userData"), "web-push-vapid.json"),
+    webPushSubscriptionsPath: path.join(
+      app.getPath("userData"),
+      "web-push-subscriptions.json",
+    ),
+    deviceCredentialsPath: path.join(
+      app.getPath("userData"),
+      "web-devices.json",
+    ),
     getState: rendererSettings,
     handleCommand: (message, reply) => handleWebCommand(message, reply),
     debug,
@@ -275,6 +284,19 @@ app.whenReady().then(() => {
   ipcMain.on("toggle-codex-status-sound", () => pet.toggleCodexStatusSound());
   ipcMain.on("open-config-folder", () => {
     void shell.openPath(app.getPath("userData"));
+  });
+  ipcMain.handle("create-pairing", (_event, name: unknown) =>
+    webServer.createPairing(typeof name === "string" ? name : "Browser device"),
+  );
+  ipcMain.handle("get-pairing-status", () => webServer.getPairingStatus());
+  ipcMain.handle("get-pairing-devices", () => webServer.listDevices());
+  ipcMain.handle("revoke-pairing-device", (_event, id: unknown) => {
+    if (typeof id === "string") webServer.revokeDevice(id);
+  });
+  ipcMain.handle("set-pairing-device-push", (_event, id: unknown, enabled: unknown) => {
+    if (typeof id === "string" && typeof enabled === "boolean") {
+      webServer.setDevicePushEnabled(id, enabled);
+    }
   });
   ipcMain.on("select-codex-thread", (_event, threadId: unknown) => {
     if (typeof threadId === "string") codexController.selectThread(threadId);

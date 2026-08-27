@@ -257,6 +257,27 @@ body.chat-only #codex-chat {
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+}
+
+#web-notification-status {
+  flex: 0 0 auto;
+  color: #ff8c8c;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.web-notification-ready {
+  color: #b9f6c5 !important;
 }
 
 .web-connection-connecting,

@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pesk Chat</title>
+    <link rel="manifest" href="manifest.webmanifest" />
     <link rel="stylesheet" href="styles.css" />
     <style>
       html,
@@ -65,7 +66,8 @@
           >
             Default
           </button>
-          <span id="web-connection-status" aria-live="polite">Connecting…</span>
+          <span id="web-notification-status" aria-live="polite" hidden>Web Push not configured</span>
+          <span id="web-connection-status" role="button" tabindex="0" aria-live="polite" title="Refresh web chat">Connecting…</span>
         </div>
         <div id="codex-rate-limit" aria-live="polite" hidden></div>
         <div id="codex-error" role="alert" hidden></div>

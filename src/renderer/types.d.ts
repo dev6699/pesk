@@ -119,6 +119,11 @@ interface Window {
     togglePaused: () => void;
     toggleLocked: () => void;
     togglePetVisibility: () => void;
+    createPairing: (name: string) => Promise<{ expiresAt: number; qrDataUrl: string; deviceName: string } | undefined>;
+    getPairingStatus: () => Promise<{ active: boolean; pairedDeviceName?: string }>;
+    getPairingDevices: () => Promise<Array<{ id: string; name: string; createdAt: number; lastUsedAt: number | null; pushEnabled: boolean; pushRegistered: boolean }>>;
+    revokePairingDevice: (id: string) => Promise<void>;
+    setPairingDevicePush: (id: string, enabled: boolean) => Promise<void>;
     toggleCodexStatusSound: () => void;
     openConfigFolder: () => void;
     selectCodexThread: (threadId: string) => void;

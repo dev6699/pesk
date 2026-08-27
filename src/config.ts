@@ -31,7 +31,8 @@ export interface AppConfig {
   codexStatusSound: string;
   webAccessEnabled: boolean;
   webPort: number;
-  webToken: string;
+  webTlsKey: string;
+  webTlsCert: string;
 }
 
 export function loadRawConfig(): Record<string, any> {
@@ -80,7 +81,8 @@ const defaultConfig: AppConfig = {
   codexStatusSound: "",
   webAccessEnabled: false,
   webPort: 4587,
-  webToken: "",
+  webTlsKey: "",
+  webTlsCert: "",
 };
 
 function settingsPath(): string {
@@ -134,10 +136,14 @@ export function loadConfig(): AppConfig {
         config.webPort <= 65535
           ? config.webPort
           : defaultConfig.webPort,
-      webToken:
-        typeof config.webToken === "string"
-          ? config.webToken.trim()
-          : defaultConfig.webToken,
+      webTlsKey:
+        typeof config.webTlsKey === "string" && config.webTlsKey.trim()
+          ? path.resolve(getConfigDirectory(), config.webTlsKey.trim())
+          : defaultConfig.webTlsKey,
+      webTlsCert:
+        typeof config.webTlsCert === "string" && config.webTlsCert.trim()
+          ? path.resolve(getConfigDirectory(), config.webTlsCert.trim())
+          : defaultConfig.webTlsCert,
     };
   } catch {
     return { ...defaultConfig };

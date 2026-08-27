@@ -1,5 +1,7 @@
 config.json
 animations
+*.pem
+*.mp3
 
 node_modules
 __pycache__

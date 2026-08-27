@@ -45,7 +45,7 @@ function state(): PeskSettings {
 }
 
 function loadAdapter(): Window["peskApi"] {
-  window.history.replaceState({}, "", "/web-chat.html?token=test-token");
+  window.history.replaceState({}, "", "/web-chat.html");
   (globalThis as unknown as { WebSocket: typeof WebSocket }).WebSocket =
     FakeWebSocket as unknown as typeof WebSocket;
   jest.isolateModules(() => {
@@ -56,13 +56,24 @@ function loadAdapter(): Window["peskApi"] {
 
 beforeEach(() => {
   document.body.innerHTML =
-    '<div id="web-connection-status"></div><div id="codex-error"></div>';
+    '<div id="codex-chat-header"></div><span id="web-notification-status"></span><span id="web-connection-status"></span><div id="codex-error"></div>';
   FakeWebSocket.instances = [];
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ publicKey: "test-public-key" }),
+      }),
+    ),
+  });
   jest.useRealTimers();
 });
 
 afterEach(() => {
   jest.resetModules();
+  delete (window as Window & { Notification?: unknown }).Notification;
+  delete (navigator as Navigator & { serviceWorker?: unknown }).serviceWorker;
 });
 
 test("authenticates and publishes the initial state", async () => {
@@ -71,7 +82,7 @@ test("authenticates and publishes the initial state", async () => {
   socket.emit("open");
   expect(JSON.parse(socket.sent[0])).toEqual({
     type: "authenticate",
-    token: "test-token",
+    credential: "",
   });
 
   const next = state();
@@ -133,7 +144,7 @@ test("reconnects after a transient socket close", () => {
   jest.advanceTimersByTime(1000);
 
   expect(FakeWebSocket.instances).toHaveLength(2);
-  expect(FakeWebSocket.instances[1].url).toContain("token=test-token");
+  expect(FakeWebSocket.instances[1].url).not.toContain("token=");
 });
 
 test("does not retry authentication failures", () => {
@@ -146,4 +157,21 @@ test("does not retry authentication failures", () => {
   expect(document.getElementById("web-connection-status")?.textContent).toBe(
     "Authentication failed",
   );
+});
+
+test("prompts when notification permission is undecided", () => {
+  Object.defineProperty(window, "Notification", {
+    configurable: true,
+    value: { permission: "default" },
+  });
+
+  loadAdapter();
+
+  const prompt = document.getElementById("web-notification-prompt");
+  expect(prompt?.textContent).toBe("Enable notifications");
+  expect((prompt as HTMLButtonElement | null)?.disabled).toBe(false);
+  expect(document.getElementById("web-notification-status")?.textContent).toBe(
+    "Web Push not configured",
+  );
+  expect(document.getElementById("web-notification-status")?.hasAttribute("hidden")).toBe(false);
 });

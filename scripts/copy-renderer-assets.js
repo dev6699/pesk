@@ -16,6 +16,12 @@ for (const file of [
   "styles.css",
   "menu.html",
   "menu.css",
+  "manifest.webmanifest",
+  "web-sw.js",
 ]) {
   fs.copyFileSync(path.join(source, file), path.join(destination, file));
 }
+fs.copyFileSync(
+  path.join(__dirname, "..", "assets", "pesk-tray.png"),
+  path.join(destination, "pesk-tray.png"),
+);
