@@ -1200,7 +1200,11 @@ describe("CodexController", () => {
       JSON.stringify({
         id: 88,
         method: "item/commandExecution/requestApproval",
-        params: { command: "npm test", reason: "Run the tests" },
+        params: {
+          kind: "command",
+          command: "npm test",
+          reason: "Run the tests",
+        },
       }),
     );
 
@@ -2473,7 +2477,11 @@ describe("CodexController", () => {
       JSON.stringify({
         id: 88,
         method: "item/commandExecution/requestApproval",
-        params: { command: "npm test", reason: "Run the tests" },
+        params: {
+          kind: "command",
+          command: "npm test",
+          reason: "Run the tests",
+        },
       }),
     );
     socket.emit(
@@ -2595,7 +2603,11 @@ describe("CodexController", () => {
       JSON.stringify({
         id: "approval-1",
         method: "item/commandExecution/requestApproval",
-        params: { command: "first command", reason: "first permission" },
+        params: {
+          kind: "command",
+          command: "first command",
+          reason: "first permission",
+        },
       }),
     );
 
@@ -2629,6 +2641,7 @@ describe("CodexController", () => {
         id: "command-approval",
         method: "item/commandExecution/requestApproval",
         params: {
+          kind: "command",
           command: "curl example.com",
           proposedExecpolicyAmendment: ["curl", "example.com"],
           proposedNetworkPolicyAmendments: [
@@ -2665,6 +2678,7 @@ describe("CodexController", () => {
         id: 99,
         method: "item/commandExecution/requestApproval",
         params: {
+          kind: "command",
           command: "npm test",
           proposedExecpolicyAmendment: ["npm", "test"],
         },
