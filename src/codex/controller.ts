@@ -35,6 +35,8 @@ import type {
   GetAccountRateLimitsResponse,
   RateLimitSnapshot,
   CommandExecResponse,
+  ThreadArchiveResponse,
+  ThreadDeleteResponse,
 } from "../codex-schema/v2";
 import type {
   FuzzyFileSearchResponse,
@@ -53,6 +55,8 @@ import type {
   ReviewStartRequest,
   ThreadListRequest,
   ThreadReadRequest,
+  ThreadArchiveRequest,
+  ThreadDeleteRequest,
   ThreadResumeRequest,
   ThreadShellCommandRequest,
   ThreadStartRequest,
@@ -500,6 +504,12 @@ export class CodexController {
     if (newThreadMatch) {
       return this.startNewThread(newThreadMatch[1]);
     }
+    if (/^\/archive$/i.test(prompt)) {
+      return this.archiveThread();
+    }
+    if (/^\/delete$/i.test(prompt)) {
+      return this.deleteThread();
+    }
 
     const shellCommand = prompt.match(/^!(.+)$/s)?.[1].trim();
     if (shellCommand) {
@@ -555,6 +565,34 @@ export class CodexController {
         });
       }
     });
+    return true;
+  }
+
+  /** Archives the currently selected thread through the app server. */
+  private archiveThread(): boolean {
+    if (!this.threadId) return false;
+    const threadId = this.threadId;
+    const id = ++this.nextId;
+    this.setRequest<ThreadArchiveResponse>(id, () => undefined);
+    this.send({
+      method: "thread/archive",
+      id,
+      params: { threadId },
+    } satisfies ThreadArchiveRequest);
+    return true;
+  }
+
+  /** Permanently deletes the currently selected thread through the app server. */
+  private deleteThread(): boolean {
+    if (!this.threadId) return false;
+    const threadId = this.threadId;
+    const id = ++this.nextId;
+    this.setRequest<ThreadDeleteResponse>(id, () => undefined);
+    this.send({
+      method: "thread/delete",
+      id,
+      params: { threadId },
+    } satisfies ThreadDeleteRequest);
     return true;
   }
 
@@ -1228,6 +1266,12 @@ export class CodexController {
       case "thread/queue/changed":
         this.refreshQueue(message.params.threadId);
         break;
+      case "thread/archived":
+        this.handleThreadRemoved(message.params.threadId);
+        break;
+      case "thread/deleted":
+        this.handleThreadRemoved(message.params.threadId);
+        break;
       case "turn/started":
         this.handleTurnStarted(message);
         break;
@@ -1295,6 +1339,23 @@ export class CodexController {
         }
         break;
     }
+  }
+
+  /** Removes archived/deleted threads from local state and selects a survivor. */
+  private handleThreadRemoved(threadId: string): void {
+    this.threads = this.threads.filter((thread) => thread.id !== threadId);
+    this.threadControllers.delete(threadId);
+    this.readonlyThreadIds.delete(threadId);
+    this.attentionQueue.delete(threadId);
+    if (this.threadId !== threadId) {
+      this.options.publishRendererState();
+      return;
+    }
+    const nextThread = this.threads[0];
+    this.threadId = undefined;
+    this.standaloneThread.clearConversation();
+    if (nextThread) this.switchThread(nextThread.id);
+    this.options.publishRendererState();
   }
 
   /** Selects and initializes a thread announced by the app server. */
