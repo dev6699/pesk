@@ -3,6 +3,7 @@ interface PetRendererOptions {
   pet: HTMLElement;
   status: HTMLElement;
   statusLabel: HTMLElement;
+  aggregateStatusLabel?: HTMLElement;
   statusSound: HTMLAudioElement;
   chatOnly: boolean;
   settings: PeskSettings;
@@ -24,14 +25,11 @@ export class PetRenderer {
   private currentAnimationName = "idle";
   private focused = false;
   private codexUpdateActive = false;
-  private pendingStatusSound = false;
   private statusTimer: number | undefined;
-  private previousStatus: PeskSettings["codexStatus"];
   private statusSoundUrl = "";
 
   constructor(private readonly options: PetRendererOptions) {
     this.settings = options.settings;
-    this.previousStatus = options.settings.codexStatus;
     this.updateStatus(this.settings);
     options.pet.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
@@ -67,17 +65,10 @@ export class PetRenderer {
   updateSettings(next: PeskSettings): void {
     const animationChanged = next.animation !== this.settings.animation;
     const modeChanged = next.animationMode !== this.settings.animationMode;
-    const approvalStarted =
-      !this.settings.codexPendingApproval && next.codexPendingApproval;
     this.settings = next;
     this.updateStatusSound(next.codexStatusSoundUrl);
     this.updateStatus(next);
-    if (approvalStarted) {
-      this.pendingStatusSound = false;
-      if (this.codexUpdateActive && !this.focused) {
-        this.playStatusChangeSound();
-      }
-    }
+    this.updateAggregateStatus(next);
     if (
       animationChanged ||
       (modeChanged && next.animationMode === "selected")
@@ -89,8 +80,11 @@ export class PetRenderer {
 
   updateFocus(focused: boolean): void {
     this.focused = focused;
-    if (focused) this.pendingStatusSound = false;
-    else this.maybePlayPendingStatusSound();
+    if (focused) {
+      this.codexUpdateActive = false;
+      this.stopStatusSound();
+      this.options.pet.classList.toggle("codex-update", false);
+    }
     this.options.pet.classList.toggle("focused", focused);
     this.options.pet.setAttribute(
       "aria-label",
@@ -101,12 +95,13 @@ export class PetRenderer {
   updateCodexUpdate(active: boolean): void {
     this.codexUpdateActive = active;
     if (!active) {
-      this.pendingStatusSound = false;
       this.stopStatusSound();
-    } else {
-      this.maybePlayPendingStatusSound();
     }
     this.options.pet.classList.toggle("codex-update", active);
+  }
+
+  playAttentionSound(): void {
+    this.playStatusChangeSound();
   }
 
   async loadAnimations(): Promise<void> {
@@ -168,14 +163,6 @@ export class PetRenderer {
   }
 
   private updateStatus(next: PeskSettings): void {
-    if (
-      this.previousStatus === "working" &&
-      (next.codexStatus === "idle" || next.codexStatus === "waiting")
-    ) {
-      this.pendingStatusSound = true;
-    }
-    this.previousStatus = next.codexStatus;
-    this.maybePlayPendingStatusSound();
     if (this.statusTimer !== undefined) {
       window.clearInterval(this.statusTimer);
       this.statusTimer = undefined;
@@ -185,16 +172,16 @@ export class PetRenderer {
         next.codexStatus[0].toUpperCase() + next.codexStatus.slice(1);
       const elapsed =
         next.codexWorkingSince !== undefined
-          ? formatElapsed(Date.now() - next.codexWorkingSince)
-          : undefined;
-      this.options.statusLabel.textContent =
-        next.codexStatus === "working" && elapsed
-          ? `${label} · ${elapsed}`
-          : label;
+          ? ` · ${formatElapsed(Date.now() - next.codexWorkingSince)}`
+          : "";
+      this.options.statusLabel.textContent = `${label}${elapsed}`;
       this.options.status.setAttribute(
         "aria-label",
         this.options.statusLabel.textContent,
       );
+      this.options.status.title = next.codexThreadId
+        ? `Selected thread: ${next.codexThreadId}`
+        : "Selected thread";
     };
     render();
     if (
@@ -204,20 +191,54 @@ export class PetRenderer {
       this.statusTimer = window.setInterval(render, 1000);
     }
     this.options.status.className = `status-${next.codexStatus}`;
-    this.options.status.title = "";
   }
 
-  /** Plays a short notification when Codex finishes or needs attention. */
-  private maybePlayPendingStatusSound(): void {
-    if (!this.pendingStatusSound || !this.codexUpdateActive || this.focused) {
-      return;
-    }
-    this.pendingStatusSound = false;
-    this.playStatusChangeSound();
+  private updateAggregateStatus(next: PeskSettings): void {
+    const label = this.options.aggregateStatusLabel;
+    if (!label) return;
+    const otherThreads = next.codexThreadActivities.filter(
+      (activity) =>
+        activity.threadId !== next.codexThreadId && activity.status !== "idle",
+    );
+    const waitingCount = otherThreads.filter(
+      (activity) => activity.status === "waiting",
+    ).length;
+    const workingCount = otherThreads.filter(
+      (activity) => activity.status === "working",
+    ).length;
+    const counts = [
+      waitingCount ? `Waiting · ${waitingCount}` : "",
+      workingCount ? `Working · ${workingCount}` : "",
+    ].filter(Boolean);
+    const separator = document.createElement("span");
+    separator.className = "aggregate-status-separator";
+    separator.textContent = "|";
+    label.replaceChildren(
+      `Wait ${waitingCount}`,
+      separator,
+      `Work ${workingCount}`,
+    );
+    label.className = "";
+    label.hidden = false;
+    label.style.display = "inline-flex";
+    label.title = otherThreads
+      .map((activity) => {
+        const threadStatus =
+          activity.status[0].toUpperCase() + activity.status.slice(1);
+        const elapsed =
+          activity.workingSince !== undefined
+            ? ` · ${formatElapsed(Date.now() - activity.workingSince)}`
+            : "";
+        const attention = activity.attention
+          ? ` · needs ${activity.attention === "userInput" ? "input" : "approval"}`
+          : "";
+        return `${activity.preview || activity.threadId}: ${threadStatus}${elapsed}${attention}`;
+      })
+      .join("\n");
   }
 
   private playStatusChangeSound(): void {
-    if (!this.settings.codexStatusSound) return;
+    if (this.focused || !this.settings.codexStatusSound) return;
 
     const sound = this.options.statusSound;
     sound.currentTime = 0;

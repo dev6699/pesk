@@ -79,11 +79,11 @@ export class ChatWebServer {
   private readonly sockets: WebSocketServer;
   private started = false;
   private subscriptions = new Map<string, PushSubscription>();
-  private previousPushState: Record<string, unknown> | undefined;
   private vapidKeys: VapidKeys | undefined;
   private preferredAddress: string | undefined;
   private devices = new Map<string, StoredDevice>();
-  private pairing: { codeHash: string; expiresAt: number; deviceName: string } | undefined;
+  private pairing:
+    { codeHash: string; expiresAt: number; deviceName: string } | undefined;
   private completedPairingName: string | undefined;
   private listeningPort: number | undefined;
 
@@ -116,12 +116,7 @@ export class ChatWebServer {
         return;
       }
       this.sockets.handleUpgrade(request, socket, head, (client) =>
-        this.sockets.emit(
-          "connection",
-          client,
-          request,
-          undefined,
-        ),
+        this.sockets.emit("connection", client, request, undefined),
       );
     });
     this.sockets.on("connection", (client: WebSocket) =>
@@ -150,23 +145,35 @@ export class ChatWebServer {
       this.server.on("error", (error) =>
         this.options.debug("web chat error", error),
       );
-      this.server.listen(this.options.port, this.options.listenHost ?? "0.0.0.0", () => {
-        this.listeningPort = (this.server.address() as AddressInfo).port;
-        this.options.debug("web chat", {
-          urls: accessUrls(this.listeningPort, this.isSecure(), this.preferredAddress),
-        });
-        resolve();
-      });
+      this.server.listen(
+        this.options.port,
+        this.options.listenHost ?? "0.0.0.0",
+        () => {
+          this.listeningPort = (this.server.address() as AddressInfo).port;
+          this.options.debug("web chat", {
+            urls: accessUrls(
+              this.listeningPort,
+              this.isSecure(),
+              this.preferredAddress,
+            ),
+          });
+          resolve();
+        },
+      );
     });
   }
 
   broadcast(state = this.options.getState()): void {
     if (!this.options.enabled) return;
-    this.notifyForState(state);
     const message = JSON.stringify({ type: "state", state });
     for (const client of this.clients.keys()) {
       if (client.readyState === WebSocket.OPEN) client.send(message);
     }
+  }
+
+  /** Sends a push notification for the same background attention event used by desktop. */
+  notifyCodexAttention(kind: "finished" | "approval" | "input"): void {
+    this.sendPush(notificationForKind(kind));
   }
 
   stop(): Promise<void> {
@@ -201,7 +208,12 @@ export class ChatWebServer {
     const code = randomBytes(4).toString("hex").toUpperCase();
     const expiresAt = Date.now() + 5 * 60_000;
     const requestedName = deviceName.trim().slice(0, 80);
-    if (!requestedName || [...this.devices.values()].some((device) => device.name.toLowerCase() === requestedName.toLowerCase())) {
+    if (
+      !requestedName ||
+      [...this.devices.values()].some(
+        (device) => device.name.toLowerCase() === requestedName.toLowerCase(),
+      )
+    ) {
       throw new Error("Device name is empty or already in use");
     }
     const uniqueName = requestedName;
@@ -211,14 +223,16 @@ export class ChatWebServer {
       expiresAt,
       deviceName: uniqueName,
     };
-    const urls = accessUrls(this.options.port, this.isSecure(), this.preferredAddress);
+    const urls = accessUrls(
+      this.options.port,
+      this.isSecure(),
+      this.preferredAddress,
+    );
     const pairingUrl = `${urls[0] ?? ""}pair?code=${encodeURIComponent(code)}`;
     return {
       code,
       expiresAt,
-      urls: urls.map(
-        (url) => `${url}pair?code=${encodeURIComponent(code)}`,
-      ),
+      urls: urls.map((url) => `${url}pair?code=${encodeURIComponent(code)}`),
       qrDataUrl: await QRCode.toDataURL(pairingUrl, { width: 220, margin: 2 }),
       deviceName: uniqueName,
     };
@@ -232,12 +246,14 @@ export class ChatWebServer {
   }
 
   listDevices(): PairingDevice[] {
-    return [...this.devices.values()].map(({ credentialHash: _, ...device }) => ({
-      ...device,
-      pushRegistered: [...this.subscriptions.values()].some(
-        (subscription) => subscription.deviceId === device.id,
-      ),
-    }));
+    return [...this.devices.values()].map(
+      ({ credentialHash: _, ...device }) => ({
+        ...device,
+        pushRegistered: [...this.subscriptions.values()].some(
+          (subscription) => subscription.deviceId === device.id,
+        ),
+      }),
+    );
   }
 
   setDevicePushEnabled(id: string, enabled: boolean): void {
@@ -259,14 +275,20 @@ export class ChatWebServer {
     for (const [endpoint, subscription] of this.subscriptions) {
       if (subscription.deviceId === id) this.subscriptions.delete(endpoint);
     }
-    saveSubscriptions(this.options.webPushSubscriptionsPath, this.subscriptions);
+    saveSubscriptions(
+      this.options.webPushSubscriptionsPath,
+      this.subscriptions,
+    );
   }
 
   private handleConnection(client: WebSocket): void {
     let authenticated = false;
 
     const authenticate = (message: Record<string, unknown>): boolean => {
-      if (message.type !== "authenticate" || typeof message.credential !== "string") {
+      if (
+        message.type !== "authenticate" ||
+        typeof message.credential !== "string"
+      ) {
         client.close(1008, "Authentication required");
         return false;
       }
@@ -318,7 +340,9 @@ export class ChatWebServer {
     );
   }
 
-  private authenticatedDevice(request: IncomingMessage): StoredDevice | undefined {
+  private authenticatedDevice(
+    request: IncomingMessage,
+  ): StoredDevice | undefined {
     const header = request.headers.authorization;
     return header?.startsWith("Bearer ")
       ? this.authenticateCredential(header.slice(7))
@@ -355,7 +379,11 @@ export class ChatWebServer {
         typeof body.code !== "string" ||
         hashSecret(body.code.toUpperCase()) !== this.pairing.codeHash
       ) {
-        this.writeJson(response, { error: "Pairing code expired or invalid" }, 400);
+        this.writeJson(
+          response,
+          { error: "Pairing code expired or invalid" },
+          400,
+        );
         return;
       }
       const id = randomBytes(12).toString("hex");
@@ -405,7 +433,11 @@ export class ChatWebServer {
       return;
     }
     if (requestUrl.pathname === "/pair") {
-      this.writeWebChat(request, response, path.join(this.options.rendererDirectory, "web-chat.html"));
+      this.writeWebChat(
+        request,
+        response,
+        path.join(this.options.rendererDirectory, "web-chat.html"),
+      );
       return;
     }
     const requested = request.url?.split("?")[0] ?? "/";
@@ -527,7 +559,10 @@ export class ChatWebServer {
       }
       subscription.deviceId = device.id;
       for (const [endpoint, stored] of this.subscriptions) {
-        if (stored.deviceId === device.id && endpoint !== subscription.endpoint) {
+        if (
+          stored.deviceId === device.id &&
+          endpoint !== subscription.endpoint
+        ) {
           this.subscriptions.delete(endpoint);
         }
       }
@@ -540,34 +575,6 @@ export class ChatWebServer {
     } catch {
       this.writeJson(response, { error: "Invalid subscription" }, 400);
     }
-  }
-
-  private notifyForState(next: unknown): void {
-    if (!isRecord(next)) return;
-    const previous = this.previousPushState;
-    this.previousPushState = next;
-    if (!previous) return;
-    let notification: { kind: string; title: string; body: string } | undefined;
-    if (previous.codexStatus === "working" && next.codexStatus === "idle") {
-      notification = {
-        kind: "finished",
-        title: "Pesk finished",
-        body: "Your Pesk response is ready.",
-      };
-    } else if (!previous.codexPendingApproval && next.codexPendingApproval) {
-      notification = {
-        kind: "approval",
-        title: "Pesk needs approval",
-        body: "Open Pesk to review the request.",
-      };
-    } else if (!previous.codexPendingUserInput && next.codexPendingUserInput) {
-      notification = {
-        kind: "input",
-        title: "Pesk needs your input",
-        body: "Open Pesk to answer the questions.",
-      };
-    }
-    if (notification) this.sendPush(notification);
   }
 
   private sendPush(notification: {
@@ -592,7 +599,9 @@ export class ChatWebServer {
       url: "./web-chat.html",
     });
     for (const [endpoint, subscription] of this.subscriptions) {
-      const device = subscription.deviceId ? this.devices.get(subscription.deviceId) : undefined;
+      const device = subscription.deviceId
+        ? this.devices.get(subscription.deviceId)
+        : undefined;
       if (!device || !device.pushEnabled) continue;
       this.options.debug("web push sending", {
         kind: notification.kind,
@@ -617,8 +626,30 @@ export class ChatWebServer {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object");
+function notificationForKind(kind: "finished" | "approval" | "input"): {
+  kind: string;
+  title: string;
+  body: string;
+} {
+  if (kind === "finished") {
+    return {
+      kind,
+      title: "Pesk finished",
+      body: "Your Pesk response is ready.",
+    };
+  }
+  if (kind === "approval") {
+    return {
+      kind,
+      title: "Pesk needs approval",
+      body: "Open Pesk to review the request.",
+    };
+  }
+  return {
+    kind,
+    title: "Pesk needs your input",
+    body: "Open Pesk to answer the questions.",
+  };
 }
 
 function endpointFingerprint(endpoint: string): string {
@@ -690,11 +721,14 @@ function loadDevices(file: string): Map<string, StoredDevice> {
             typeof device.name === "string" &&
             typeof device.credentialHash === "string",
         )
-        .map((device) => [device.id, {
-          ...device,
-          pushEnabled: device.pushEnabled !== false,
-          pushRegistered: false,
-        }]),
+        .map((device) => [
+          device.id,
+          {
+            ...device,
+            pushEnabled: device.pushEnabled !== false,
+            pushRegistered: false,
+          },
+        ]),
     );
   } catch {
     return new Map();
@@ -703,7 +737,9 @@ function loadDevices(file: string): Map<string, StoredDevice> {
 
 function saveDevices(file: string, devices: Map<string, StoredDevice>): void {
   mkdirSync(path.dirname(file), { recursive: true });
-  const persisted = [...devices.values()].map(({ pushRegistered: _, ...device }) => device);
+  const persisted = [...devices.values()].map(
+    ({ pushRegistered: _, ...device }) => device,
+  );
   writeFileSync(file, JSON.stringify(persisted, null, 2), {
     mode: 0o600,
   });
@@ -747,7 +783,8 @@ function accessUrls(
 
 function certificateAddress(file: string): string | undefined {
   try {
-    const subjectAltName = new X509Certificate(readFileSync(file)).subjectAltName ?? "";
+    const subjectAltName =
+      new X509Certificate(readFileSync(file)).subjectAltName ?? "";
     return subjectAltName.match(/IP Address:([0-9.]+)/)?.[1];
   } catch {
     return undefined;

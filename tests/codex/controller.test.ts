@@ -53,10 +53,9 @@ function lastMessage(socket: FakeWebSocket): Record<string, unknown> {
 function options() {
   return {
     publishRendererState: jest.fn(),
-    showPetForUpdate: jest.fn(),
-    focusUserInput: jest.fn(),
-    showApproval: jest.fn(),
-    clearApproval: jest.fn(),
+    handleNotification: jest.fn(),
+    isChatVisible: jest.fn(() => false),
+    clearNotification: jest.fn(),
     debug: jest.fn(),
   };
 }
@@ -2080,7 +2079,12 @@ describe("CodexController", () => {
       requestId: "request-1",
       isBlocking: true,
     });
-    expect(controllerOptions.focusUserInput).toHaveBeenCalled();
+    expect(controllerOptions.handleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "userInputRequested",
+        threadId: "thread-1",
+      }),
+    );
     expect(controller.respondUserInput({ choice: ["Plan"] })).toBe(true);
     expect(lastMessage(socket)).toEqual({
       id: "request-1",
@@ -2098,7 +2102,7 @@ describe("CodexController", () => {
     expect(controller.getState().pendingUserInput).toBeUndefined();
   });
 
-  test("keeps a background user-input request with its originating thread", () => {
+  test("switches to a background user-input request", () => {
     const {
       controller,
       socket,
@@ -2111,7 +2115,7 @@ describe("CodexController", () => {
       ...internal.threads,
       { id: "other-thread", status: { type: "idle" } },
     ];
-    controllerOptions.focusUserInput.mockClear();
+    controllerOptions.handleNotification.mockClear();
 
     socket.emit(
       "message",
@@ -2137,19 +2141,83 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
-    expect(controller.getState().pendingUserInput).toBeUndefined();
-    expect(controllerOptions.focusUserInput).not.toHaveBeenCalled();
-
-    controller.selectThread("other-thread");
+    expect(controller.getState().threadId).toBe("other-thread");
     expect(controller.getState().pendingUserInput).toMatchObject({
       requestId: "background-request",
     });
+    expect(controllerOptions.handleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "userInputRequested" }),
+    );
+
     expect(controller.respondUserInput({ choice: ["one"] })).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       id: "background-request",
       result: { answers: { choice: { answers: ["one"] } } },
     });
+  });
+
+  test("aggregates background thread activity without changing selected chat context", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as {
+      threads: Array<{ id: string; status: { type: string } }>;
+    };
+    internal.threads = [
+      ...internal.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: {
+          threadId: "other-thread",
+          status: { type: "active", activeFlags: [] },
+        },
+      }),
+    );
+
+    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().status).toBe("idle");
+    expect(controller.getState().aggregateStatus).toBe("working");
+    expect(controller.getState().threadActivities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          threadId: "other-thread",
+          status: "working",
+        }),
+      ]),
+    );
+  });
+
+  test("switches to and focuses a background thread after turn completion", () => {
+    const {
+      controller,
+      socket,
+      options: controllerOptions,
+    } = connectedController();
+    const internal = controller as unknown as {
+      threads: Array<{ id: string; status: { type: string } }>;
+    };
+    internal.threads = [
+      ...internal.threads,
+      { id: "other-thread", status: { type: "active" } },
+    ];
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          threadId: "other-thread",
+          turn: { status: "completed" },
+        },
+      }),
+    );
+
+    expect(controller.getState().threadId).toBe("other-thread");
+    expect(controllerOptions.handleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "turnCompleted" }),
+    );
   });
 
   test("resolves background user input without clearing the selected thread", () => {
@@ -2496,7 +2564,9 @@ describe("CodexController", () => {
     expect(controller.getState().status).toBe("waiting");
     expect(
       controllerOptions.publishRendererState.mock.invocationCallOrder[0],
-    ).toBeLessThan(controllerOptions.showApproval.mock.invocationCallOrder[0]);
+    ).toBeLessThan(
+      controllerOptions.handleNotification.mock.invocationCallOrder[0],
+    );
     expect(controller.getState().pendingApproval).toMatchObject({
       requestId: 88,
       command: "npm test",
@@ -2525,7 +2595,7 @@ describe("CodexController", () => {
       id: 88,
       result: { decision: "accept" },
     });
-    expect(controllerOptions.clearApproval).toHaveBeenCalledTimes(1);
+    expect(controllerOptions.clearNotification).toHaveBeenCalledTimes(1);
     expect(controller.getState().status).toBe("working");
   });
 

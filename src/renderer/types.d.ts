@@ -11,11 +11,19 @@ interface SavedPeskSettings {
 interface CodexRuntimeState {
   codexStatusSoundUrl: string;
   codexStatus: "idle" | "working" | "waiting";
+  codexAggregateStatus: "idle" | "working" | "waiting";
   codexConnected: boolean;
   codexThreadId?: string;
   codexCwd?: string;
   codexError?: string;
   codexThreads: Array<{ id: string; preview?: string; status?: string }>;
+  codexThreadActivities: Array<{
+    threadId: string;
+    preview: string;
+    status: "idle" | "working" | "waiting";
+    workingSince?: number;
+    attention?: "approval" | "userInput";
+  }>;
   codexWorkingSince?: number;
   codexWorkedElapsed?: number;
   codexInterrupted?: boolean;
@@ -85,10 +93,7 @@ interface CodexRuntimeState {
     activity?: {
       kind: "command" | "fileChange" | "webSearch" | "tool" | "plan" | "other";
       source?:
-        | "agent"
-        | "userShell"
-        | "unifiedExecStartup"
-        | "unifiedExecInteraction";
+        "agent" | "userShell" | "unifiedExecStartup" | "unifiedExecInteraction";
       userInitiated?: boolean;
       label?: string;
       status?: string;
@@ -130,9 +135,25 @@ interface Window {
     togglePaused: () => void;
     toggleLocked: () => void;
     togglePetVisibility: () => void;
-    createPairing: (name: string) => Promise<{ expiresAt: number; qrDataUrl: string; deviceName: string } | undefined>;
-    getPairingStatus: () => Promise<{ active: boolean; pairedDeviceName?: string }>;
-    getPairingDevices: () => Promise<Array<{ id: string; name: string; createdAt: number; lastUsedAt: number | null; pushEnabled: boolean; pushRegistered: boolean }>>;
+    createPairing: (
+      name: string,
+    ) => Promise<
+      { expiresAt: number; qrDataUrl: string; deviceName: string } | undefined
+    >;
+    getPairingStatus: () => Promise<{
+      active: boolean;
+      pairedDeviceName?: string;
+    }>;
+    getPairingDevices: () => Promise<
+      Array<{
+        id: string;
+        name: string;
+        createdAt: number;
+        lastUsedAt: number | null;
+        pushEnabled: boolean;
+        pushRegistered: boolean;
+      }>
+    >;
     revokePairingDevice: (id: string) => Promise<void>;
     setPairingDevicePush: (id: string, enabled: boolean) => Promise<void>;
     toggleCodexStatusSound: () => void;
@@ -170,6 +191,7 @@ interface Window {
     onMenuFocusChanged: (callback: (focused: boolean) => void) => void;
     onPetFocusChanged: (callback: (focused: boolean) => void) => void;
     onPetCodexUpdateChanged: (callback: (active: boolean) => void) => void;
+    onPetCodexStatusSound: (callback: () => void) => void;
     onCodexInputFocus: (callback: () => void) => void;
     onCodexUserInputFocus: (callback: () => void) => void;
     onSettingsChanged: (callback: (settings: PeskSettings) => void) => void;

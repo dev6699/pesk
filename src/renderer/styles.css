@@ -145,10 +145,10 @@ body.chat-only #codex-chat {
   top: 4px;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 0;
   width: fit-content;
   box-sizing: border-box;
-  max-width: 140px;
+  max-width: 220px;
   padding: 6px 9px;
   border: 1px solid #ffffffaa;
   border-radius: 999px;
@@ -157,8 +157,9 @@ body.chat-only #codex-chat {
   font:
     700 12px/1.25 system-ui,
     sans-serif;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-shadow: 0 1px 2px #000;
   pointer-events: none;
   transform: none;
@@ -174,6 +175,28 @@ body.chat-only #codex-chat {
 
 #codex-status.status-idle {
   background: linear-gradient(135deg, #34a853, #176b35);
+}
+
+#codex-aggregate-status-label {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0;
+  padding-left: 0;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#codex-aggregate-status-label::before {
+  content: "|";
+  margin: 0 6px;
+  color: #ffffff;
+}
+
+#codex-aggregate-status-label .aggregate-status-separator {
+  margin: 0 6px;
+  color: #ffffff;
 }
 
 #codex-chat {

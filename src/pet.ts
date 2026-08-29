@@ -61,6 +61,16 @@ export class PetWindowController {
     this.petWindow?.webContents.send("pet-codex-update-changed", active);
   }
 
+  /** Keeps the background-thread attention indicator active through auto-focus. */
+  setBackgroundAttention(active: boolean): void {
+    this.petWindow?.webContents.send("pet-codex-update-changed", active);
+  }
+
+  /** Plays the Codex attention sound for a background-thread prompt. */
+  playCodexStatusSound(): void {
+    this.petWindow?.webContents.send("pet-codex-status-sound");
+  }
+
   /** Returns the configured native pet size used for window scaling. */
   getSize(): number {
     return this.animationFrames[0]?.size ?? 180;
@@ -188,6 +198,15 @@ export class PetWindowController {
     settings.visible = true;
     this.petWindow?.show();
     this.options.showChat();
+    this.options.saveSettings();
+    this.options.refreshTrayMenu();
+  }
+
+  /** Shows the pet for a notification without opening or focusing chat. */
+  showForNotification(): void {
+    const settings = this.options.getSettings();
+    settings.visible = true;
+    this.petWindow?.showInactive();
     this.options.saveSettings();
     this.options.refreshTrayMenu();
   }

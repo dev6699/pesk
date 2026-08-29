@@ -14,9 +14,11 @@ export function defaultCodexRuntimeState(): CodexRuntimeState {
   return {
     codexStatusSoundUrl: "",
     codexStatus: "idle",
+    codexAggregateStatus: "idle",
     codexConnected: false,
     codexHistory: [],
     codexThreads: [],
+    codexThreadActivities: [],
     codexQueuedSubmissions: [],
     codexCollaborationMode: "default",
   };

@@ -1,4 +1,4 @@
-import { app, globalShortcut, ipcMain, shell } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, shell } from "electron";
 import * as path from "node:path";
 import { CodexController } from "./codex";
 import type {
@@ -7,6 +7,7 @@ import type {
   CodexPendingApproval,
   CodexPendingUserInput,
   CodexQueuedSubmission,
+  CodexThreadActivity,
 } from "./codex";
 import type { Thread, ThreadTokenUsage } from "./codex-schema/v2";
 import { ChatWindowController } from "./chat";
@@ -17,18 +18,21 @@ import { PresetController } from "./preset";
 import { MenuController } from "./menu";
 import { routePetFocusShortcut } from "./focus-shortcut";
 import { ChatWebServer } from "./chat-web-server";
+import { NotificationController } from "./notification";
 
 interface RendererSettings extends PeskSettings {
   codexThreadId?: string;
   codexCwd?: string;
   codexError?: string;
   codexStatus: "idle" | "working" | "waiting";
+  codexAggregateStatus: "idle" | "working" | "waiting";
   codexConnected: boolean;
   codexWorkingSince?: number;
   codexWorkedElapsed?: number;
   codexInterrupted?: boolean;
   codexHistory: CodexMessage[];
   codexThreads: Thread[];
+  codexThreadActivities: CodexThreadActivity[];
   codexTokenUsage?: ThreadTokenUsage;
   codexModelInfo?: CodexModelInfo;
   codexRateLimits?: import("./codex-schema/v2").RateLimitSnapshot;
@@ -47,10 +51,32 @@ let presets: PresetController;
 let menu: MenuController;
 let codexStatusSoundUrl = "";
 let webServer: ChatWebServer;
+let notifications: NotificationController;
+let wiredChatWindow: BrowserWindow | null = null;
 
 const debug = (...values: unknown[]): void => {
   if (!app.isPackaged) console.log("[pesk]", ...values);
 };
+
+function positionChat(): void {
+  const petWindow = pet?.window;
+  if (petWindow && chat?.window) chat.position(petWindow.getBounds());
+}
+
+function wireChatWindow(): void {
+  const chatWindow = chat?.window;
+  if (!chatWindow || chatWindow === wiredChatWindow) return;
+  wiredChatWindow = chatWindow;
+  chatWindow.on("focus", () => pet.setFocusIndicator(true));
+  chatWindow.on("blur", () => {
+    setTimeout(() => {
+      if (!pet.window?.isFocused() && !chat.window?.isFocused()) {
+        pet.setFocusIndicator(false);
+        chat.hide();
+      }
+    }, 50);
+  });
+}
 
 function persistSettings(): void {
   saveSettings(settings);
@@ -72,9 +98,11 @@ function rendererSettings(): RendererSettings {
     codexCwd: state.cwd,
     codexError: state.error,
     codexStatus: state.status,
+    codexAggregateStatus: state.aggregateStatus,
     codexConnected: state.connected,
     codexHistory: state.history,
     codexThreads: state.threads,
+    codexThreadActivities: state.threadActivities,
     codexWorkingSince: state.workingSince,
     codexWorkedElapsed: state.workedElapsed,
     codexInterrupted: state.interrupted,
@@ -171,13 +199,13 @@ function handleWebCommand(
           Object.entries(command.answers).flatMap(([id, value]) =>
             Array.isArray(value)
               ? [
-                [
-                  id,
-                  value.filter(
-                    (item): item is string => typeof item === "string",
-                  ),
-                ],
-              ]
+                  [
+                    id,
+                    value.filter(
+                      (item): item is string => typeof item === "string",
+                    ),
+                  ],
+                ]
               : [],
           ),
         );
@@ -241,33 +269,29 @@ app.whenReady().then(() => {
     saveSettings: persistSettings,
     publishRendererState: publishRendererState,
     refreshTrayMenu: () => menu.refreshTrayMenu(),
-    positionChat: () => chat.position(),
-    showChat: () => chat.showForPetFocus(),
+    positionChat,
+    showChat: () => {
+      chat.showInactive(pet.window?.getBounds());
+      pet.window?.moveTop();
+    },
     hideChat: () => {
-      chat.hideIfNotFocused();
+      if (!chat.window?.isFocused()) chat.hide();
       pet.setFocusIndicator(
         (pet.window?.isFocused() ?? false) ||
-        (chat.window?.isFocused() ?? false),
+          (chat.window?.isFocused() ?? false),
       );
     },
     hideChatImmediately: () => chat.hide(),
     hideMenu: () => menu.hide(),
     focusChat: () => {
       chat.create();
-      chat.position();
-      chat.window?.show();
-      chat.window?.focus();
-      chat.window?.webContents.focus();
-      chat.window?.webContents.send("codex-input-focus");
+      wireChatWindow();
+      chat.focusInput(pet.window?.getBounds());
     },
     isChatFocused: () => chat.window?.isFocused() ?? false,
   });
-  chat = new ChatWindowController({
-    getPetWindow: () => pet.window,
-    keepPetAbove: () => pet.window?.moveTop(),
-    setPetFocus: (focused) => pet.setFocusIndicator(focused),
-    setCodexUpdateIndicator: (active) => pet.setCodexUpdateIndicator(active),
-  });
+  chat = new ChatWindowController();
+  notifications = new NotificationController(pet, chat, webServer);
   menu = new MenuController({
     getSettings: () => settings,
     getPetWindow: () => pet.window,
@@ -279,13 +303,9 @@ app.whenReady().then(() => {
   });
   codexController = new CodexController({
     publishRendererState,
-    showPetForUpdate: () => {
-      settings.visible = true;
-      chat.showForCodexUpdate();
-    },
-    focusUserInput: () => chat.focusForUserInput(),
-    showApproval: () => chat.showForApproval(),
-    clearApproval: () => pet.setCodexUpdateIndicator(false),
+    handleNotification: (request) => notifications.handle(request),
+    isChatVisible: () => chat.window?.isVisible() ?? false,
+    clearNotification: () => notifications.clear(),
     debug,
   });
   codexController.setSocketUrl(config.codexAppServerUrl);
@@ -344,7 +364,10 @@ app.whenReady().then(() => {
       codexController.setCollaborationMode(mode);
     }
   });
-  ipcMain.on("focus-codex-input", () => chat.focusInput());
+  ipcMain.on("focus-codex-input", () => {
+    wireChatWindow();
+    chat.focusInput(pet.window?.getBounds());
+  });
   ipcMain.handle(
     "implement-codex-plan",
     (_event, planText: unknown, clearContext: unknown) => {
@@ -457,6 +480,7 @@ app.whenReady().then(() => {
   });
   pet.create();
   chat.create();
+  wireChatWindow();
   menu.create();
   codexController.start();
   webServer.start();

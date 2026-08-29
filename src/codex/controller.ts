@@ -15,6 +15,7 @@ import {
   shouldReconcileOnIdle,
   shouldResumeOnActiveStatus,
 } from "./protocol";
+import type { NotificationRequest } from "../notification";
 import type {
   IncomingMessage,
   JsonRpcResponse,
@@ -39,7 +40,7 @@ import type {
   FuzzyFileSearchResponse,
   FuzzyFileSearchResult,
 } from "../codex-schema";
-import type { CodexState } from "./types";
+import type { CodexState, CodexThreadActivity } from "./types";
 import type {
   AccountRateLimitsRequest,
   CommandExecRequest,
@@ -72,10 +73,9 @@ Steer message:
 /** Codex-related settings persisted alongside the pet settings. */
 interface Options {
   publishRendererState: () => void;
-  showPetForUpdate: () => void;
-  focusUserInput: () => void;
-  showApproval: (requestId: RequestId, command: string, reason: string) => void;
-  clearApproval?: () => void;
+  handleNotification: (request: NotificationRequest) => void;
+  isChatVisible: () => boolean;
+  clearNotification?: () => void;
   debug: (...values: unknown[]) => void;
 }
 
@@ -133,6 +133,8 @@ export class CodexController {
   private routedThreadId: string | undefined;
   /** Suppresses renderer publication while a background runtime is updated. */
   private suppressedPublication = 0;
+  /** Pending background requests, retained in first-arrival order. */
+  private readonly attentionQueue = new Map<string, "approval" | "userInput">();
 
   /** Creates a controller with callbacks for renderer and window updates. */
   constructor(options: Options) {
@@ -143,14 +145,9 @@ export class CodexController {
           options.publishRendererState();
         }
       },
-      showPetForUpdate: () => {
-        if (this.suppressedPublication === 0) options.showPetForUpdate();
-      },
-      focusUserInput: () => {
-        if (this.suppressedPublication === 0) options.focusUserInput();
-      },
-      showApproval: (...args) => {
-        if (this.suppressedPublication === 0) options.showApproval(...args);
+      handleNotification: (request) => {
+        if (this.suppressedPublication === 0)
+          options.handleNotification(request);
       },
     };
   }
@@ -190,14 +187,24 @@ export class CodexController {
   /** Returns the current state snapshot for renderer IPC responses. */
   getState(): CodexState {
     const thread = this.threadRuntime().snapshot();
+    const threadActivities = this.getThreadActivities();
+    const aggregateStatus: CodexState["status"] = threadActivities.some(
+      (activity) => activity.status === "waiting",
+    )
+      ? "waiting"
+      : threadActivities.some((activity) => activity.status === "working")
+        ? "working"
+        : "idle";
     return {
       threadId: this.threadId,
       cwd: thread.workingDirectory ?? process.cwd(),
       error: this.connectionError,
       status: thread.status,
+      aggregateStatus,
       connected: thread.connected,
       history: thread.history,
       threads: this.threads,
+      threadActivities,
       workingSince: thread.workingSince,
       workedElapsed: thread.workedElapsed,
       interrupted: thread.interrupted,
@@ -209,6 +216,32 @@ export class CodexController {
       pendingApproval: thread.pendingApproval,
       queuedSubmissions: thread.queuedSubmissions,
     };
+  }
+
+  /** Returns normalized activity for every known or currently materialized thread. */
+  private getThreadActivities(): CodexThreadActivity[] {
+    const known = new Map<string, Thread | undefined>(
+      this.threads.map((thread) => [thread.id, thread]),
+    );
+    for (const id of this.threadControllers.keys()) {
+      if (!known.has(id)) known.set(id, undefined);
+    }
+    return [...known.entries()].map(([threadId, thread]) => {
+      const runtime = this.threadControllers.get(threadId);
+      const snapshot = runtime?.snapshot();
+      const attention = runtime?.state.pendingUserInput
+        ? "userInput"
+        : runtime?.state.pendingApproval
+          ? "approval"
+          : undefined;
+      return {
+        threadId,
+        preview: thread?.preview ?? threadId,
+        status: snapshot?.status ?? "idle",
+        workingSince: snapshot?.workingSince,
+        attention,
+      };
+    });
   }
 
   /** Changes the app-server endpoint before the controller starts. */
@@ -287,7 +320,9 @@ export class CodexController {
       pending.turnId,
     );
     runtime.clearUserInput();
+    this.clearAttention(pending.threadId);
     this.options.publishRendererState();
+    this.routeNextAttention();
     return true;
   }
 
@@ -795,12 +830,14 @@ export class CodexController {
     } satisfies JsonRpcResponse<PermissionApprovalResponse>);
     const resolution = runtime.resolveApprovalSelection(key, optionId);
     if (!resolution) return;
+    this.clearAttention(runtime.id);
     this.options.publishRendererState();
     if (!resolution.hasPending) {
-      this.options.clearApproval?.();
+      this.options.clearNotification?.();
     }
     runtime.setStatus("working");
     this.options.publishRendererState();
+    this.routeNextAttention();
   }
 
   /** Sends one newline-delimited JSON-RPC message to the app server. */
@@ -951,6 +988,11 @@ export class CodexController {
     this.setRequest<ThreadListResponse>(id, (message) => {
       const threads = (message.result?.data ?? []).filter(isThread);
       this.threads = threads;
+      for (const thread of threads) {
+        const runtime = this.runtime(thread.id);
+        runtime.syncServerThread(thread);
+        runtime.applyServerStatus(thread.status ?? {});
+      }
       if (!threads.length) {
         this.threadId = undefined;
         this.standaloneThread.clearConversation();
@@ -1122,9 +1164,55 @@ export class CodexController {
   private handleServerMessage(message: ServerMessage): void {
     const threadId = messageThreadId(message);
     if (threadId && message.method !== "thread/started") {
+      const previousSelectedThread = this.threadId;
+      const wasBackgroundThread = previousSelectedThread !== threadId;
+      const runtime = this.runtime(threadId);
+      const previousStatus = runtime.state.status;
       this.withRuntime(threadId, () =>
         this.handleServerMessageInternal(message),
       );
+      const nextStatus = runtime.state.status;
+      if (nextStatus !== previousStatus) {
+        this.options.debug("Pesk thread status transition", {
+          threadId,
+          event: message.method,
+          previousStatus,
+          nextStatus,
+          activeFlags:
+            message.method === "thread/status/changed"
+              ? message.params.status?.type === "active"
+                ? message.params.status.activeFlags
+                : undefined
+              : undefined,
+        });
+      }
+      if (wasBackgroundThread && message.method === "turn/completed") {
+        if (!this.options.isChatVisible()) this.switchThread(threadId, false);
+      }
+      if (message.method === "turn/completed") {
+        this.options.handleNotification({
+          event: "turnCompleted",
+          threadId,
+          selectedThreadId: previousSelectedThread,
+        });
+      } else if (
+        message.method === "item/commandExecution/requestApproval" ||
+        message.method === "item/fileChange/requestApproval"
+      ) {
+        this.options.handleNotification({
+          event: "approvalRequested",
+          threadId,
+          selectedThreadId: previousSelectedThread,
+          requestId: message.id,
+        });
+      } else if (message.method === "item/tool/requestUserInput") {
+        this.options.handleNotification({
+          event: "userInputRequested",
+          threadId,
+          selectedThreadId: previousSelectedThread,
+        });
+      }
+      this.options.publishRendererState();
       return;
     }
     this.handleServerMessageInternal(message);
@@ -1200,21 +1288,16 @@ export class CodexController {
           this.threadRuntime().state.pendingUserInput?.requestId ===
           message.params.requestId
         ) {
+          const threadId =
+            this.threadRuntime().state.pendingUserInput?.threadId;
           this.threadRuntime().clearUserInput();
+          if (threadId) {
+            this.clearAttention(threadId);
+            this.routeNextAttention();
+          }
           this.options.publishRendererState();
         }
         break;
-    }
-
-    const shouldShowPetForUpdate =
-      method === "turn/completed" ||
-      method === "item/commandExecution/requestApproval" ||
-      method === "item/fileChange/requestApproval" ||
-      (method === "thread/status/changed" &&
-        message.params.status?.type === "idle");
-    if (shouldShowPetForUpdate) {
-      this.options.publishRendererState();
-      this.options.showPetForUpdate();
     }
   }
 
@@ -1281,7 +1364,7 @@ export class CodexController {
         item,
         message.params.turnId,
         this.threadRuntime().state.reviewInProgress &&
-        item.type === "userMessage",
+          item.type === "userMessage",
       );
     }
   }
@@ -1307,6 +1390,7 @@ export class CodexController {
     }
     const runtime = this.runtime(message.params.threadId);
     runtime.clearUserInput();
+    this.clearAttention(message.params.threadId);
     runtime.completeTurn(message.params.turn?.status === "interrupted");
     this.refreshQueue(message.params.threadId);
     this.options.publishRendererState();
@@ -1447,10 +1531,16 @@ export class CodexController {
     };
     this.threadRuntime().setUserInput(pending);
     this.threadRuntime().setStatus("waiting");
+    this.noteAttention(pending.threadId, "userInput");
+    this.routeAttention(pending.threadId);
+    if (!messageThreadId(message)) {
+      this.options.handleNotification({
+        event: "userInputRequested",
+        threadId: pending.threadId,
+        selectedThreadId: this.threadId,
+      });
+    }
     this.options.publishRendererState();
-    this.options.showPetForUpdate();
-    this.options.publishRendererState();
-    this.options.focusUserInput();
   }
 
   /** Commits a completed assistant or activity item to conversation history. */
@@ -1470,8 +1560,8 @@ export class CodexController {
       ServerMessage,
       {
         method:
-        | "item/commandExecution/requestApproval"
-        | "item/fileChange/requestApproval";
+          | "item/commandExecution/requestApproval"
+          | "item/fileChange/requestApproval";
       }
     >,
   ): void {
@@ -1493,9 +1583,47 @@ export class CodexController {
       options: approvalOptions(decisions),
     };
     this.threadRuntime().addApproval(requestIdKey(id), approval, displayed);
-    this.options.showApproval(id, command, reason);
+    this.noteAttention(message.params.threadId, "approval");
+    this.routeAttention(message.params.threadId);
+    if (!messageThreadId(message)) {
+      this.options.handleNotification({
+        event: "approvalRequested",
+        threadId: message.params.threadId,
+        selectedThreadId: this.threadId,
+        requestId: id,
+        command,
+        reason,
+      });
+    }
     this.threadRuntime().setStatus("waiting");
     this.options.publishRendererState();
+  }
+
+  private noteAttention(
+    threadId: string,
+    type: "approval" | "userInput",
+  ): void {
+    if (!this.attentionQueue.has(threadId))
+      this.attentionQueue.set(threadId, type);
+  }
+
+  private routeAttention(threadId: string): void {
+    const nextThreadId = this.attentionQueue.keys().next().value;
+    if (typeof nextThreadId !== "string" || this.threadId === nextThreadId)
+      return;
+    this.switchThread(nextThreadId, false);
+  }
+
+  private clearAttention(threadId: string): void {
+    const runtime = this.runtime(threadId);
+    if (!runtime.state.pendingApproval && !runtime.state.pendingUserInput) {
+      this.attentionQueue.delete(threadId);
+    }
+  }
+
+  private routeNextAttention(): void {
+    const nextThreadId = this.attentionQueue.keys().next().value;
+    if (typeof nextThreadId === "string") this.routeAttention(nextThreadId);
   }
 
   /** Starts a text turn and creates a temporary working message. */

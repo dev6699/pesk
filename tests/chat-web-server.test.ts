@@ -310,7 +310,7 @@ describe("ChatWebServer", () => {
     ).toBe(401);
   });
 
-  test("sends state notifications only for transitions and enabled devices", async () => {
+  test("sends explicit notifications only to enabled devices", async () => {
     const paired = await pair();
     await httpRequest(
       port,
@@ -319,15 +319,12 @@ describe("ChatWebServer", () => {
       subscription("https://push.test/send"),
       paired.credential,
     );
-    server.broadcast({ codexStatus: "idle" });
-    server.broadcast({ codexStatus: "working" });
-    server.broadcast({ codexStatus: "idle" });
+    server.notifyCodexAttention("finished");
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(mockedWebpush.sendNotification).toHaveBeenCalledTimes(1);
 
     server.setDevicePushEnabled(paired.deviceId, false);
-    server.broadcast({ codexStatus: "working" });
-    server.broadcast({ codexStatus: "idle" });
+    server.notifyCodexAttention("finished");
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(mockedWebpush.sendNotification).toHaveBeenCalledTimes(1);
   });
@@ -341,18 +338,8 @@ describe("ChatWebServer", () => {
       subscription("https://push.test/events"),
       paired.credential,
     );
-    server.broadcast({
-      codexPendingApproval: false,
-      codexPendingUserInput: false,
-    });
-    server.broadcast({
-      codexPendingApproval: true,
-      codexPendingUserInput: false,
-    });
-    server.broadcast({
-      codexPendingApproval: true,
-      codexPendingUserInput: true,
-    });
+    server.notifyCodexAttention("approval");
+    server.notifyCodexAttention("input");
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(mockedWebpush.sendNotification).toHaveBeenCalledTimes(2);
     expect(mockedWebpush.sendNotification.mock.calls[0][1]).toContain(
@@ -360,6 +347,24 @@ describe("ChatWebServer", () => {
     );
     expect(mockedWebpush.sendNotification.mock.calls[1][1]).toContain(
       '"kind":"input"',
+    );
+  });
+
+  test("sends a notification when a background thread finishes", async () => {
+    const paired = await pair();
+    await httpRequest(
+      port,
+      "POST",
+      "/web-push/subscribe",
+      subscription("https://push.test/background"),
+      paired.credential,
+    );
+    server.notifyCodexAttention("finished");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(mockedWebpush.sendNotification).toHaveBeenCalledTimes(1);
+    expect(mockedWebpush.sendNotification.mock.calls[0][1]).toContain(
+      '"kind":"finished"',
     );
   });
 
@@ -373,9 +378,7 @@ describe("ChatWebServer", () => {
       paired.credential,
     );
     mockedWebpush.sendNotification.mockRejectedValueOnce({ statusCode: 410 });
-    server.broadcast({ codexStatus: "idle" });
-    server.broadcast({ codexStatus: "working" });
-    server.broadcast({ codexStatus: "idle" });
+    server.notifyCodexAttention("finished");
     await new Promise<void>((resolve) => setImmediate(resolve));
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(server.listDevices()[0].pushRegistered).toBe(false);

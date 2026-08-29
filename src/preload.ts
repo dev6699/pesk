@@ -17,7 +17,8 @@ contextBridge.exposeInMainWorld("peskApi", {
   createPairing: (name: string) => ipcRenderer.invoke("create-pairing", name),
   getPairingStatus: () => ipcRenderer.invoke("get-pairing-status"),
   getPairingDevices: () => ipcRenderer.invoke("get-pairing-devices"),
-  revokePairingDevice: (id: string) => ipcRenderer.invoke("revoke-pairing-device", id),
+  revokePairingDevice: (id: string) =>
+    ipcRenderer.invoke("revoke-pairing-device", id),
   setPairingDevicePush: (id: string, enabled: boolean) =>
     ipcRenderer.invoke("set-pairing-device-push", id, enabled),
   toggleCodexStatusSound: () => ipcRenderer.send("toggle-codex-status-sound"),
@@ -40,10 +41,8 @@ contextBridge.exposeInMainWorld("peskApi", {
   setAnimationMode: (mode: "selected" | "shuffle") =>
     ipcRenderer.send("set-animation-mode", mode),
   quitPesk: () => ipcRenderer.send("quit-pesk"),
-  respondCodexPermission: (
-    requestId: string | number,
-    optionId: string,
-  ) => ipcRenderer.send("respond-codex-permission", requestId, optionId),
+  respondCodexPermission: (requestId: string | number, optionId: string) =>
+    ipcRenderer.send("respond-codex-permission", requestId, optionId),
   submitCodexPrompt: (prompt: string) =>
     ipcRenderer.invoke("submit-codex-prompt", prompt),
   startCodexReview: (instructions: string) =>
@@ -70,6 +69,9 @@ contextBridge.exposeInMainWorld("peskApi", {
     ipcRenderer.on("pet-codex-update-changed", (_event, active: boolean) =>
       callback(active),
     );
+  },
+  onPetCodexStatusSound: (callback: () => void) => {
+    ipcRenderer.on("pet-codex-status-sound", () => callback());
   },
   onCodexInputFocus: (callback: () => void) => {
     ipcRenderer.on("codex-input-focus", () => callback());

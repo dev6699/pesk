@@ -2,24 +2,17 @@ import { BrowserWindow, screen } from "electron";
 import * as path from "node:path";
 import { loadRawConfig } from "./config.js";
 
-interface ChatWindowOptions {
-  getPetWindow: () => BrowserWindow | null;
-  keepPetAbove: () => void;
-  setPetFocus: (focused: boolean) => void;
-  setCodexUpdateIndicator: (active: boolean) => void;
-}
-
 interface ChatSize {
   width: number;
   height: number;
 }
 
-/** Owns the Codex chat BrowserWindow and its relationship to the pet window. */
+/** Owns the Codex chat BrowserWindow. */
 export class ChatWindowController {
   private readonly size: ChatSize;
   private chatWindow: BrowserWindow | null = null;
 
-  constructor(private readonly options: ChatWindowOptions) {
+  constructor() {
     const config = loadRawConfig();
     this.size = {
       width: positiveNumber(config.chatWidth, 330),
@@ -37,68 +30,50 @@ export class ChatWindowController {
     return this.size;
   }
 
-  /** Shows chat when Codex activity requires the pet to become visible. */
-  showForCodexUpdate(): void {
-    const petWindow = this.options.getPetWindow();
-    if (!petWindow) return;
-    const chatWasVisible = this.chatWindow?.isVisible() ?? false;
-    if (!petWindow.isVisible()) petWindow.show();
+  /** Shows chat without taking focus. Notification policy belongs upstream. */
+  showInactive(anchorBounds?: Electron.Rectangle): void {
     this.create();
-    this.position();
+    if (anchorBounds) this.position(anchorBounds);
     this.chatWindow?.showInactive();
-    this.options.keepPetAbove();
-    if (!chatWasVisible) this.options.setCodexUpdateIndicator(true);
-  }
-
-  /** Shows chat for a pending Codex approval request. */
-  showForApproval(): void {
-    const petWindow = this.options.getPetWindow();
-    const alreadyFocused =
-      petWindow?.isFocused() || this.chatWindow?.isFocused() || false;
-    this.create();
-    this.position();
-    this.chatWindow?.showInactive();
-    this.options.keepPetAbove();
-    if (!alreadyFocused) this.options.setCodexUpdateIndicator(true);
   }
 
   /** Focuses the chat window and asks its renderer to focus pending options. */
-  focusForUserInput(): void {
-    this.create();
-    this.position();
-    this.chatWindow?.show();
-    this.chatWindow?.focus();
-    this.chatWindow?.webContents.focus();
-    this.chatWindow?.webContents.send("codex-user-input-focus");
+  focusForUserInput(anchorBounds?: Electron.Rectangle): void {
+    this.focusChat("codex-user-input-focus", anchorBounds);
   }
 
   /** Focuses the normal Codex text input. */
-  focusInput(): void {
+  focusInput(anchorBounds?: Electron.Rectangle): void {
+    this.focusChat("codex-input-focus", anchorBounds);
+  }
+
+  private focusChat(
+    event: "codex-input-focus" | "codex-user-input-focus",
+    anchorBounds?: Electron.Rectangle,
+  ): void {
     this.create();
-    this.position();
+    if (anchorBounds) this.position(anchorBounds);
     this.chatWindow?.show();
     this.chatWindow?.focus();
     this.chatWindow?.webContents.focus();
-    this.chatWindow?.webContents.send("codex-input-focus");
+    this.chatWindow?.webContents.send(event);
   }
 
   /** Places the chat window beside the pet within the active work area. */
-  position(): void {
-    const petWindow = this.options.getPetWindow();
-    if (!petWindow || !this.chatWindow) return;
+  position(anchorBounds: Electron.Rectangle): void {
+    if (!this.chatWindow) return;
 
-    const petBounds = petWindow.getBounds();
-    const area = screen.getDisplayMatching(petBounds).workArea;
+    const area = screen.getDisplayMatching(anchorBounds).workArea;
     const { width: chatWidth, height: chatHeight } = this.size;
 
-    let chatX = petBounds.x + petBounds.width;
+    let chatX = anchorBounds.x + anchorBounds.width;
     if (chatX + chatWidth > area.x + area.width) {
-      chatX = petBounds.x - chatWidth;
+      chatX = anchorBounds.x - chatWidth;
     }
     chatX = Math.max(area.x, Math.min(chatX, area.x + area.width - chatWidth));
     const chatY = Math.max(
       area.y,
-      Math.min(petBounds.y, area.y + area.height - chatHeight),
+      Math.min(anchorBounds.y, area.y + area.height - chatHeight),
     );
     const [currentX, currentY] = this.chatWindow.getPosition();
     if (currentX !== chatX || currentY !== chatY) {
@@ -135,8 +110,6 @@ export class ChatWindowController {
     this.chatWindow.loadFile(path.join(__dirname, "renderer", "chat.html"));
     this.chatWindow.once("ready-to-show", () => {
       this.chatWindow?.setSize(this.size.width, this.size.height, false);
-      this.position();
-      this.options.keepPetAbove();
       if (process.env.DESKTOP_PET_DEVTOOLS === "1") {
         this.chatWindow?.webContents.openDevTools({ mode: "detach" });
       }
@@ -144,38 +117,6 @@ export class ChatWindowController {
     this.chatWindow.on("closed", () => {
       this.chatWindow = null;
     });
-    this.chatWindow.on("focus", () => {
-      this.options.setPetFocus(true);
-    });
-    this.chatWindow.on("blur", () => {
-      setTimeout(() => {
-        if (
-          !this.options.getPetWindow()?.isFocused() &&
-          !this.chatWindow?.isFocused()
-        ) {
-          this.options.setPetFocus(false);
-          this.chatWindow?.hide();
-        }
-      }, 50);
-    });
-  }
-
-  /** Shows chat when its persisted visibility preference allows it. */
-  showIfVisible(): void {
-    this.showForPetFocus();
-  }
-
-  /** Shows chat when the pet window receives focus. */
-  showForPetFocus(): void {
-    this.create();
-    if (!this.chatWindow?.isVisible()) this.position();
-    this.chatWindow?.showInactive();
-  }
-
-  /** Hides chat on pet blur unless chat itself owns focus. */
-  hideIfNotFocused(): void {
-    if (this.chatWindow?.isFocused()) return;
-    this.chatWindow?.hide();
   }
 
   /** Hides chat without changing its persisted visibility preference. */

@@ -136,17 +136,15 @@ describe("ChatWindowController", () => {
       setPetFocus: jest.fn(),
       setCodexUpdateIndicator: jest.fn(),
     };
-    const controller = new ChatWindowController(options);
+    const controller = new ChatWindowController();
 
-    controller.showForCodexUpdate();
+    controller.showInactive();
 
     expect(windows[0].showInactive).toHaveBeenCalled();
-    expect(options.keepPetAbove).toHaveBeenCalled();
-    expect(options.setCodexUpdateIndicator).toHaveBeenCalledWith(true);
     expect(windows[0].focus).not.toHaveBeenCalled();
   });
 
-  test("marks the pet when an approval request is shown", () => {
+  test("shows chat for an approval without taking focus", () => {
     const { windows } = createWindowFactory();
     const pet = new FakeWindow();
     const options = {
@@ -155,16 +153,15 @@ describe("ChatWindowController", () => {
       setPetFocus: jest.fn(),
       setCodexUpdateIndicator: jest.fn(),
     };
-    const controller = new ChatWindowController(options);
+    const controller = new ChatWindowController();
 
-    controller.showForApproval();
+    controller.showInactive();
 
     expect(windows[0].showInactive).toHaveBeenCalled();
-    expect(options.setCodexUpdateIndicator).toHaveBeenCalledWith(true);
     expect(windows[0].focus).not.toHaveBeenCalled();
   });
 
-  test("keeps the focused pet ring when an approval request is shown", () => {
+  test("shows chat without taking focus when the pet is focused", () => {
     const { windows } = createWindowFactory();
     const pet = new FakeWindow();
     pet.focused = true;
@@ -174,15 +171,14 @@ describe("ChatWindowController", () => {
       setPetFocus: jest.fn(),
       setCodexUpdateIndicator: jest.fn(),
     };
-    const controller = new ChatWindowController(options);
+    const controller = new ChatWindowController();
 
-    controller.showForApproval();
+    controller.showInactive();
 
     expect(windows[0].showInactive).toHaveBeenCalled();
-    expect(options.setCodexUpdateIndicator).not.toHaveBeenCalled();
   });
 
-  test("keeps chat visible when blur occurs while the pet owns focus", () => {
+  test("does not coordinate pet focus on chat blur", () => {
     jest.useFakeTimers();
     const { windows } = createWindowFactory();
     const pet = new FakeWindow();
@@ -193,7 +189,7 @@ describe("ChatWindowController", () => {
       setPetFocus: jest.fn(),
       setCodexUpdateIndicator: jest.fn(),
     };
-    const controller = new ChatWindowController(options);
+    const controller = new ChatWindowController();
     controller.create();
     const chat = windows[0];
 
@@ -201,11 +197,10 @@ describe("ChatWindowController", () => {
     jest.advanceTimersByTime(50);
 
     expect(chat.hide).not.toHaveBeenCalled();
-    expect(options.setPetFocus).not.toHaveBeenCalledWith(false);
     jest.useRealTimers();
   });
 
-  test("hides chat and clears the focus indicator when neither window is focused", () => {
+  test("does not hide chat or update pet focus on blur", () => {
     jest.useFakeTimers();
     const { windows } = createWindowFactory();
     const pet = new FakeWindow();
@@ -215,15 +210,14 @@ describe("ChatWindowController", () => {
       setPetFocus: jest.fn(),
       setCodexUpdateIndicator: jest.fn(),
     };
-    const controller = new ChatWindowController(options);
+    const controller = new ChatWindowController();
     controller.create();
     const chat = windows[0];
 
     chat.emit("blur");
     jest.advanceTimersByTime(50);
 
-    expect(chat.hide).toHaveBeenCalled();
-    expect(options.setPetFocus).toHaveBeenCalledWith(false);
+    expect(chat.hide).not.toHaveBeenCalled();
     jest.useRealTimers();
   });
 
@@ -231,15 +225,10 @@ describe("ChatWindowController", () => {
     const { windows } = createWindowFactory();
     const pet = new FakeWindow();
     pet.bounds = { x: 900, y: 700, width: 180, height: 180 };
-    const controller = new ChatWindowController({
-      getPetWindow: () => pet as never,
-      keepPetAbove: jest.fn(),
-      setPetFocus: jest.fn(),
-      setCodexUpdateIndicator: jest.fn(),
-    });
+    const controller = new ChatWindowController();
 
     controller.create();
-    controller.position();
+    controller.position(pet.bounds);
 
     expect(windows[0].setPosition).toHaveBeenLastCalledWith(570, 440, false);
   });
@@ -280,6 +269,31 @@ describe("PetWindowController", () => {
       "pet-codex-update-changed",
       false,
     );
+  });
+
+  test("clears the update indicator when focus arrives", () => {
+    const { windows } = createWindowFactory();
+    const controller = new PetWindowController(petOptions());
+    controller.create();
+    const pet = windows[0];
+
+    controller.setBackgroundAttention(true);
+    controller.setFocusIndicator(true);
+
+    const updateMessages = pet.webContents.send.mock.calls.filter(
+      ([channel]) => channel === "pet-codex-update-changed",
+    );
+    expect(updateMessages).toEqual([
+      ["pet-codex-update-changed", true],
+      ["pet-codex-update-changed", false],
+    ]);
+
+    controller.setCodexUpdateIndicator(false);
+    controller.setFocusIndicator(true);
+    const finalUpdateMessage = pet.webContents.send.mock.calls
+      .filter(([channel]) => channel === "pet-codex-update-changed")
+      .at(-1);
+    expect(finalUpdateMessage).toEqual(["pet-codex-update-changed", false]);
   });
 
   test("focuses chat when the pet is already focused", () => {
@@ -352,7 +366,7 @@ describe("PetRenderer focus state", () => {
       play: jest.fn(async () => undefined),
     }) as unknown as HTMLAudioElement;
 
-  test("plays one notification when working becomes idle or waiting", () => {
+  test("does not play automatically when working becomes idle or waiting", () => {
     (globalThis as unknown as { window: typeof globalThis }).window =
       globalThis;
     const sound = createStatusSound();
@@ -385,7 +399,7 @@ describe("PetRenderer focus state", () => {
 
     expect(sound.src).toBe("file:///tmp/status.mp3");
     expect(sound.load).toHaveBeenCalledTimes(1);
-    expect(sound.play).toHaveBeenCalledTimes(1);
+    expect(sound.play).not.toHaveBeenCalled();
   });
 
   test("does not play when the window is focused", () => {
@@ -418,7 +432,29 @@ describe("PetRenderer focus state", () => {
     expect(sound.play).not.toHaveBeenCalled();
   });
 
-  test("plays the approval notification when the blue indicator activates", () => {
+  test("plays an explicit background notification while unfocused", () => {
+    (globalThis as unknown as { window: typeof globalThis }).window =
+      globalThis;
+    const sound = createStatusSound();
+    const renderer = new PetRenderer({
+      image: new FakeElement() as never,
+      pet: new FakeElement() as never,
+      status: new FakeElement() as never,
+      statusLabel: { textContent: "" } as unknown as HTMLElement,
+      statusSound: sound,
+      chatOnly: false,
+      settings: {
+        ...defaultSettings(),
+        codexStatusSoundUrl: "file:///tmp/status.mp3",
+      },
+    });
+
+    renderer.playAttentionSound();
+
+    expect(sound.play).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not play automatically when the blue indicator activates", () => {
     (globalThis as unknown as { window: typeof globalThis }).window =
       globalThis;
     const sound = createStatusSound();
@@ -445,7 +481,7 @@ describe("PetRenderer focus state", () => {
     });
 
     expect(pet.classList.contains("codex-update")).toBe(true);
-    expect(sound.play).toHaveBeenCalledTimes(1);
+    expect(sound.play).not.toHaveBeenCalled();
   });
 
   test("does not play the notification when disabled", () => {
@@ -476,7 +512,7 @@ describe("PetRenderer focus state", () => {
     expect(sound.play).not.toHaveBeenCalled();
   });
 
-  test("shows and refreshes working elapsed time in the pet status", () => {
+  test("shows the aggregate active count in the pet status", () => {
     jest.useFakeTimers();
     (globalThis as unknown as { window: typeof globalThis }).window =
       globalThis;
@@ -533,7 +569,7 @@ describe("PetRenderer focus state", () => {
     expect(pet.attributes.get("aria-label")).toBe("Desktop pet");
   });
 
-  test("keeps Codex update state separate until focus takes over", () => {
+  test("clears Codex update state when focus takes over", () => {
     const pet = new FakeElement();
     const renderer = new PetRenderer({
       image: new FakeElement() as never,
@@ -549,6 +585,6 @@ describe("PetRenderer focus state", () => {
     expect(pet.classList.contains("codex-update")).toBe(true);
     renderer.updateFocus(true);
     expect(pet.classList.contains("focused")).toBe(true);
-    expect(pet.classList.contains("codex-update")).toBe(true);
+    expect(pet.classList.contains("codex-update")).toBe(false);
   });
 });

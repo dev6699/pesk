@@ -7,6 +7,9 @@ const status = document.getElementById("codex-status") as HTMLElement;
 const statusLabel = document.getElementById(
   "codex-status-label",
 ) as HTMLElement;
+const aggregateStatusLabel = document.getElementById(
+  "codex-aggregate-status-label",
+) as HTMLElement;
 const statusSound = document.getElementById(
   "codex-status-sound",
 ) as HTMLAudioElement;
@@ -15,6 +18,7 @@ const pet = new PetRenderer({
   pet: petElement,
   status,
   statusLabel,
+  aggregateStatusLabel,
   statusSound,
   chatOnly: false,
   settings: defaultSettings(),
@@ -22,8 +26,10 @@ const pet = new PetRenderer({
 
 window.peskApi.onSettingsChanged((next) => pet.updateSettings(next));
 window.peskApi.onPetFocusChanged((focused) => pet.updateFocus(focused));
-window.peskApi.onPetCodexUpdateChanged((active) => pet.updateCodexUpdate(active));
-
+window.peskApi.onPetCodexUpdateChanged((active) =>
+  pet.updateCodexUpdate(active),
+);
+window.peskApi.onPetCodexStatusSound(() => pet.playAttentionSound());
 
 void window.peskApi.getSettings().then(async (next) => {
   pet.updateSettings(next);

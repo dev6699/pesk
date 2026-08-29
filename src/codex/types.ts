@@ -58,6 +58,14 @@ export interface CodexQueuedSubmission {
   clientUserMessageId: string;
 }
 
+export interface CodexThreadActivity {
+  threadId: string;
+  preview: string;
+  status: "idle" | "working" | "waiting";
+  workingSince?: number;
+  attention?: "approval" | "userInput";
+}
+
 export interface CodexModelInfo {
   model?: string;
   provider?: string;
@@ -88,9 +96,11 @@ export interface CodexState {
   cwd?: string;
   error?: string;
   status: "idle" | "working" | "waiting";
+  aggregateStatus: "idle" | "working" | "waiting";
   connected: boolean;
   history: CodexMessage[];
   threads: Thread[];
+  threadActivities: CodexThreadActivity[];
   workingSince?: number;
   workedElapsed?: number;
   interrupted?: boolean;
