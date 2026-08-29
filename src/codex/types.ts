@@ -93,6 +93,7 @@ export interface CodexThreadSnapshot {
 /** Complete state published by the Codex controller to renderer clients. */
 export interface CodexState {
   threadId?: string;
+  readOnly: boolean;
   cwd?: string;
   error?: string;
   status: "idle" | "working" | "waiting";

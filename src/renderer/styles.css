@@ -1072,6 +1072,20 @@ body.chat-only #codex-chat {
   color: #ffd9dc;
 }
 
+#codex-read-only {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin: 0 0 1px 2px;
+  padding: 4px 8px;
+  border: 1px solid #f0a35b;
+  border-radius: 999px;
+  background: #24160b;
+  color: #ffd9a3;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 #codex-token-usage {
   flex: 0 0 30px;
   display: block;

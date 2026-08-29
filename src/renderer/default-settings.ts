@@ -16,6 +16,7 @@ export function defaultCodexRuntimeState(): CodexRuntimeState {
     codexStatus: "idle",
     codexAggregateStatus: "idle",
     codexConnected: false,
+    codexReadOnly: false,
     codexHistory: [],
     codexThreads: [],
     codexThreadActivities: [],

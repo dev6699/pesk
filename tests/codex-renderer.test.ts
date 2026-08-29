@@ -434,6 +434,109 @@ test("Ctrl+Up refocuses the question after history navigation", () => {
   expect(document.activeElement).toBe(option);
 });
 
+test("Ctrl+Left and Ctrl+Right switch between threads", () => {
+  const settings = {
+    ...defaultSettings(),
+    codexThreadId: "thread-2",
+    codexThreads: [
+      { id: "thread-1", preview: "Previous" },
+      { id: "thread-2", preview: "Current" },
+      { id: "thread-3", preview: "Next" },
+    ],
+  };
+  const { renderer } = makeRenderer(settings);
+  renderer.updateSettings(settings);
+  const selectThread = window.peskApi.selectCodexThread as jest.Mock;
+
+  const previous = new KeyboardEvent("keydown", {
+    key: "ArrowLeft",
+    ctrlKey: true,
+    cancelable: true,
+  });
+  renderer.handleKeydown(previous);
+  expect(previous.defaultPrevented).toBe(true);
+  expect(selectThread).toHaveBeenCalledWith("thread-1");
+
+  const next = new KeyboardEvent("keydown", {
+    key: "ArrowRight",
+    ctrlKey: true,
+    cancelable: true,
+  });
+  renderer.handleKeydown(next);
+  expect(next.defaultPrevented).toBe(true);
+  expect(selectThread).toHaveBeenLastCalledWith("thread-2");
+
+  renderer.updateSettings({
+    ...settings,
+    codexThreadId: "thread-2",
+    codexThreads: [
+      { id: "thread-1", preview: "Previous" },
+      { id: "thread-2", preview: "Current" },
+      { id: "thread-3", preview: "Next" },
+    ],
+  });
+  const forward = new KeyboardEvent("keydown", {
+    key: "ArrowRight",
+    ctrlKey: true,
+    cancelable: true,
+  });
+  renderer.handleKeydown(forward);
+  expect(forward.defaultPrevented).toBe(true);
+  expect(selectThread).toHaveBeenLastCalledWith("thread-3");
+
+  renderer.updateSettings({
+    ...settings,
+    codexThreadId: "thread-3",
+    codexThreads: [
+      { id: "thread-3", preview: "Next" },
+      { id: "thread-1", preview: "Previous" },
+      { id: "thread-2", preview: "Current" },
+    ],
+  });
+  const back = new KeyboardEvent("keydown", {
+    key: "ArrowLeft",
+    ctrlKey: true,
+    cancelable: true,
+  });
+  renderer.handleKeydown(back);
+  expect(back.defaultPrevented).toBe(true);
+  expect(selectThread).toHaveBeenLastCalledWith("thread-2");
+});
+
+test("does not jump to the first thread when no current thread is selected", () => {
+  const settings = {
+    ...defaultSettings(),
+    codexThreads: [{ id: "thread-1", preview: "First" }],
+  };
+  const { renderer } = makeRenderer(settings);
+  renderer.updateSettings(settings);
+  const selectThread = window.peskApi.selectCodexThread as jest.Mock;
+  const next = new KeyboardEvent("keydown", {
+    key: "ArrowRight",
+    ctrlKey: true,
+    cancelable: true,
+  });
+
+  renderer.handleKeydown(next);
+
+  expect(next.defaultPrevented).toBe(false);
+  expect(selectThread).not.toHaveBeenCalled();
+});
+
+test("keeps the selected thread visible when the thread list is temporarily stale", () => {
+  const settings = {
+    ...defaultSettings(),
+    codexThreadId: "selected-thread",
+    codexThreads: [],
+  };
+  const { renderer, elements } = makeRenderer(settings);
+
+  renderer.updateSettings(settings);
+
+  expect(elements.select.value).toBe("selected-thread");
+  expect(elements.select.options[0].value).toBe("selected-thread");
+});
+
 test("scrolls to a new user question without repeating for the same request", () => {
   const { renderer, elements } = makeRenderer();
   const settings: Settings = {

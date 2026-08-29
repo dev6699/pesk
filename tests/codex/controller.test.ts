@@ -1301,7 +1301,7 @@ describe("CodexController", () => {
     });
   });
 
-  test("removes a session rejected by an active writer", () => {
+  test("keeps a session rejected by an active writer", () => {
     const { controller, socket } = connectedController();
 
     (controller as unknown as { resume: (id: string) => void }).resume(
@@ -1316,8 +1316,12 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBeUndefined();
-    expect(controller.getState().connected).toBe(false);
+    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().connected).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/read",
+      params: { threadId: "thread-1" },
+    });
   });
 
   test("discovers and resumes the loaded Codex session", () => {

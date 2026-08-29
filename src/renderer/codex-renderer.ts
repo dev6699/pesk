@@ -24,6 +24,8 @@ export class CodexRenderer {
   private slashCommandResults: typeof slashCommands = [];
   private suggestionKind: "file" | "command" | undefined;
   private fileSuggestionIndex = -1;
+  private sessionNavigationIds: string[] = [];
+  private pendingSessionId: string | undefined;
   private renderedUserInputRequestId: string | number | undefined;
   private activeUserInputQuestionId: string | undefined;
   private userInputQuestionIndex = 0;
@@ -35,6 +37,8 @@ export class CodexRenderer {
   private renderedPlanDetails = new Map<string, string>();
   private planRenderTimer: number | undefined;
   private pendingPlanHistory: PeskSettings["codexHistory"] | undefined;
+  private readonly readOnlyStatus =
+    document.getElementById("codex-read-only") ?? document.createElement("div");
 
   private suggestionCount(): number {
     return this.suggestionKind === "command"
@@ -126,6 +130,21 @@ export class CodexRenderer {
   }
 
   handleKeydown(event: KeyboardEvent): void {
+    if (
+      !this.chat.hidden &&
+      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+      event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.metaKey
+    ) {
+      const direction = event.key === "ArrowLeft" ? -1 : 1;
+      if (this.switchSession(direction)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
     if (
       !this.userInput?.hidden &&
       event.key === "ArrowUp" &&
@@ -224,18 +243,48 @@ export class CodexRenderer {
     if (this.userInput?.contains(event.target as Node)) return;
   }
 
+  private switchSession(direction: -1 | 1): boolean {
+    const currentId = this.pendingSessionId ?? this.settings.codexThreadId;
+    const currentIndex = this.sessionNavigationIds.indexOf(currentId ?? "");
+    if (currentIndex < 0) return false;
+    const nextId = this.sessionNavigationIds[currentIndex + direction];
+    if (!nextId) return false;
+    this.pendingSessionId = nextId;
+    window.peskApi.selectCodexThread(nextId);
+    return true;
+  }
+
   updateSettings(next: PeskSettings): void {
     this.settings = next;
+    const displayedThreads = [...next.codexThreads];
+    if (
+      next.codexThreadId &&
+      !displayedThreads.some((thread) => thread.id === next.codexThreadId)
+    ) {
+      displayedThreads.unshift({ id: next.codexThreadId });
+    }
+    const threadIds = new Set(displayedThreads.map((thread) => thread.id));
+    const existingNavigationIds = new Set(this.sessionNavigationIds);
+    const newThreadIds = displayedThreads
+      .map((thread) => thread.id)
+      .filter((id) => !existingNavigationIds.has(id));
+    this.sessionNavigationIds = [
+      ...newThreadIds,
+      ...this.sessionNavigationIds.filter((id) => threadIds.has(id)),
+    ];
+    if (next.codexThreadId === this.pendingSessionId) {
+      this.pendingSessionId = undefined;
+    }
     this.error.hidden = !next.codexError;
     this.error.textContent = next.codexError ? "Codex connection error." : "";
     this.sessionSelect.replaceChildren();
-    if (!next.codexThreads.length) {
+    if (!displayedThreads.length) {
       const option = document.createElement("option");
       option.value = "";
       option.textContent = "No active session";
       this.sessionSelect.append(option);
     } else {
-      for (const thread of next.codexThreads) {
+      for (const thread of displayedThreads) {
         const option = document.createElement("option");
         option.value = thread.id;
         option.textContent = thread.preview
@@ -246,7 +295,7 @@ export class CodexRenderer {
       }
       this.sessionSelect.value = next.codexThreadId ?? "";
     }
-    this.sessionSelect.disabled = !next.codexThreads.length;
+    this.sessionSelect.disabled = !displayedThreads.length;
     this.sessionCopy.disabled = !next.codexThreadId;
     this.renderHistory(
       next.codexHistory,
@@ -259,11 +308,21 @@ export class CodexRenderer {
     this.renderRateLimit();
     this.renderUserInput();
     const steerable =
-      next.codexStatus === "working" || next.codexStatus === "waiting";
+      !next.codexReadOnly &&
+      (next.codexStatus === "working" || next.codexStatus === "waiting");
     if (this.steerButton) {
       this.steerButton.hidden = !steerable;
       this.steerButton.disabled = !steerable;
     }
+    this.readOnlyStatus.hidden = !next.codexReadOnly;
+    this.readOnlyStatus.textContent = next.codexReadOnly
+      ? "Read-only · active elsewhere"
+      : "";
+    this.input.disabled = next.codexReadOnly;
+    const sendButton = this.form.querySelector<HTMLButtonElement>(
+      "button[type='submit']",
+    );
+    if (sendButton) sendButton.disabled = next.codexReadOnly;
     this.form.hidden = Boolean(
       next.codexPendingUserInput ||
       next.codexPendingApproval ||
@@ -304,6 +363,7 @@ export class CodexRenderer {
     }
     const prompt = this.input.value.trim();
     if (!prompt) return;
+    if (this.settings.codexReadOnly) return;
     if (/^\/review$/i.test(prompt)) {
       if (this.settings.codexStatus !== "idle" || !this.settings.codexThreadId) {
         return;

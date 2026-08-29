@@ -22,6 +22,7 @@ import { NotificationController } from "./notification";
 
 interface RendererSettings extends PeskSettings {
   codexThreadId?: string;
+  codexReadOnly: boolean;
   codexCwd?: string;
   codexError?: string;
   codexStatus: "idle" | "working" | "waiting";
@@ -95,6 +96,7 @@ function rendererSettings(): RendererSettings {
   return {
     ...settings,
     codexThreadId: state.threadId,
+    codexReadOnly: state.readOnly,
     codexCwd: state.cwd,
     codexError: state.error,
     codexStatus: state.status,

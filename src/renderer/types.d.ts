@@ -14,6 +14,7 @@ interface CodexRuntimeState {
   codexAggregateStatus: "idle" | "working" | "waiting";
   codexConnected: boolean;
   codexThreadId?: string;
+  codexReadOnly: boolean;
   codexCwd?: string;
   codexError?: string;
   codexThreads: Array<{ id: string; preview?: string; status?: string }>;

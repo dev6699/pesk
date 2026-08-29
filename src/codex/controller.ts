@@ -131,6 +131,7 @@ export class CodexController {
   private readonly execRuntimes = new Map<string, CodexThread>();
   /** Runtime currently being applied while routing a background event. */
   private routedThreadId: string | undefined;
+  private readonlyThreadIds = new Set<string>();
   /** Suppresses renderer publication while a background runtime is updated. */
   private suppressedPublication = 0;
   /** Pending background requests, retained in first-arrival order. */
@@ -197,6 +198,7 @@ export class CodexController {
         : "idle";
     return {
       threadId: this.threadId,
+      readOnly: Boolean(this.threadId && this.readonlyThreadIds.has(this.threadId)),
       cwd: thread.workingDirectory ?? process.cwd(),
       error: this.connectionError,
       status: thread.status,
@@ -1078,6 +1080,7 @@ export class CodexController {
     this.setRequest<ThreadResumeResponse>(id, (message) => {
       this.withRuntime(threadId, () => {
         if (!message.error) {
+          this.readonlyThreadIds.delete(threadId);
           this.updateModelInfo(message);
           this.read(threadId);
           return;
@@ -1087,15 +1090,9 @@ export class CodexController {
             ? ((message.error as Record<string, unknown>).message as string)
             : "";
         if (text.includes("already has an active writer")) {
-          const wasSelected = this.threadId === threadId;
-          this.threadRuntime().reset();
-          this.threads = this.threads.filter(
-            (thread) => thread.id !== threadId,
-          );
-          if (wasSelected) {
-            this.threadId = undefined;
-            this.options.publishRendererState();
-          }
+          this.readonlyThreadIds.add(threadId);
+          this.options.publishRendererState();
+          this.read(threadId);
         }
       });
     });
