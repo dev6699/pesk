@@ -15,6 +15,7 @@ import {
   shouldReconcileOnIdle,
   shouldResumeOnActiveStatus,
 } from "./protocol";
+
 import type { NotificationRequest } from "../notification";
 import type {
   IncomingMessage,
@@ -38,6 +39,7 @@ import type {
   ThreadArchiveResponse,
   ThreadDeleteResponse,
 } from "../codex-schema/v2";
+import type { UserInput } from "../codex-schema/v2/UserInput";
 import type {
   FuzzyFileSearchResponse,
   FuzzyFileSearchResult,
@@ -202,7 +204,9 @@ export class CodexController {
         : "idle";
     return {
       threadId: this.threadId,
-      readOnly: Boolean(this.threadId && this.readonlyThreadIds.has(this.threadId)),
+      readOnly: Boolean(
+        this.threadId && this.readonlyThreadIds.has(this.threadId),
+      ),
       cwd: thread.workingDirectory ?? process.cwd(),
       error: this.connectionError,
       status: thread.status,
@@ -488,7 +492,14 @@ export class CodexController {
 
   /** Starts a turn while idle or persists a follow-up while a turn is active. */
   submitPrompt(value: string): boolean {
-    if (!value.trim() || !this.initialized) {
+    return this.submitPromptWithImages(value, []);
+  }
+
+  submitPromptWithImages(
+    value: string,
+    images: Array<{ url: string; name: string }>,
+  ): boolean {
+    if ((!value.trim() && !images.length) || !this.initialized) {
       return false;
     }
 
@@ -521,16 +532,29 @@ export class CodexController {
     }
 
     if (this.threadRuntime().state.status !== "idle") {
-      return this.queuePrompt(prompt);
+      return this.queuePromptInput(
+        [
+          ...(prompt
+            ? [{ type: "text" as const, text: prompt, text_elements: [] }]
+            : []),
+          ...imageInputs(images),
+        ],
+        prompt,
+        imageMetadata(images),
+      );
     }
 
     this.threadRuntime().prepareTurn();
-    this.threadRuntime().addUserMessage(prompt);
+    this.threadRuntime().addUserMessage(
+      prompt,
+      undefined,
+      imageMetadata(images),
+    );
     this.options.publishRendererState();
     this.threadRuntime().rememberPrompt(prompt);
     const threadId = this.threadId;
     if (threadId) {
-      this.startTurn(threadId, prompt);
+      this.startTurn(threadId, prompt, imageInputs(images));
       return true;
     }
 
@@ -561,7 +585,7 @@ export class CodexController {
           runtime.setConnected(true);
           runtime.syncServerThread(thread);
           this.options.publishRendererState();
-          this.startTurn(thread.id, prompt);
+          this.startTurn(thread.id, prompt, imageInputs(images));
         });
       }
     });
@@ -710,8 +734,12 @@ export class CodexController {
     this.options.publishRendererState();
     return true;
   }
-  /** Queues a follow-up prompt on the selected active thread. */
-  private queuePrompt(prompt: string): boolean {
+  /** Queues text and image inputs while preserving attachment metadata locally. */
+  private queuePromptInput(
+    input: UserInput[],
+    prompt: string,
+    queuedImageMetadata?: Array<{ url: string; name?: string }>,
+  ): boolean {
     if (
       !this.threadId ||
       this.socket?.readyState !== WebSocket.OPEN ||
@@ -719,6 +747,13 @@ export class CodexController {
         this.threadRuntime().state.status !== "waiting")
     )
       return false;
+    const queuedImages =
+      queuedImageMetadata ??
+      input
+        .filter((item): item is Extract<UserInput, { type: "image" }> =>
+          item.type === "image",
+        )
+        .map(({ url }) => ({ url }));
     const clientUserMessageId = randomUUID();
     const id = ++this.nextId;
     const threadId = this.threadId;
@@ -729,6 +764,7 @@ export class CodexController {
         this.runtime(threadId).resolveQueuedSubmission(clientUserMessageId, {
           id: submission.id,
           text: prompt,
+          ...(queuedImages.length ? { images: queuedImages } : {}),
           clientUserMessageId,
         });
         this.options.publishRendererState();
@@ -739,13 +775,14 @@ export class CodexController {
       id,
       params: {
         threadId: this.threadId,
-        input: [{ type: "text", text: prompt, text_elements: [] }],
+        input,
         clientUserMessageId,
       },
     });
     this.runtime(threadId).queuePending({
       id: `pending-${clientUserMessageId}`,
       text: prompt,
+      ...(queuedImages.length ? { images: queuedImages } : {}),
       clientUserMessageId,
     });
     this.options.publishRendererState();
@@ -1421,7 +1458,7 @@ export class CodexController {
         item,
         message.params.turnId,
         this.threadRuntime().state.reviewInProgress &&
-          item.type === "userMessage",
+        item.type === "userMessage",
       );
     }
   }
@@ -1617,8 +1654,8 @@ export class CodexController {
       ServerMessage,
       {
         method:
-          | "item/commandExecution/requestApproval"
-          | "item/fileChange/requestApproval";
+        | "item/commandExecution/requestApproval"
+        | "item/fileChange/requestApproval";
       }
     >,
   ): void {
@@ -1684,7 +1721,11 @@ export class CodexController {
   }
 
   /** Starts a text turn and creates a temporary working message. */
-  private startTurn(threadId: string, prompt: string): void {
+  private startTurn(
+    threadId: string,
+    prompt: string,
+    extraInput: UserInput[] = [],
+  ): void {
     const runtime = this.runtime(threadId);
     runtime.prepareTurn();
     const id = ++this.nextId;
@@ -1700,11 +1741,10 @@ export class CodexController {
     const params: PlanTurnStartParams = {
       threadId,
       input: [
-        {
-          type: "text",
-          text: prompt,
-          text_elements: [],
-        },
+        ...(prompt
+          ? [{ type: "text" as const, text: prompt, text_elements: [] }]
+          : []),
+        ...extraInput,
       ],
     };
     params.collaborationMode = {
@@ -1765,4 +1805,19 @@ export class CodexController {
       }, 3000);
     }
   }
+}
+
+function imageInputs(
+  images: Array<{ url: string; name: string }>,
+): UserInput[] {
+  return images.map(({ url }) => ({
+    type: "image",
+    url,
+  }));
+}
+
+function imageMetadata(
+  images: Array<{ url: string; name: string }>,
+): Array<{ url: string; name?: string }> {
+  return images.map(({ url, name }) => ({ url, name }));
 }

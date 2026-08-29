@@ -35,6 +35,13 @@ export class CodexRenderer {
   private readonly dismissedPlanConfirmations = new Set<string>();
   private activePlanConfirmation: { key: string; planText: string } | undefined;
   private reviewPromptOpen = false;
+  private pendingImages: Array<{ url: string; name: string }> = [];
+  private readonly imageAttachments = document.getElementById(
+    "codex-image-attachments",
+  );
+  private readonly imageInput = document.getElementById(
+    "codex-image-input",
+  ) as HTMLInputElement | null;
   private renderedHistoryStructureKey = "";
   private renderedPlanDetails = new Map<string, string>();
   private planRenderTimer: number | undefined;
@@ -91,6 +98,7 @@ export class CodexRenderer {
     chat.addEventListener("mousedown", (event) => event.stopPropagation());
     chat.addEventListener("wheel", (event) => event.stopPropagation());
     form.addEventListener("submit", (event) => void this.submit(event));
+    this.setupImageAttachments();
     input.addEventListener("input", () => {
       this.suggestionInput = input;
       this.resizeInput();
@@ -360,10 +368,13 @@ export class CodexRenderer {
       return;
     }
     const prompt = this.input.value.trim();
-    if (!prompt) return;
+    if (!prompt && !this.pendingImages.length) return;
     if (this.settings.codexReadOnly) return;
     if (/^\/review$/i.test(prompt)) {
-      if (this.settings.codexStatus !== "idle" || !this.settings.codexThreadId) {
+      if (
+        this.settings.codexStatus !== "idle" ||
+        !this.settings.codexThreadId
+      ) {
         return;
       }
       this.input.value = "";
@@ -376,8 +387,13 @@ export class CodexRenderer {
     }
     const keepInputFocused = this.webChat;
     if (keepInputFocused) this.input.focus();
-    const next = await window.peskApi.submitCodexPrompt(prompt);
+    const images = this.pendingImages;
+    const next = images.length
+      ? await window.peskApi.submitCodexPrompt(prompt, images)
+      : await window.peskApi.submitCodexPrompt(prompt);
     this.input.value = "";
+    this.pendingImages = [];
+    this.renderImageAttachments();
     this.resizeInput();
     this.renderCommandMode();
     this.updateSettings(next);
@@ -388,6 +404,101 @@ export class CodexRenderer {
     } else {
       this.input.focus();
     }
+  }
+
+  private setupImageAttachments(): void {
+    const dropTarget = this.form;
+    this.imageInput?.addEventListener("change", () => {
+      void this.addImageFiles(this.imageInput?.files);
+      window.peskApi.setChatFileDialogOpen(false);
+      if (this.imageInput) this.imageInput.value = "";
+    });
+    this.input.addEventListener("paste", (event) => {
+      const files = Array.from(event.clipboardData?.items ?? [])
+        .filter(
+          (item) => item.kind === "file" && item.type.startsWith("image/"),
+        )
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null);
+      if (!files.length) return;
+      event.preventDefault();
+      void this.addImageFiles(files);
+    });
+    document
+      .getElementById("codex-image-select")
+      ?.addEventListener("click", () => {
+        window.peskApi.setChatFileDialogOpen(true);
+        this.imageInput?.click();
+      });
+    dropTarget.addEventListener("dragover", (event) => {
+      if (!this.hasImageFiles(event.dataTransfer)) return;
+      event.preventDefault();
+      dropTarget.classList.add("codex-drop-active");
+    });
+    dropTarget.addEventListener("dragleave", (event) => {
+      if (
+        event.relatedTarget instanceof Node &&
+        dropTarget.contains(event.relatedTarget)
+      )
+        return;
+      dropTarget.classList.remove("codex-drop-active");
+    });
+    dropTarget.addEventListener("drop", (event) => {
+      if (!this.hasImageFiles(event.dataTransfer)) return;
+      event.preventDefault();
+      dropTarget.classList.remove("codex-drop-active");
+      void this.addImageFiles(event.dataTransfer?.files);
+    });
+  }
+
+  private hasImageFiles(dataTransfer: DataTransfer | null): boolean {
+    return Boolean(
+      Array.from(dataTransfer?.items ?? []).some(
+        (item) => item.kind === "file" && item.type.startsWith("image/"),
+      ),
+    );
+  }
+
+  private async addImageFiles(
+    files: Iterable<File> | null | undefined,
+  ): Promise<void> {
+    for (const file of Array.from(files ?? [])) {
+      if (!file.type.startsWith("image/")) continue;
+      const url = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () =>
+          resolve(typeof reader.result === "string" ? reader.result : "");
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      }).catch(() => "");
+      if (url) this.pendingImages.push({ url, name: file.name });
+    }
+    this.renderImageAttachments();
+  }
+
+  private renderImageAttachments(): void {
+    if (!this.imageAttachments) return;
+    this.imageAttachments.replaceChildren();
+    this.imageAttachments.hidden = !this.pendingImages.length;
+    this.pendingImages.forEach((image, index) => {
+      const item = document.createElement("div");
+      item.className = "codex-image-attachment";
+      const preview = document.createElement("img");
+      preview.src = image.url;
+      preview.alt = "";
+      const name = document.createElement("span");
+      name.textContent = image.name;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", `Remove ${image.name}`);
+      remove.addEventListener("click", () => {
+        this.pendingImages.splice(index, 1);
+        this.renderImageAttachments();
+      });
+      item.append(preview, name, remove);
+      this.imageAttachments?.append(item);
+    });
   }
 
   private renderCommandMode(): void {
@@ -414,7 +525,12 @@ export class CodexRenderer {
     const pendingApproval = this.settings.codexPendingApproval;
     const planConfirmation = this.activePlanConfirmation;
     if (!container) return;
-    if (!pending && !pendingApproval && !planConfirmation && !this.reviewPromptOpen) {
+    if (
+      !pending &&
+      !pendingApproval &&
+      !planConfirmation &&
+      !this.reviewPromptOpen
+    ) {
       container.replaceChildren();
       container.hidden = true;
       this.renderedUserInputRequestId = undefined;
@@ -423,7 +539,12 @@ export class CodexRenderer {
       this.userInputAnswers = {};
       return;
     }
-    if (!pending && !pendingApproval && !planConfirmation && this.reviewPromptOpen) {
+    if (
+      !pending &&
+      !pendingApproval &&
+      !planConfirmation &&
+      this.reviewPromptOpen
+    ) {
       this.renderReviewPrompt(force);
       return;
     }
@@ -731,12 +852,7 @@ export class CodexRenderer {
         input.selectionEnd = start + 1;
         return;
       }
-      if (
-        event.ctrlKey &&
-        !event.shiftKey &&
-        !event.altKey &&
-        !event.metaKey
-      ) {
+      if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
         event.preventDefault();
         const start = input.selectionStart ?? input.value.length;
         const end = input.selectionEnd ?? start;
@@ -745,11 +861,7 @@ export class CodexRenderer {
         input.selectionEnd = start + 1;
         return;
       }
-      if (
-        !event.shiftKey &&
-        !event.altKey &&
-        !event.metaKey
-      ) {
+      if (!event.shiftKey && !event.altKey && !event.metaKey) {
         event.preventDefault();
         form.requestSubmit();
       }
@@ -1272,10 +1384,20 @@ export class CodexRenderer {
     } else if (!event.altKey && !event.metaKey) {
       event.preventDefault();
       this.form.requestSubmit();
-    } else if (event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    } else if (
+      event.altKey &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey
+    ) {
       event.preventDefault();
       const prompt = this.input.value.trim();
-      if (prompt && (this.settings.codexStatus === "working" || this.settings.codexStatus === "waiting") && this.settings.codexThreadId) {
+      if (
+        prompt &&
+        (this.settings.codexStatus === "working" ||
+          this.settings.codexStatus === "waiting") &&
+        this.settings.codexThreadId
+      ) {
         void window.peskApi.steerCodexTurn(prompt).then((next) => {
           this.input.value = "";
           this.resizeInput();
@@ -1406,7 +1528,8 @@ export class CodexRenderer {
       bottom >
       this.fileSuggestions.scrollTop + this.fileSuggestions.clientHeight
     ) {
-      this.fileSuggestions.scrollTop = bottom - this.fileSuggestions.clientHeight;
+      this.fileSuggestions.scrollTop =
+        bottom - this.fileSuggestions.clientHeight;
     }
   }
 
@@ -1575,7 +1698,18 @@ export class CodexRenderer {
       for (const submission of queuedSubmissions) {
         const item = document.createElement("div");
         item.className = "codex-queued-submission";
-        item.textContent = submission.text;
+        const text = document.createElement("span");
+        text.textContent = submission.text || "Image attachment";
+        item.append(text);
+        for (const image of submission.images ?? []) {
+          const preview = document.createElement("img");
+          preview.className = "codex-queued-submission-image";
+          preview.src = image.url;
+          preview.alt = image.name
+            ? `Queued image: ${image.name}`
+            : "Queued image";
+          item.append(preview);
+        }
         item.title = "Queued follow-up";
         queue.append(item);
       }
@@ -1757,6 +1891,15 @@ export class CodexRenderer {
       content.innerHTML = renderMarkdown(message.text);
     } else {
       content.textContent = message.text;
+    }
+    for (const image of message.images ?? []) {
+      const preview = document.createElement("img");
+      preview.className = "codex-message-image";
+      preview.src = image.url;
+      preview.alt = image.name
+        ? `Attached image: ${image.name}`
+        : "Attached image";
+      content.append(preview);
     }
     return content;
   }

@@ -596,6 +596,81 @@ describe("CodexController", () => {
     ]);
   });
 
+  test("sends images with an idle turn and keeps them in history", () => {
+    const { controller, socket } = connectedController();
+    const image = { url: "data:image/png;base64,abc", name: "screen.png" };
+
+    expect(controller.submitPromptWithImages("inspect this", [image])).toBe(
+      true,
+    );
+    expect(lastMessage(socket)).toMatchObject({
+      method: "turn/start",
+      params: {
+        input: [
+          { type: "text", text: "inspect this" },
+          { type: "image", url: image.url },
+        ],
+      },
+    });
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: "inspect this",
+          images: [{ url: image.url, name: image.name }],
+        }),
+      ]),
+    );
+  });
+
+  test("preserves images in an active-turn queue and when it starts", () => {
+    const { controller, socket } = connectedController();
+    const state = threadState(controller);
+    state.activeTurnId = "turn-1";
+    state.status = "working";
+    const image = { url: "data:image/png;base64,queued", name: "queued.png" };
+
+    expect(controller.submitPromptWithImages("inspect later", [image])).toBe(
+      true,
+    );
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/queue/add",
+      params: {
+        input: [
+          { type: "text", text: "inspect later" },
+          { type: "image", url: image.url },
+        ],
+      },
+    });
+    expect(controller.getState().queuedSubmissions).toEqual([
+      expect.objectContaining({ images: [{ url: image.url, name: image.name }] }),
+    ]);
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          turnId: "turn-2",
+          item: {
+            type: "userMessage",
+            content: [
+              { type: "text", text: "inspect later" },
+              { type: "image", url: image.url },
+            ],
+          },
+        },
+      }),
+    );
+    expect(controller.getState().history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: "inspect later",
+          images: [{ url: image.url }],
+        }),
+      ]),
+    );
+  });
+
   test("starts a new session when no session is selected", () => {
     const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =

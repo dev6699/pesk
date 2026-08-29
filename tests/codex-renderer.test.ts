@@ -1040,6 +1040,8 @@ test("shows and selects slash commands", () => {
     "/planSwitch to Plan mode",
     "/defaultSwitch to Default mode",
     "/newStart a new Codex session",
+    "/archiveArchive the current session",
+    "/deletePermanently delete the current session",
     "/reviewReview current changes",
     "/execRun a sandboxed command",
   ]);
@@ -1423,6 +1425,37 @@ test("submits a prompt, queues while working, and handles input shortcuts", asyn
   await Promise.resolve();
   expect(submit).toHaveBeenCalledTimes(2);
   expect(submit).toHaveBeenLastCalledWith("blocked");
+});
+
+test("renders attached images in user message history", () => {
+  const { renderer, elements } = makeRenderer({
+    ...defaultSettings(),
+    codexHistory: [
+      {
+        role: "user",
+        text: "inspect this",
+        images: [{ url: "data:image/png;base64,abc", name: "screen.png" }],
+      },
+    ],
+  });
+
+  renderer.updateSettings({
+    ...defaultSettings(),
+    codexHistory: [
+      {
+        role: "user",
+        text: "inspect this",
+        images: [{ url: "data:image/png;base64,abc", name: "screen.png" }],
+      },
+    ],
+  });
+
+  expect(elements.history.querySelector(".codex-message-image")).toMatchObject(
+    {
+      src: "data:image/png;base64,abc",
+      alt: "Attached image: screen.png",
+    },
+  );
 });
 
 test("keeps web chat input focused before and after an async submission", async () => {

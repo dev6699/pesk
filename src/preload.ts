@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld("peskApi", {
   setCodexCollaborationMode: (mode: "default" | "plan") =>
     ipcRenderer.send("set-codex-collaboration-mode", mode),
   focusCodexInput: () => ipcRenderer.send("focus-codex-input"),
+  setChatFileDialogOpen: (open: boolean) =>
+    ipcRenderer.send("chat-file-dialog", open),
   implementCodexPlan: (planText: string, clearContext: boolean) =>
     ipcRenderer.invoke("implement-codex-plan", planText, clearContext),
   respondCodexUserInput: (
@@ -43,8 +45,10 @@ contextBridge.exposeInMainWorld("peskApi", {
   quitPesk: () => ipcRenderer.send("quit-pesk"),
   respondCodexPermission: (requestId: string | number, optionId: string) =>
     ipcRenderer.send("respond-codex-permission", requestId, optionId),
-  submitCodexPrompt: (prompt: string) =>
-    ipcRenderer.invoke("submit-codex-prompt", prompt),
+  submitCodexPrompt: (
+    prompt: string,
+    images?: Array<{ url: string; name: string }>,
+  ) => ipcRenderer.invoke("submit-codex-prompt", prompt, images),
   startCodexReview: (instructions: string) =>
     ipcRenderer.invoke("start-codex-review", instructions),
   fuzzyFileSearch: (query: string, roots: string[]) =>

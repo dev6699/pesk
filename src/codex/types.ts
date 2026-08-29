@@ -11,6 +11,7 @@ import type {
 export interface CodexMessage {
   role: "user" | "assistant" | "system";
   text: string;
+  images?: Array<{ url: string; name?: string }>;
   timestamp?: number;
   temporary?: boolean;
   turnId?: string;
@@ -55,6 +56,7 @@ export interface CodexPendingApproval {
 export interface CodexQueuedSubmission {
   id: string;
   text: string;
+  images?: Array<{ url: string; name?: string }>;
   clientUserMessageId: string;
 }
 

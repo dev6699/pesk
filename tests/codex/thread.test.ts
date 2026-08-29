@@ -226,6 +226,29 @@ describe("CodexThread", () => {
     ).toHaveLength(1);
   });
 
+  test("records images from an echoed user message", () => {
+    const thread = new CodexThread("thread-1");
+
+    thread.processStartedItem(
+      {
+        type: "userMessage",
+        content: [
+          { type: "text", text: "describe this" },
+          { type: "image", url: "data:image/png;base64,abc" },
+        ],
+      },
+      "turn-1",
+      false,
+    );
+
+    expect(thread.state.history).toEqual([
+      expect.objectContaining({
+        text: "describe this",
+        images: [{ url: "data:image/png;base64,abc" }],
+      }),
+    ]);
+  });
+
   test("restores persisted turns without replacing a live unsaved user message", () => {
     const thread = new CodexThread("thread-1");
     thread.addMessage("user", "live prompt");
@@ -401,6 +424,28 @@ describe("CodexThread", () => {
         clientUserMessageId: "client-1",
         text: "run later",
       },
+    ]);
+  });
+
+  test("preserves images when normalizing queued submissions", () => {
+    const thread = new CodexThread("thread-1");
+
+    thread.replaceQueueFromServer([
+      {
+        id: "queued-1",
+        clientUserMessageId: "client-1",
+        input: [
+          { type: "text", text: "inspect later" },
+          { type: "image", url: "data:image/jpeg;base64,def" },
+        ],
+      },
+    ]);
+
+    expect(thread.state.queuedSubmissions).toEqual([
+      expect.objectContaining({
+        text: "inspect later",
+        images: [{ url: "data:image/jpeg;base64,def" }],
+      }),
     ]);
   });
 

@@ -360,7 +360,9 @@ body.chat-only #codex-chat {
   border-radius: 0;
   background: transparent;
   color: #1687d9;
-  font: 700 10px/1.2 system-ui, sans-serif;
+  font:
+    700 10px/1.2 system-ui,
+    sans-serif;
   text-shadow: none;
   white-space: nowrap;
 }
@@ -1076,6 +1078,12 @@ body.chat-only #codex-chat {
   margin-top: 7px;
 }
 
+.codex-input-wrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
 #codex-command-mode {
   grid-column: 1 / -1;
   justify-self: start;
@@ -1090,6 +1098,76 @@ body.chat-only #codex-chat {
   font-weight: 700;
   line-height: 1.2;
   text-shadow: none;
+}
+
+#codex-image-attachments {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+#codex-image-attachments[hidden] {
+  display: none;
+}
+
+.codex-image-attachment {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 6px 3px 3px;
+  border: 1px solid #7db7ff99;
+  border-radius: 7px;
+  background: #111827dd;
+  color: #fff;
+  font-size: 11px;
+}
+
+.codex-image-attachment img {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.codex-message-image {
+  display: block;
+  max-width: min(100%, 360px);
+  max-height: 280px;
+  margin-top: 8px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.codex-queued-submission-image {
+  width: 24px;
+  height: 24px;
+  margin-left: 5px;
+  border-radius: 4px;
+  object-fit: cover;
+  vertical-align: middle;
+}
+
+.codex-image-attachment span {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-image-attachment button {
+  padding: 1px 4px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+#codex-chat-form.codex-drop-active {
+  outline: 2px dashed #7db7ff;
+  outline-offset: 4px;
 }
 
 #codex-command-mode[data-mode="shell"] {
@@ -1167,12 +1245,14 @@ body.chat-only #codex-chat {
 }
 
 #codex-chat-input {
+  display: block;
+  width: 100%;
   min-width: 0;
   flex: 1 1 auto;
   max-height: 220px;
   resize: none;
   box-sizing: border-box;
-  padding: 7px;
+  padding: 7px 39px 7px 7px;
   border: 1px solid #ffffff66;
   border-radius: 10px;
   background: #000000dd;
@@ -1312,6 +1392,30 @@ body.chat-only #codex-chat {
 #codex-chat-actions button {
   width: 100%;
   box-sizing: border-box;
+}
+
+.codex-image-select {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.codex-image-select:hover,
+.codex-image-select:focus-visible {
+  border-color: transparent;
+  background: transparent;
+  outline: none;
 }
 
 #codex-chat-interrupt {

@@ -82,11 +82,13 @@ interface CodexRuntimeState {
   codexQueuedSubmissions: Array<{
     id: string;
     text: string;
+    images?: Array<{ url: string; name?: string }>;
     clientUserMessageId: string;
   }>;
   codexHistory: Array<{
     role: "user" | "assistant" | "system";
     text: string;
+    images?: Array<{ url: string; name?: string }>;
     timestamp?: number;
     temporary?: boolean;
     turnId?: string;
@@ -162,6 +164,7 @@ interface Window {
     selectCodexThread: (threadId: string) => void;
     setCodexCollaborationMode: (mode: "default" | "plan") => void;
     focusCodexInput: () => void;
+    setChatFileDialogOpen: (open: boolean) => void;
     implementCodexPlan: (
       planText: string,
       clearContext: boolean,
@@ -179,7 +182,10 @@ interface Window {
       requestId: string | number,
       optionId: string,
     ) => void;
-    submitCodexPrompt: (prompt: string) => Promise<PeskSettings>;
+    submitCodexPrompt: (
+      prompt: string,
+      images?: Array<{ url: string; name: string }>,
+    ) => Promise<PeskSettings>;
     startCodexReview: (instructions: string) => Promise<PeskSettings>;
     fuzzyFileSearch: (
       query: string,

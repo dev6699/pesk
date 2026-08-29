@@ -109,31 +109,45 @@ export class CodexThread {
   }
 
   /** Appends a normalized message to this thread's history. */
-  addMessage(role: CodexMessage["role"], text: string, turnId?: string): void {
+  addMessage(
+    role: CodexMessage["role"],
+    text: string,
+    turnId?: string,
+    images?: Array<{ url: string; name?: string }>,
+  ): void {
     const value = text.trim();
-    if (!value) return;
+    if (!value && !images?.length) return;
     this.state.history.push({
       role,
       text: value,
       timestamp: Date.now(),
       turnId,
+      ...(images?.length ? { images } : {}),
     });
     this.trim();
   }
 
   /** Records user-authored conversation text and supersedes stale approvals. */
-  addUserMessage(text: string, turnId?: string): boolean {
+  addUserMessage(
+    text: string,
+    turnId?: string,
+    images?: Array<{ url: string; name?: string }>,
+  ): boolean {
     const value = text.trim();
-    if (!value) return false;
+    if (!value && !images?.length) return false;
     this.supersedePendingApprovals();
-    this.addMessage("user", value, turnId);
+    this.addMessage("user", value, turnId, images);
     return true;
   }
 
   /** Inserts an echoed user message without duplicating local input. */
-  insertUser(text: string, turnId?: string): boolean {
+  insertUser(
+    text: string,
+    turnId?: string,
+    images?: Array<{ url: string; name?: string }>,
+  ): boolean {
     const value = text.trim();
-    if (!value) return false;
+    if (!value && !images?.length) return false;
     this.clearPendingApprovals();
     if (
       this.state.history.some(
@@ -156,6 +170,7 @@ export class CodexThread {
       text: value,
       turnId,
       timestamp: Date.now(),
+      ...(images?.length ? { images } : {}),
     });
     if (this.state.streamingAssistant >= 0) this.state.streamingAssistant += 1;
     this.trim();
@@ -384,13 +399,25 @@ export class CodexThread {
     suppressUserMessage: boolean,
   ): void {
     if (!suppressUserMessage) {
-      for (const content of records(item.content)) {
-        if (
-          typeof content.text === "string" &&
-          !this.consumePrompt(content.text)
-        ) {
-          this.insertUser(content.text, turnId);
-        }
+      const contents = records(item.content);
+      const text = contents
+        .map((content) =>
+          typeof content.text === "string" ? content.text.trim() : "",
+        )
+        .filter(Boolean)
+        .join("\n");
+      const images = contents
+        .filter(
+          (content) =>
+            content.type === "image" &&
+            typeof content.url === "string" &&
+            content.url.startsWith("data:image/"),
+        )
+        .map((content) => ({ url: content.url as string }));
+      if (text && !this.consumePrompt(text)) {
+        this.insertUser(text, turnId, images);
+      } else if (!text && images.length) {
+        this.insertUser("", turnId, images);
       }
     }
     if (isActivityItem(item)) {
@@ -456,18 +483,28 @@ export class CodexThread {
       const items = records(turn.items);
       for (const item of items) {
         if (item.type === "userMessage") {
-          for (const content of records(item.content)) {
-            if (
-              typeof content.text === "string" &&
-              content.text.trim() &&
-              !reviewPromptTexts.has(content.text.trim())
-            ) {
-              restored.push({
-                role: "user",
-                text: content.text.trim(),
-                timestamp,
-              });
-            }
+          const contents = records(item.content);
+          const text = contents
+            .map((content) =>
+              typeof content.text === "string" ? content.text.trim() : "",
+            )
+            .filter(Boolean)
+            .join("\n");
+          const images = contents
+            .filter(
+              (content) =>
+                content.type === "image" &&
+                typeof content.url === "string" &&
+                content.url.startsWith("data:image/"),
+            )
+            .map((content) => ({ url: content.url as string }));
+          if ((text && !reviewPromptTexts.has(text)) || images.length) {
+            restored.push({
+              role: "user",
+              text,
+              timestamp,
+              ...(images.length ? { images } : {}),
+            });
           }
         }
         if (item.type === "agentMessage") {
@@ -849,9 +886,18 @@ export class CodexThread {
         const text = records(submission.input).find(
           (input) => input.type === "text" && typeof input.text === "string",
         );
+        const images = records(submission.input)
+          .filter(
+            (input) =>
+              input.type === "image" &&
+              typeof input.url === "string" &&
+              input.url.startsWith("data:image/"),
+          )
+          .map((input) => ({ url: input.url as string }));
         return {
           id,
           text: typeof text?.text === "string" ? text.text : "",
+          ...(images.length ? { images } : {}),
           clientUserMessageId,
         };
       })

@@ -54,6 +54,7 @@ let codexStatusSoundUrl = "";
 let webServer: ChatWebServer;
 let notifications: NotificationController;
 let wiredChatWindow: BrowserWindow | null = null;
+let chatFileDialogOpen = false;
 
 const debug = (...values: unknown[]): void => {
   if (!app.isPackaged) console.log("[pesk]", ...values);
@@ -68,10 +69,17 @@ function wireChatWindow(): void {
   const chatWindow = chat?.window;
   if (!chatWindow || chatWindow === wiredChatWindow) return;
   wiredChatWindow = chatWindow;
-  chatWindow.on("focus", () => pet.setFocusIndicator(true));
+  chatWindow.on("focus", () => {
+    chatFileDialogOpen = false;
+    pet.setFocusIndicator(true);
+  });
   chatWindow.on("blur", () => {
     setTimeout(() => {
-      if (!pet.window?.isFocused() && !chat.window?.isFocused()) {
+      if (
+        !chatFileDialogOpen &&
+        !pet.window?.isFocused() &&
+        !chat.window?.isFocused()
+      ) {
         pet.setFocusIndicator(false);
         chat.hide();
       }
@@ -140,7 +148,12 @@ function handleWebCommand(
   switch (command.type) {
     case "submitPrompt":
       if (typeof command.prompt === "string") {
-        replyCommand(codexController.submitPrompt(command.prompt));
+        replyCommand(
+          codexController.submitPromptWithImages(
+            command.prompt,
+            validImageInputs(command.images),
+          ),
+        );
       } else {
         replyCommand(false);
       }
@@ -239,6 +252,21 @@ function handleWebCommand(
       }
       break;
   }
+}
+
+function validImageInputs(
+  value: unknown,
+): Array<{ url: string; name: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((image): image is { url: string; name: string } => {
+    if (!image || typeof image !== "object") return false;
+    const record = image as Record<string, unknown>;
+    return (
+      typeof record.url === "string" &&
+      record.url.startsWith("data:image/") &&
+      typeof record.name === "string"
+    );
+  });
 }
 
 app.whenReady().then(() => {
@@ -370,6 +398,9 @@ app.whenReady().then(() => {
     wireChatWindow();
     chat.focusInput(pet.window?.getBounds());
   });
+  ipcMain.on("chat-file-dialog", (_event, open: unknown) => {
+    chatFileDialogOpen = open === true;
+  });
   ipcMain.handle(
     "implement-codex-plan",
     (_event, planText: unknown, clearContext: unknown) => {
@@ -423,12 +454,18 @@ app.whenReady().then(() => {
       }
     },
   );
-  ipcMain.handle("submit-codex-prompt", (_event, prompt: unknown) => {
-    if (typeof prompt === "string") {
-      codexController.submitPrompt(prompt);
-    }
-    return rendererSettings();
-  });
+  ipcMain.handle(
+    "submit-codex-prompt",
+    (_event, prompt: unknown, images: unknown) => {
+      if (typeof prompt === "string") {
+        codexController.submitPromptWithImages(
+          prompt,
+          validImageInputs(images),
+        );
+      }
+      return rendererSettings();
+    },
+  );
   ipcMain.handle(
     "fuzzy-file-search",
     (_event, query: unknown, roots: unknown) => {
