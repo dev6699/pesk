@@ -6,7 +6,7 @@
   "author": "",
   "license": "MIT",
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-renderer-assets.js",
+    "build": "node scripts/clean-build.js && tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-renderer-assets.js",
     "test": "npm run build && jest --runInBand",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",

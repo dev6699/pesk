@@ -128,10 +128,7 @@ function handleWebCommand(
         typeof command.clearContext === "boolean"
       ) {
         replyCommand(
-          codexController.implementPlan(
-            command.planText,
-            command.clearContext,
-          ),
+          codexController.implementPlan(command.planText, command.clearContext),
         );
       } else {
         replyCommand(false);
@@ -174,13 +171,13 @@ function handleWebCommand(
           Object.entries(command.answers).flatMap(([id, value]) =>
             Array.isArray(value)
               ? [
-                  [
-                    id,
-                    value.filter(
-                      (item): item is string => typeof item === "string",
-                    ),
-                  ],
-                ]
+                [
+                  id,
+                  value.filter(
+                    (item): item is string => typeof item === "string",
+                  ),
+                ],
+              ]
               : [],
           ),
         );
@@ -250,7 +247,7 @@ app.whenReady().then(() => {
       chat.hideIfNotFocused();
       pet.setFocusIndicator(
         (pet.window?.isFocused() ?? false) ||
-          (chat.window?.isFocused() ?? false),
+        (chat.window?.isFocused() ?? false),
       );
     },
     hideChatImmediately: () => chat.hide(),
@@ -331,11 +328,14 @@ app.whenReady().then(() => {
   ipcMain.handle("revoke-pairing-device", (_event, id: unknown) => {
     if (typeof id === "string") webServer.revokeDevice(id);
   });
-  ipcMain.handle("set-pairing-device-push", (_event, id: unknown, enabled: unknown) => {
-    if (typeof id === "string" && typeof enabled === "boolean") {
-      webServer.setDevicePushEnabled(id, enabled);
-    }
-  });
+  ipcMain.handle(
+    "set-pairing-device-push",
+    (_event, id: unknown, enabled: unknown) => {
+      if (typeof id === "string" && typeof enabled === "boolean") {
+        webServer.setDevicePushEnabled(id, enabled);
+      }
+    },
+  );
   ipcMain.on("select-codex-thread", (_event, threadId: unknown) => {
     if (typeof threadId === "string") codexController.selectThread(threadId);
   });
