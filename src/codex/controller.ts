@@ -496,7 +496,6 @@ export class CodexController {
     }
     const newThreadMatch = prompt.match(/^\/new(?:\s+(.+))?$/);
     if (newThreadMatch) {
-      if (this.threadRuntime().state.status !== "idle") return false;
       return this.startNewThread(newThreadMatch[1]);
     }
 
@@ -757,7 +756,7 @@ export class CodexController {
 
   /** Starts and selects a fresh Codex session without sending a prompt. */
   startNewThread(workingDirectory?: string, initialPrompt?: string): boolean {
-    if (!this.initialized || this.threadRuntime().state.status !== "idle") {
+    if (!this.initialized) {
       return false;
     }
     const cwd = (

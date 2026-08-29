@@ -707,6 +707,24 @@ describe("CodexController", () => {
     });
   });
 
+  test("starts /new while the selected thread is working", () => {
+    const { controller, socket } = connectedController();
+    threadState(controller).status = "working";
+    threadState(controller).activeTurnId = "turn-1";
+
+    expect(controller.submitPrompt("/new")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/start",
+      params: { serviceName: "pesk" },
+    });
+    const startId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({ id: startId, result: { thread: { id: "new-thread" } } }),
+    );
+    expect(controller.getState().threadId).toBe("new-thread");
+  });
+
   test("reuses the current thread working directory for /new", () => {
     const { controller, socket } = connectedController();
 
