@@ -308,6 +308,22 @@ function connect(): void {
   });
 }
 
+function reconnectImmediately(): void {
+  if (!socket) return;
+  if (retryTimer !== undefined) {
+    window.clearTimeout(retryTimer);
+    retryTimer = undefined;
+  }
+  if (
+    socket.readyState === WebSocket.OPEN ||
+    socket.readyState === WebSocket.CONNECTING
+  ) {
+    return;
+  }
+  retryDelay = 1000;
+  connect();
+}
+
 const pairingCode = new URLSearchParams(location.search).get("code");
 if (!pairingCode || credential) {
   registerServiceWorker();
@@ -334,6 +350,11 @@ connectionStatus?.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") return;
   event.preventDefault();
   location.reload();
+});
+window.addEventListener("pageshow", reconnectImmediately);
+window.addEventListener("online", reconnectImmediately);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") reconnectImmediately();
 });
 
 function send(type: string, data: Record<string, unknown> = {}): void {
