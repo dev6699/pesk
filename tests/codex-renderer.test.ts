@@ -37,6 +37,7 @@ function makeRenderer(
     input: HTMLTextAreaElement;
     suggestions: HTMLElement;
     userInput: HTMLElement;
+    commandMode: HTMLElement;
   };
 } {
   document.body.className = webChat ? "web-chat" : "";
@@ -50,6 +51,7 @@ function makeRenderer(
     <div id="usage"></div>
     <section id="user-input"></section>
     <form id="form">
+      <div id="command-mode" hidden></div>
       <textarea id="input"></textarea>
       <div id="suggestions"></div>
     </form>
@@ -67,6 +69,7 @@ function makeRenderer(
     input: document.querySelector("#input") as HTMLTextAreaElement,
     suggestions: document.querySelector("#suggestions") as HTMLElement,
     userInput: document.querySelector("#user-input") as HTMLElement,
+    commandMode: document.querySelector("#command-mode") as HTMLElement,
   };
   Object.defineProperties(elements.history, {
     clientHeight: { configurable: true, value: 300 },
@@ -129,6 +132,8 @@ function makeRenderer(
     elements.suggestions,
     undefined,
     elements.userInput,
+    undefined,
+    elements.commandMode,
   );
   return { renderer, elements };
 }
@@ -933,6 +938,7 @@ test("shows and selects slash commands", () => {
     "/defaultSwitch to Default mode",
     "/newStart a new Codex session",
     "/reviewReview current changes",
+    "/execRun a sandboxed command",
   ]);
 
   elements.input.dispatchEvent(
@@ -944,6 +950,181 @@ test("shows and selects slash commands", () => {
 
   expect(elements.input.value).toBe("/default ");
   expect(elements.suggestions.hidden).toBe(true);
+});
+
+test("shows the exec indicator immediately after slash suggestion selection", () => {
+  const { elements } = makeRenderer();
+  elements.input.value = "/exec";
+  elements.input.dispatchEvent(new Event("input", { bubbles: true }));
+  const execIndex = [...elements.suggestions.querySelectorAll("button")].findIndex(
+    (button) => button.textContent?.startsWith("/exec"),
+  );
+
+  elements.suggestions
+    .querySelectorAll("button")
+    .item(execIndex)
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+  expect(elements.input.value).toBe("/exec ");
+  expect(elements.commandMode.hidden).toBe(false);
+  expect(elements.commandMode.textContent).toBe("Exec · sandboxed");
+});
+
+test("shows the execution mode above the composer", () => {
+  const { elements } = makeRenderer();
+
+  expect(elements.commandMode.hidden).toBe(true);
+
+  elements.input.value = "!git status";
+  elements.input.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(elements.commandMode).toMatchObject({
+    hidden: false,
+    textContent: "Shell · full access",
+  });
+  expect(elements.commandMode.dataset.mode).toBe("shell");
+
+  elements.input.value = "/exec ls -la";
+  elements.input.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(elements.commandMode).toMatchObject({
+    hidden: false,
+    textContent: "Exec · sandboxed",
+  });
+  expect(elements.commandMode.dataset.mode).toBe("exec");
+
+  elements.input.value = "hello";
+  elements.input.dispatchEvent(new Event("input", { bubbles: true }));
+  expect(elements.commandMode.hidden).toBe(true);
+});
+
+test("marks failed command activity in red", () => {
+  const { renderer, elements } = makeRenderer();
+  renderer.updateSettings({
+    ...defaultSettings(),
+    codexHistory: [
+      {
+        role: "system",
+        text: "Command failed",
+        itemId: "failed-command",
+        activity: {
+          kind: "command",
+          command: "ejc",
+          status: "failed",
+        },
+      },
+    ],
+  });
+
+  expect(
+    elements.history.querySelector(".codex-activity-command-failed"),
+  ).not.toBeNull();
+});
+
+test("expands user commands but collapses agent commands", () => {
+  const { renderer, elements } = makeRenderer();
+  renderer.updateSettings({
+    ...defaultSettings(),
+    codexHistory: [
+      {
+        role: "system",
+        text: "User shell command",
+        itemId: "user-command",
+        activity: {
+          kind: "command",
+          source: "userShell",
+          userInitiated: true,
+          command: "echo hi",
+          status: "completed",
+        },
+      },
+      {
+        role: "system",
+        text: "Agent command",
+        itemId: "agent-command",
+        activity: {
+          kind: "command",
+          source: "agent",
+          command: "npm test",
+          status: "completed",
+        },
+      },
+    ],
+  });
+
+  const details = [...elements.history.querySelectorAll("details")];
+  expect(details[0]?.open).toBe(true);
+  expect(details[1]?.open).toBe(false);
+});
+
+test("uses the documented default expansion for every activity type", () => {
+  const { renderer, elements } = makeRenderer();
+  renderer.updateSettings({
+    ...defaultSettings(),
+    codexHistory: [
+      {
+        role: "system",
+        text: "agent command",
+        itemId: "command",
+        activity: { kind: "command", source: "agent", command: "npm test" },
+      },
+      {
+        role: "system",
+        text: "file change",
+        itemId: "file",
+        activity: {
+          kind: "fileChange",
+          changes: ["src/app.ts\n+change"],
+        },
+      },
+      {
+        role: "system",
+        text: "search",
+        itemId: "search",
+        activity: { kind: "webSearch", summary: "query" },
+      },
+      {
+        role: "system",
+        text: "tool",
+        itemId: "tool",
+        activity: { kind: "tool", label: "mcpToolCall" },
+      },
+      {
+        role: "system",
+        text: "plan",
+        itemId: "plan",
+        activity: { kind: "plan", details: "plan details" },
+      },
+      {
+        role: "system",
+        text: "review started",
+        itemId: "review",
+        activity: {
+          kind: "other",
+          label: "enteredReviewMode",
+          status: "completed",
+        },
+      },
+      { role: "assistant", text: "ordinary response", itemId: "message" },
+    ],
+  });
+
+  const details = [...elements.history.querySelectorAll("details")];
+  expect(details.map((item) => item.className)).toEqual([
+    "codex-command-details",
+    "codex-file-change-details",
+    "codex-activity-details-block",
+    "codex-activity-details-block",
+    "codex-plan-details",
+    "codex-activity-details-block",
+  ]);
+  expect(details.map((item) => item.open)).toEqual([
+    false,
+    true,
+    false,
+    false,
+    true,
+    true,
+  ]);
+  expect(elements.history.querySelectorAll(".codex-message-assistant")).toHaveLength(1);
 });
 
 test("opens and submits the custom review form", async () => {

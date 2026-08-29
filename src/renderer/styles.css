@@ -843,6 +843,20 @@ body.chat-only #codex-chat {
   font-weight: 700;
 }
 
+.codex-activity-command-failed {
+  border-color: #ff6b6b;
+  background: #210d10;
+  color: #ffd6d6;
+}
+
+.codex-activity-command-failed .codex-command-details summary {
+  color: #ff8f8f;
+}
+
+.codex-activity-command-failed .codex-command-summary-command {
+  color: #ffd6d6;
+}
+
 .codex-command-summary-command {
   display: block;
   overflow: hidden;
@@ -1001,7 +1015,9 @@ body.chat-only #codex-chat {
 
 #codex-chat-form {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   flex: 0 0 auto;
   min-width: 0;
   max-width: 100%;
@@ -1009,6 +1025,28 @@ body.chat-only #codex-chat {
   box-sizing: border-box;
   gap: 6px;
   margin-top: 7px;
+}
+
+#codex-command-mode {
+  grid-column: 1 / -1;
+  justify-self: start;
+  box-sizing: border-box;
+  margin: 0 0 1px 2px;
+  padding: 4px 8px;
+  border: 1px solid #ffe08a;
+  border-radius: 999px;
+  background: #17120a;
+  color: #fff3bf;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-shadow: none;
+}
+
+#codex-command-mode[data-mode="shell"] {
+  border-color: #ff9f9f;
+  background: #210d10;
+  color: #ffd9dc;
 }
 
 #codex-token-usage {

@@ -18,6 +18,7 @@ const codex = new CodexRenderer(
   document.getElementById("codex-mode-toggle") as HTMLButtonElement,
   document.getElementById("codex-user-input") as HTMLElement,
   document.getElementById("codex-chat-steer") as HTMLButtonElement,
+  document.getElementById("codex-command-mode") as HTMLElement,
 );
 
 if (document.body.classList.contains("web-chat")) {

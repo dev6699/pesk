@@ -84,6 +84,12 @@ interface CodexRuntimeState {
     itemId?: string;
     activity?: {
       kind: "command" | "fileChange" | "webSearch" | "tool" | "plan" | "other";
+      source?:
+        | "agent"
+        | "userShell"
+        | "unifiedExecStartup"
+        | "unifiedExecInteraction";
+      userInitiated?: boolean;
       label?: string;
       status?: string;
       command?: string;

@@ -5,6 +5,7 @@ const slashCommands = [
   { command: "/default", description: "Switch to Default mode" },
   { command: "/new", description: "Start a new Codex session" },
   { command: "/review", description: "Review current changes" },
+  { command: "/exec", description: "Run a sandboxed command" },
 ];
 
 export class CodexRenderer {
@@ -58,12 +59,14 @@ export class CodexRenderer {
     private readonly modeToggle?: HTMLButtonElement,
     private readonly userInput?: HTMLElement,
     private readonly steerButton?: HTMLButtonElement,
+    private readonly commandMode?: HTMLElement,
   ) {
     this.settings = settings;
     this.rateLimit = rateLimit ?? document.createElement("div");
     this.fileSuggestions = fileSuggestions ?? document.createElement("div");
     this.suggestionInput = input;
     this.renderWorkingStatus();
+    this.renderCommandMode();
     sessionSelect.addEventListener("change", () => {
       if (sessionSelect.value)
         window.peskApi.selectCodexThread(sessionSelect.value);
@@ -90,6 +93,7 @@ export class CodexRenderer {
     input.addEventListener("input", () => {
       this.suggestionInput = input;
       this.resizeInput();
+      this.renderCommandMode();
       void this.updateSuggestions(input);
     });
     input.addEventListener("keydown", (event) =>
@@ -250,6 +254,7 @@ export class CodexRenderer {
       next.codexQueuedSubmissions,
     );
     this.renderWorkingStatus();
+    this.renderCommandMode();
     this.renderTokenUsage();
     this.renderRateLimit();
     this.renderUserInput();
@@ -316,6 +321,7 @@ export class CodexRenderer {
     const next = await window.peskApi.submitCodexPrompt(prompt);
     this.input.value = "";
     this.resizeInput();
+    this.renderCommandMode();
     this.updateSettings(next);
     this.history.scrollTop = this.history.scrollHeight;
     if (keepInputFocused) {
@@ -323,6 +329,24 @@ export class CodexRenderer {
       this.keepWebChatFormVisible();
     } else {
       this.input.focus();
+    }
+  }
+
+  private renderCommandMode(): void {
+    if (!this.commandMode) return;
+    const value = this.input.value.trimStart();
+    if (value.startsWith("!")) {
+      this.commandMode.hidden = false;
+      this.commandMode.textContent = "Shell · full access";
+      this.commandMode.dataset.mode = "shell";
+    } else if (/^\/exec(?:\s|$)/i.test(value)) {
+      this.commandMode.hidden = false;
+      this.commandMode.textContent = "Exec · sandboxed";
+      this.commandMode.dataset.mode = "exec";
+    } else {
+      this.commandMode.hidden = true;
+      this.commandMode.textContent = "";
+      delete this.commandMode.dataset.mode;
     }
   }
 
@@ -1331,7 +1355,10 @@ export class CodexRenderer {
       input.selectionStart = input.value.length;
       input.selectionEnd = input.value.length;
       this.hideFileSuggestions();
-      if (input === this.input) this.resizeInput();
+      if (input === this.input) {
+        this.resizeInput();
+        this.renderCommandMode();
+      }
       input.focus();
       return;
     }
@@ -1436,6 +1463,13 @@ export class CodexRenderer {
       bubble.className = `codex-message codex-message-${message.role}`;
       if (message.activity) {
         bubble.classList.add(`codex-activity-${message.activity.kind}`);
+        if (
+          message.activity.kind === "command" &&
+          (message.activity.status === "failed" ||
+            message.activity.status === "declined")
+        ) {
+          bubble.classList.add("codex-activity-command-failed");
+        }
         if (isReviewActivity(message.activity)) {
           bubble.classList.add("codex-activity-review");
         }
@@ -1585,7 +1619,10 @@ export class CodexRenderer {
       const details = document.createElement("details");
       details.className = "codex-command-details";
       details.dataset.activityKey = activityKey;
-      details.open = openActivityKeys.has(activityKey);
+      details.open =
+        openActivityKeys.has(activityKey) ||
+        (!renderedActivityKeys.has(activityKey) &&
+          message.activity.userInitiated === true);
       const summary = document.createElement("summary");
       const command = message.activity.command?.replace(/\s+/g, " ").trim();
       summary.textContent = `Command · ${message.activity.status ?? "in progress"}`;

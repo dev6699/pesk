@@ -26,6 +26,7 @@ import type {
   ToolRequestUserInputParams,
   GetAccountRateLimitsResponse,
   RateLimitSnapshot,
+  CommandExecResponse,
 } from "./codex-schema/v2";
 import type {
   FuzzyFileSearchResponse,
@@ -58,6 +59,12 @@ export interface CodexMessage {
   itemId?: string;
   activity?: {
     kind: "command" | "fileChange" | "webSearch" | "tool" | "plan" | "other";
+    source?:
+      | "agent"
+      | "userShell"
+      | "unifiedExecStartup"
+      | "unifiedExecInteraction";
+    userInitiated?: boolean;
     label?: string;
     status?: string;
     command?: string;
@@ -249,6 +256,8 @@ type PlanTurnStartParams = TurnStartRequest["params"] & {
 };
 type AccountRateLimitsRequest = RequestOf<"account/rateLimits/read">;
 type TurnInterruptRequest = RequestOf<"turn/interrupt">;
+type ThreadShellCommandRequest = RequestOf<"thread/shellCommand">;
+type CommandExecRequest = RequestOf<"command/exec">;
 type TurnSteerRequest = {
   method: "turn/steer";
   id: number;
@@ -645,6 +654,15 @@ export class CodexController {
       return this.startNewThread(newThreadMatch[1]);
     }
 
+    const shellCommand = prompt.match(/^!(.+)$/s)?.[1].trim();
+    if (shellCommand) {
+      return this.submitShellCommand(shellCommand);
+    }
+    const execCommand = prompt.match(/^\/exec\s+(.+)$/s)?.[1].trim();
+    if (execCommand) {
+      return this.submitExecCommand(execCommand);
+    }
+
     if (this.status !== "idle") {
       return this.queuePrompt(prompt);
     }
@@ -682,6 +700,95 @@ export class CodexController {
         this.startTurn(thread.id, prompt);
       }
     });
+    return true;
+  }
+
+  /** Runs a user-entered shell string through the current thread. */
+  private submitShellCommand(command: string): boolean {
+    if (!this.initialized) return false;
+    const sendCommand = (threadId: string): void => {
+      const id = ++this.nextId;
+      this.send({
+        method: "thread/shellCommand",
+        id,
+        params: { threadId, command },
+      } satisfies ThreadShellCommandRequest);
+      this.setStatus("working");
+    };
+    if (this.threadId) {
+      this.addMessage("user", `!${command}`);
+      sendCommand(this.threadId);
+      return true;
+    }
+    if (this.status !== "idle") return false;
+    this.addMessage("user", `!${command}`);
+    const id = ++this.nextId;
+    this.send({
+      method: "thread/start",
+      id,
+      params: { cwd: ".", serviceName: "pesk" },
+    } satisfies ThreadStartRequest);
+    this.pendingThreadStarts += 1;
+    this.setRequest<ThreadStartResponse>(id, (message) => {
+      const thread = message.result?.thread;
+      if (typeof thread?.id !== "string") return;
+      this.noteThreadStartResponse(thread.id);
+      this.threadId = thread.id;
+      this.connected = true;
+      this.rememberWorkingDirectory(thread);
+      this.options.publishRendererState();
+      sendCommand(thread.id);
+    });
+    return true;
+  }
+
+  /** Runs a standalone argv command through the app-server sandbox. */
+  private submitExecCommand(commandText: string): boolean {
+    if (!this.initialized || this.socket?.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    const command = commandText.match(/"[^"]*"|'[^']*'|\S+/g)
+      ?.map((part) => part.replace(/^(['"])(.*)\1$/, "$2"));
+    if (!command?.length) return false;
+    const id = ++this.nextId;
+    const processId = `pesk-exec-${id}`;
+    this.addMessage("user", `/exec ${commandText}`);
+    this.addOrUpdateActivity(
+      {
+        id: processId,
+        type: "commandExecution",
+        source: "unifiedExecStartup",
+        userInitiated: true,
+        command: command.join(" "),
+        cwd: this.workingDirectory,
+        status: "inProgress",
+      },
+      processId,
+    );
+    this.setRequest<CommandExecResponse>(id, (message) => {
+      const result = message.result;
+      this.addOrUpdateActivity(
+        {
+          id: processId,
+          type: "commandExecution",
+          source: "unifiedExecStartup",
+          userInitiated: true,
+          command: command.join(" "),
+          cwd: this.workingDirectory,
+          status: message.error ? "failed" : result?.exitCode === 0 ? "completed" : "failed",
+          exitCode: result?.exitCode,
+          aggregatedOutput: [result?.stdout, result?.stderr].filter(Boolean).join("\n"),
+        },
+        processId,
+      );
+      if (!this.activeTurnId) this.setStatus("idle");
+    });
+    this.send({
+      method: "command/exec",
+      id,
+      params: { command, processId, cwd: this.workingDirectory },
+    } satisfies CommandExecRequest);
+    this.setStatus("working");
     return true;
   }
 
@@ -1319,6 +1426,9 @@ export class CodexController {
       case "item/commandExecution/outputDelta":
         this.handleCommandOutputDelta(message);
         break;
+      case "command/exec/outputDelta":
+        this.handleExecOutputDelta(message);
+        break;
       case "item/completed":
         this.handleItemCompleted(message);
         break;
@@ -1827,6 +1937,14 @@ export class CodexController {
     this.options.publishRendererState();
   }
 
+  /** Appends base64-decoded output from a standalone command/exec request. */
+  private handleExecOutputDelta(
+    message: Extract<ServerMessage, { method: "command/exec/outputDelta" }>,
+  ): void {
+    const delta = Buffer.from(message.params.deltaBase64, "base64").toString();
+    this.appendActivityOutput(message.params.processId, delta);
+  }
+
   /** Appends streamed plan text to its activity history entry. */
   private appendPlanDelta(itemId: string, delta: string): void {
     if (!delta) return;
@@ -1878,6 +1996,9 @@ export class CodexController {
     });
     const activity: NonNullable<CodexMessage["activity"]> = {
       kind,
+      source: isCommandExecutionSource(item.source) ? item.source : undefined,
+      userInitiated:
+        item.userInitiated === true || item.source === "userShell",
       label: type,
       status:
         typeof item.status === "string"
@@ -2091,6 +2212,17 @@ function formatActivityText(
   if (activity.output) lines.push(activity.output);
   if (activity.details) lines.push(activity.details);
   return lines.join("\n");
+}
+
+function isCommandExecutionSource(
+  value: unknown,
+): value is NonNullable<CodexMessage["activity"]>["source"] {
+  return (
+    value === "agent" ||
+    value === "userShell" ||
+    value === "unifiedExecStartup" ||
+    value === "unifiedExecInteraction"
+  );
 }
 
 function summarizeActivity(item: Record<string, unknown>): string | undefined {

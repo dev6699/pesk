@@ -1421,6 +1421,43 @@ describe("CodexController", () => {
     expect(lastMessage(socket)).not.toMatchObject({ method: "turn/start" });
   });
 
+  test("runs ! commands through the current thread shell API", () => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.submitPrompt("!git status --short")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/shellCommand",
+      params: {
+        threadId: "thread-1",
+        command: "git status --short",
+      },
+    });
+  });
+
+  test("runs /exec commands through standalone command/exec", () => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.submitPrompt('/exec bash -lc "printf hello"')).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "command/exec",
+      params: {
+        command: ["bash", "-lc", "printf hello"],
+        processId: "pesk-exec-5",
+      },
+    });
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: 5,
+        result: { exitCode: 0, stdout: "hello", stderr: "" },
+      }),
+    );
+    expect(controller.getState().history.at(-1)).toMatchObject({
+      activity: { kind: "command", status: "completed", output: "hello" },
+    });
+  });
+
   test("starts the next turn in Plan mode when selected", () => {
     const { controller, socket } = connectedController();
 
