@@ -336,24 +336,51 @@ body.chat-only #codex-chat {
   opacity: 0.45;
 }
 
-#codex-mode-toggle {
-  flex: 0 0 auto;
+#codex-token-usage-row {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  width: 100%;
   box-sizing: border-box;
-  padding: 4px 7px;
-  border: 1px solid #ffffff88;
-  border-radius: 6px;
-  background: #000000cc;
-  color: #fff;
-  cursor: pointer;
-  white-space: nowrap;
-  height: 24px;
-  font:
-    10px/14px system-ui,
-    sans-serif;
+  gap: 8px;
 }
 
-#codex-mode-toggle.codex-mode-plan {
-  background: #2458a8;
+#codex-token-usage-row #codex-token-usage {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#codex-mode-toggle {
+  display: block;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #1687d9;
+  font: 700 10px/1.2 system-ui, sans-serif;
+  text-shadow: none;
+  white-space: nowrap;
+}
+
+.codex-usage-line {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 8px;
+}
+
+.codex-usage-line > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-usage-line #codex-mode-toggle {
+  margin-left: auto;
 }
 
 #codex-user-input {
@@ -511,7 +538,6 @@ body.chat-only #codex-chat {
 
 #codex-user-input input:focus-visible,
 #codex-user-input button:focus-visible,
-#codex-mode-toggle:focus-visible,
 #codex-session-copy:focus-visible,
 #codex-session-select:focus-visible,
 #codex-chat-input:focus-visible {

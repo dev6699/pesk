@@ -62,7 +62,7 @@ export class CodexRenderer {
     settings: PeskSettings,
     rateLimit?: HTMLElement,
     fileSuggestions?: HTMLElement,
-    private readonly modeToggle?: HTMLButtonElement,
+    private readonly modeToggle?: HTMLElement,
     private readonly userInput?: HTMLElement,
     private readonly steerButton?: HTMLButtonElement,
     private readonly commandMode?: HTMLElement,
@@ -78,11 +78,6 @@ export class CodexRenderer {
         window.peskApi.selectCodexThread(sessionSelect.value);
     });
     sessionCopy.addEventListener("click", () => void this.copySessionId());
-    this.modeToggle?.addEventListener("click", () => {
-      const mode =
-        this.settings.codexCollaborationMode === "plan" ? "default" : "plan";
-      window.peskApi.setCodexCollaborationMode(mode);
-    });
     this.steerButton?.addEventListener("click", () => {
       const prompt = this.input.value.trim();
       if (!prompt) return;
@@ -333,11 +328,12 @@ export class CodexRenderer {
     );
     if (this.modeToggle) {
       const plan = next.codexCollaborationMode === "plan";
+      this.modeToggle.hidden = !plan;
       this.modeToggle.textContent = plan ? "Plan" : "Default";
       this.modeToggle.classList.toggle("codex-mode-plan", plan);
       this.modeToggle.title = plan
         ? "Plan mode enabled for the next turn"
-        : "Default mode enabled for the next turn";
+        : "Default mode";
     }
   }
 
@@ -1006,9 +1002,15 @@ export class CodexRenderer {
       }
       this.tokenUsage.append(modelRow);
     }
-    if (usageParts.length > 0) {
+    if (usageParts.length > 0 || this.modeToggle) {
       const usageLine = document.createElement("div");
-      usageLine.textContent = usageParts.join(" · ");
+      usageLine.className = "codex-usage-line";
+      if (usageParts.length > 0) {
+        const usageLabel = document.createElement("span");
+        usageLabel.textContent = usageParts.join(" · ");
+        usageLine.append(usageLabel);
+      }
+      if (this.modeToggle) usageLine.append(this.modeToggle);
       this.tokenUsage.append(usageLine);
     }
     this.tokenUsage.title = [

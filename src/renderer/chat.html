@@ -22,14 +22,6 @@
           >
             Copy
           </button>
-          <button
-            id="codex-mode-toggle"
-            type="button"
-            aria-label="Toggle Codex mode"
-            title="Toggle Codex mode"
-          >
-            Default
-          </button>
         </div>
         <div id="codex-rate-limit" aria-live="polite" hidden></div>
         <div id="codex-error" role="alert" hidden></div>
@@ -40,7 +32,18 @@
             <time id="codex-working-elapsed">0s</time>
           </div>
         </div>
-        <div id="codex-token-usage" aria-live="polite" hidden></div>
+        <div id="codex-token-usage-row">
+          <div id="codex-token-usage" aria-live="polite" hidden></div>
+          <span
+            id="codex-mode-toggle"
+            role="status"
+            aria-label="Codex mode"
+            title="Plan mode active"
+            hidden
+          >
+            Plan
+          </span>
+        </div>
         <div id="codex-read-only" aria-live="polite" hidden></div>
         <section id="codex-user-input" aria-live="assertive" hidden></section>
         <form id="codex-chat-form">

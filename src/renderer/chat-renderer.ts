@@ -15,7 +15,7 @@ const codex = new CodexRenderer(
   defaultSettings(),
   document.getElementById("codex-rate-limit") as HTMLElement,
   document.getElementById("codex-file-suggestions") as HTMLElement,
-  document.getElementById("codex-mode-toggle") as HTMLButtonElement,
+  document.getElementById("codex-mode-toggle") as HTMLElement,
   document.getElementById("codex-user-input") as HTMLElement,
   document.getElementById("codex-chat-steer") as HTMLButtonElement,
   document.getElementById("codex-command-mode") as HTMLElement,
