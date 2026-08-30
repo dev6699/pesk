@@ -1,5 +1,5 @@
-import { marked } from "./vendor/marked.js";
-import { matchesShortcut } from "./shortcuts.js";
+import { marked } from "../../vendor/marked.js";
+import { matchesShortcut } from "../../shared/shortcuts.js";
 
 const slashCommands = [
   { command: "/plan", description: "Switch to Plan mode" },

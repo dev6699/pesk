@@ -19,7 +19,7 @@ import { MenuController } from "./menu";
 import { routePetFocusShortcut } from "./focus-shortcut";
 import { ChatWebServer } from "./chat-web-server";
 import { NotificationController } from "./notification";
-import { shortcutAccelerator } from "./renderer/shortcuts";
+import { shortcutAccelerator } from "./renderer/shared/shortcuts";
 
 interface RendererSettings extends PeskSettings {
   codexThreadId?: string;

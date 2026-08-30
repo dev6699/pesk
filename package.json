@@ -34,7 +34,9 @@
       "**/tests/**/*.test.ts"
     ],
     "moduleNameMapper": {
-      "^(\\.{1,2}/shortcuts)\\.js$": "$1"
+      "^(\\.{1,2}/shortcuts)\\.js$": "$1",
+      "^\\.\\./shared/shortcuts\\.js$": "<rootDir>/src/renderer/shared/shortcuts.ts",
+      "^\\.\\./\\.\\./shared/shortcuts\\.js$": "<rootDir>/src/renderer/shared/shortcuts.ts"
     }
   },
   "devDependencies": {

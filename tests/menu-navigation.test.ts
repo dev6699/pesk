@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 /// <reference types="jest" />
-/// <reference path="../src/renderer/types.d.ts" />
+/// <reference path="../src/renderer/shared/types.d.ts" />
 
 test("moves from preset search through preset items with Up and Down", async () => {
   document.body.innerHTML = `
@@ -34,7 +34,7 @@ test("moves from preset search through preset items with Up and Down", async () 
   } as never;
 
   jest.isolateModules(() => {
-    jest.requireActual("../src/renderer/menu.ts");
+    jest.requireActual("../src/renderer/features/menu/menu.ts");
   });
   await Promise.resolve();
   await Promise.resolve();

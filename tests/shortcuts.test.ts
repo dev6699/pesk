@@ -5,7 +5,7 @@ import {
   SHORTCUTS,
   type ShortcutDefinition,
   type ShortcutId,
-} from "../src/renderer/shortcuts";
+} from "../src/renderer/shared/shortcuts";
 
 function event(
   key: string,

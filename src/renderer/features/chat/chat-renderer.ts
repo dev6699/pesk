@@ -1,6 +1,6 @@
 import { CodexRenderer } from "./codex-renderer.js";
-import { defaultSettings } from "./default-settings.js";
-import { matchesShortcut } from "./shortcuts.js";
+import { defaultSettings } from "../../shared/default-settings.js";
+import { matchesShortcut } from "../../shared/shortcuts.js";
 
 const codex = new CodexRenderer(
   document.getElementById("codex-chat") as HTMLElement,

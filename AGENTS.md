@@ -5,7 +5,7 @@
 - `src/main.ts` wires the Electron main process and IPC handlers.
 - Main-process controllers live in `src/{chat,config,menu,pet,preset,codex}.ts`.
 - Renderer pages and modules live in `src/renderer/`; `pet.html`, `chat.html`, and `menu.html` are separate windows.
-- `src/renderer/chat.html` is the Electron desktop chat entry point, while `src/renderer/web-chat.html` is the browser/PWA entry point served by `ChatWebServer`; maintain shared chat markup in both files and verify both when changing the composer or chat UI.
+- `src/renderer/pages/chat.html` is the Electron desktop chat entry point, while `src/renderer/pages/web-chat.html` is the browser/PWA entry point served by `ChatWebServer`; maintain shared chat markup in both files and verify both when changing the composer or chat UI.
 - `assets/` contains the tray icon and bundled fallback artwork.
 - `tests/` contains Jest tests, currently focused on Codex behavior.
 - `scripts/` contains build-time asset-copy helpers.

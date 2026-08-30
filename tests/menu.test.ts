@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 /// <reference types="jest" />
-/// <reference path="../src/renderer/types.d.ts" />
+/// <reference path="../src/renderer/shared/types.d.ts" />
 
 test("generates and displays a pairing QR when Enter is pressed in the device name input", async () => {
   jest.useFakeTimers();
@@ -44,7 +44,7 @@ test("generates and displays a pairing QR when Enter is pressed in the device na
     onMenuFocusChanged: jest.fn(),
   } as never;
   jest.isolateModules(() => {
-    jest.requireActual("../src/renderer/menu.ts");
+    jest.requireActual("../src/renderer/features/menu/menu.ts");
   });
   const input = document.getElementById("pairing-device-name") as HTMLInputElement;
   input.value = "Phone";

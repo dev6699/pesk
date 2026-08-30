@@ -221,7 +221,7 @@ Configuration fields:
 
 ### Keyboard shortcuts
 
-All shortcut definitions are centralized in `src/renderer/shortcuts.ts`.
+All shortcut definitions are centralized in `src/renderer/shared/shortcuts.ts`.
 Global shortcuts are fixed application behavior; they are not configuration
 options.
 

@@ -10,10 +10,9 @@
     "lib": ["ES2022", "DOM"]
   },
   "include": [
-    "src/renderer/renderer.ts",
-    "src/renderer/chat-renderer.ts",
-    "src/renderer/web-adapter.ts",
-    "src/renderer/menu.ts",
-    "src/renderer/types.d.ts"
+    "src/renderer/features/**/*.ts",
+    "src/renderer/shared/**/*.ts",
+    "src/renderer/web/**/*.ts",
+    "src/renderer/shared/types.d.ts"
   ]
 }

@@ -36,8 +36,8 @@ jest.mock("node:fs", () => ({
 import { BrowserWindow, screen } from "electron";
 import { ChatWindowController } from "../src/chat";
 import { PetWindowController } from "../src/pet";
-import { PetRenderer } from "../src/renderer/pet-renderer";
-import { defaultSettings } from "../src/renderer/default-settings";
+import { PetRenderer } from "../src/renderer/features/pet/pet-renderer";
+import { defaultSettings } from "../src/renderer/shared/default-settings";
 
 type Handler = (...args: unknown[]) => void;
 

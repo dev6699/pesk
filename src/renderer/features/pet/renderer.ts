@@ -1,4 +1,4 @@
-import { defaultSettings } from "./default-settings.js";
+import { defaultSettings } from "../../shared/default-settings.js";
 import { PetRenderer } from "./pet-renderer.js";
 
 const image = document.getElementById("pet-image") as HTMLImageElement;

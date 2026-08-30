@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /// <reference types="jest" />
 /// <reference types="node" />
-/// <reference path="../src/renderer/types.d.ts" />
+/// <reference path="../src/renderer/shared/types.d.ts" />
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { request } from "node:http";
@@ -119,7 +119,7 @@ describe("ChatWebServer", () => {
       enabled: true,
       port: 0,
       listenHost: "127.0.0.1",
-      rendererDirectory: path.join(process.cwd(), "src", "renderer"),
+      rendererDirectory: path.join(process.cwd(), "build", "renderer"),
       webPushVapidPath: path.join(directory, "vapid.json"),
       webPushSubscriptionsPath: path.join(directory, "subscriptions.json"),
       deviceCredentialsPath: path.join(directory, "devices.json"),

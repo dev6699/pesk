@@ -1,4 +1,4 @@
-import { matchesShortcut } from "./shortcuts.js";
+import { matchesShortcut } from "../shared/shortcuts.js";
 
 const listeners = new Set<(settings: PeskSettings) => void>();
 const pendingFileSearches = new Map<number, (results: FuzzyFileSearchResult[]) => void>();

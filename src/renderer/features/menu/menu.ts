@@ -1,4 +1,4 @@
-import { matchesShortcut } from "./shortcuts.js";
+import { matchesShortcut } from "../../shared/shortcuts.js";
 
 interface MenuSettings {
   animation: string;

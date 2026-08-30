@@ -9,17 +9,17 @@ fs.copyFileSync(
   path.join(__dirname, "..", "node_modules", "marked", "lib", "marked.esm.js"),
   path.join(destination, "vendor", "marked.js"),
 );
-for (const file of [
-  "pet.html",
-  "chat.html",
-  "web-chat.html",
-  "styles.css",
-  "menu.html",
-  "menu.css",
-  "manifest.webmanifest",
-  "web-sw.js",
+for (const [from, to] of [
+  ["pages/pet.html", "pet.html"],
+  ["pages/chat.html", "chat.html"],
+  ["pages/web-chat.html", "web-chat.html"],
+  ["pages/menu.html", "menu.html"],
+  ["styles/styles.css", "styles.css"],
+  ["styles/menu.css", "menu.css"],
+  ["web/manifest.webmanifest", "manifest.webmanifest"],
+  ["web/web-sw.js", "web-sw.js"],
 ]) {
-  fs.copyFileSync(path.join(source, file), path.join(destination, file));
+  fs.copyFileSync(path.join(source, from), path.join(destination, to));
 }
 fs.copyFileSync(
   path.join(__dirname, "..", "assets", "pesk-tray.png"),
