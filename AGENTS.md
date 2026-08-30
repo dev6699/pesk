@@ -26,7 +26,7 @@ Compiled files go to `build/`; installer artifacts go to `dist/`. Distribute the
 
 ## Coding Style and Naming
 
-Use TypeScript with strict compiler settings. After making changes, run `npm run format`, then run `npm run format:check` before submitting. Use `PascalCase` for classes and interfaces, `camelCase` for functions and variables, and descriptive controller names such as `PetWindowController`. Keep renderer-specific code under `src/renderer/` and communicate with the main process through the typed preload API.
+Use TypeScript with strict compiler settings. During incremental work, format and check only the changed files with `npx prettier --write <changed-files>` and `npx prettier --check <changed-files>`. Before submitting, run `npm run format` and `npm run format:check` for the full project. Use `PascalCase` for classes and interfaces, `camelCase` for functions and variables, and descriptive controller names such as `PetWindowController`. Keep renderer-specific code under `src/renderer/` and communicate with the main process through the typed preload API.
 
 ## Testing Guidelines
 

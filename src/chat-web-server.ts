@@ -447,7 +447,7 @@ export class ChatWebServer {
     file: string,
   ): void {
     let html = readFileSync(file, "utf8");
-    html = html.replace("web-adapter.js", "web-adapter.js?v=12");
+    html = html.replace("web-adapter.js", "web-adapter.js");
     const requestUrl = new URL(request.url ?? "/", "http://localhost");
     response.writeHead(200, {
       "Content-Type": MIME_TYPES[".html"],

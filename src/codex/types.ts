@@ -5,6 +5,7 @@ import type {
   RateLimitSnapshot,
   Thread,
   ThreadTokenUsage,
+  ThreadGoal,
   ToolRequestUserInputParams,
 } from "../codex-schema/v2";
 
@@ -89,6 +90,8 @@ export interface CodexThreadSnapshot {
   pendingUserInput?: CodexPendingUserInput;
   pendingApproval?: CodexPendingApproval;
   queuedSubmissions: CodexQueuedSubmission[];
+  goal?: ThreadGoal;
+  commandNotice?: string;
 }
 
 /** Complete state published by the Codex controller to renderer clients. */
@@ -113,6 +116,8 @@ export interface CodexState {
   pendingUserInput?: CodexPendingUserInput;
   pendingApproval?: CodexPendingApproval;
   queuedSubmissions: CodexQueuedSubmission[];
+  goal?: ThreadGoal;
+  commandNotice?: string;
 }
 
 export type ApprovalDecision = CommandExecutionApprovalDecision | FileChangeApprovalDecision;

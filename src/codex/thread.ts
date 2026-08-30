@@ -9,7 +9,7 @@ import type {
   PendingApproval,
 } from "./types";
 import { records, stringValue } from "./protocol";
-import type { ThreadTokenUsage, TokenUsageBreakdown } from "../codex-schema/v2";
+import type { ThreadGoal, ThreadTokenUsage, TokenUsageBreakdown } from "../codex-schema/v2";
 
 export type ThreadStatus = "idle" | "working" | "waiting";
 
@@ -35,6 +35,8 @@ export interface ThreadState {
   prompts: Map<string, number>;
   pendingApprovals: Map<string, PendingApproval>;
   workingDirectory?: string;
+  goal?: ThreadGoal;
+  commandNotice?: string;
 }
 
 /** Owns mutable state and conversation behavior for exactly one Codex thread. */
@@ -79,6 +81,8 @@ export class CodexThread {
       pendingUserInput: this.state.pendingUserInput,
       pendingApproval: this.state.pendingApproval,
       queuedSubmissions: [...this.state.queuedSubmissions],
+      goal: this.state.goal,
+      commandNotice: this.state.commandNotice,
     };
   }
 
@@ -97,6 +101,8 @@ export class CodexThread {
     this.state.pendingUserInput = undefined;
     this.state.pendingApproval = undefined;
     this.state.queuedSubmissions = [];
+    this.state.goal = undefined;
+    this.state.commandNotice = undefined;
     this.state.reviewInProgress = false;
     this.state.streamingAssistant = -1;
     this.state.streamingAssistantItemId = undefined;
@@ -106,6 +112,14 @@ export class CodexThread {
     this.state.pendingApprovals.clear();
     this.state.workingDirectory = workingDirectory;
     this.trim();
+  }
+
+  setGoal(goal: ThreadGoal | undefined): void {
+    this.state.goal = goal;
+  }
+
+  setCommandNotice(notice: string | undefined): void {
+    this.state.commandNotice = notice;
   }
 
   /** Appends a normalized message to this thread's history. */

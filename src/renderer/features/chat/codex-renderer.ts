@@ -3,6 +3,7 @@ import { matchesShortcut } from "../../shared/shortcuts.js";
 
 const slashCommands = [
   { command: "/plan", description: "Switch to Plan mode" },
+  { command: "/goal", description: "Usage: /goal [<objective>|clear|edit|pause|resume]" },
   { command: "/default", description: "Switch to Default mode" },
   { command: "/new", description: "Start a new Codex session" },
   { command: "/archive", description: "Archive the current session" },
@@ -20,6 +21,9 @@ export class CodexRenderer {
   private workingLabelSince: number | undefined;
   private selectedMessageIndex = -1;
   private readonly rateLimit: HTMLElement;
+  private readonly goal: HTMLElement;
+  private readonly commandNotice: HTMLElement;
+  private readonly statusDock?: HTMLElement;
   private readonly fileSuggestions: HTMLElement;
   private suggestionInput: HTMLTextAreaElement;
   private fileSearchSerial = 0;
@@ -75,9 +79,14 @@ export class CodexRenderer {
   ) {
     this.settings = settings;
     this.rateLimit = rateLimit ?? document.createElement("div");
+    this.goal = document.getElementById("codex-goal") ?? document.createElement("div");
+    this.commandNotice =
+      document.getElementById("codex-command-notice") ?? document.createElement("div");
+    this.statusDock = document.getElementById("codex-status-dock") ?? undefined;
     this.fileSuggestions = fileSuggestions ?? document.createElement("div");
     this.suggestionInput = input;
     this.renderWorkingStatus();
+    this.renderStatusDock();
     this.renderCommandMode();
     sessionSelect.addEventListener("change", () => {
       if (sessionSelect.value) window.peskApi.selectCodexThread(sessionSelect.value);
@@ -260,6 +269,7 @@ export class CodexRenderer {
     }
     this.error.hidden = !next.codexError;
     this.error.textContent = next.codexError ? "Codex connection error." : "";
+    this.renderCommandNotice(next.codexCommandNotice);
     this.sessionSelect.replaceChildren();
     if (!displayedThreads.length) {
       const option = document.createElement("option");
@@ -280,9 +290,11 @@ export class CodexRenderer {
     this.sessionCopy.disabled = !next.codexThreadId;
     this.renderHistory(next.codexHistory, Boolean(next.codexThreadId), next.codexQueuedSubmissions);
     this.renderWorkingStatus();
+    this.renderStatusDock();
     this.renderCommandMode();
     this.renderTokenUsage();
     this.renderRateLimit();
+    this.renderGoal();
     this.renderUserInput();
     const steerable =
       !next.codexReadOnly && (next.codexStatus === "working" || next.codexStatus === "waiting");
@@ -922,6 +934,31 @@ export class CodexRenderer {
     }
   }
 
+  private scrollHistoryToBottom(): void {
+    const scroll = (): void => {
+      this.history.scrollTop = this.history.scrollHeight;
+      requestAnimationFrame(() => {
+        this.history.scrollTop = this.history.scrollHeight;
+      });
+    };
+    requestAnimationFrame(scroll);
+  }
+
+  private renderGoal(): void {
+    const goal = this.settings.codexGoal;
+    if (!goal) {
+      this.goal.hidden = true;
+      this.goal.textContent = "";
+      this.goal.removeAttribute("data-goal-status");
+      return;
+    }
+    const budget =
+      goal.tokenBudget === null ? "no budget" : `${formatTokens(goal.tokenBudget)} budget`;
+    this.goal.textContent = `Goal · ${goal.status} · ${goal.objective} · ${formatTokens(goal.tokensUsed)} used · ${budget} · ${formatElapsed(goal.timeUsedSeconds * 1000)}`;
+    this.goal.dataset.goalStatus = goal.status;
+    this.goal.hidden = false;
+  }
+
   private renderTokenUsage(): void {
     if (!this.settings.codexThreadId) {
       this.tokenUsage.hidden = true;
@@ -1278,7 +1315,7 @@ export class CodexRenderer {
       this.slashCommandResults.forEach((result, index) => {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "codex-file-suggestion";
+        button.className = "codex-file-suggestion codex-command-suggestion";
         button.setAttribute("role", "option");
         button.setAttribute("aria-selected", String(index === this.fileSuggestionIndex));
         const name = document.createElement("span");
@@ -1497,7 +1534,7 @@ export class CodexRenderer {
     }
     this.applySelectedMessage();
     if (!this.historyInitialized || wasAtBottom || planContentChanged) {
-      this.history.scrollTop = this.history.scrollHeight;
+      this.scrollHistoryToBottom();
     }
     this.historyInitialized = true;
   }
@@ -1505,17 +1542,29 @@ export class CodexRenderer {
   private updateActivePlanConfirmation(history: PeskSettings["codexHistory"]): void {
     this.activePlanConfirmation = undefined;
     const lastMessage = history?.[history.length - 1];
-    if (
-      lastMessage?.activity?.kind !== "plan" ||
-      (lastMessage.activity.status !== "completed" && lastMessage.activity.status !== "complete")
-    ) {
+    let planActivityIndex = -1;
+    let planActivityText = "";
+    const activityIndexes = lastMessage?.activity?.kind === "plan" ? [history.length - 1] : [];
+    for (const index of activityIndexes) {
+      const activity = history[index].activity;
+      if (
+        activity?.kind === "plan" &&
+        (activity.status === "completed" || activity.status === "complete") &&
+        (activity.details ?? history[index].text).length > planActivityText.length
+      ) {
+        planActivityIndex = index;
+        planActivityText = activity.details ?? history[index].text;
+      }
+    }
+    if (planActivityIndex < 0) {
       return;
     }
-    const activityKey = lastMessage.itemId ?? `history-${(history?.length ?? 1) - 1}`;
+    const planActivity = history[planActivityIndex];
+    const activityKey = planActivity.itemId ?? `history-${planActivityIndex}`;
     if (this.dismissedPlanConfirmations.has(activityKey)) return;
     this.activePlanConfirmation = {
       key: activityKey,
-      planText: lastMessage.activity.details ?? lastMessage.text,
+      planText: planActivityText,
     };
   }
 
@@ -1705,13 +1754,15 @@ export class CodexRenderer {
         return;
       }
       submit.disabled = true;
-      void window.peskApi
-        .implementCodexPlan(planText, selected === "clear-context")
-        .then((next) => {
-          this.updateSettings(next);
-          this.focusChatInput();
-          this.renderHistory(this.settings.codexHistory, Boolean(this.settings.codexThreadId));
-        });
+      const implementation = window.peskApi.implementCodexPlan(
+        planText,
+        selected === "clear-context",
+      );
+      void implementation.then((next) => {
+        this.updateSettings(next);
+        this.focusChatInput();
+        this.renderHistory(this.settings.codexHistory, Boolean(this.settings.codexThreadId));
+      });
     });
     prompt.append(form);
     requestAnimationFrame(() => {
@@ -1762,7 +1813,8 @@ export class CodexRenderer {
     this.workingTimer = undefined;
     const since = this.settings.codexWorkingSince;
     const worked = this.settings.codexWorkedElapsed;
-    this.workingStatus.hidden = since === undefined && worked === undefined;
+    this.workingStatus.hidden =
+      since === undefined && worked === undefined && !this.settings.codexInterrupted;
     if (since === undefined) {
       this.workingStatus.classList.add("codex-working-status-complete");
       if (this.workingLabelTimer !== undefined) window.clearInterval(this.workingLabelTimer);
@@ -1811,6 +1863,25 @@ export class CodexRenderer {
     };
     update();
     this.workingTimer = window.setInterval(update, 1000);
+  }
+
+  private renderStatusDock(): void {
+    if (this.statusDock) {
+      this.statusDock.hidden = this.commandNotice.hidden && this.workingStatus.hidden;
+    }
+  }
+
+  private renderCommandNotice(notice: string | undefined): void {
+    this.commandNotice.hidden = !notice;
+    this.commandNotice.replaceChildren();
+    for (const [index, line] of (notice ?? "").split("\n").entries()) {
+      const lineElement = document.createElement("div");
+      lineElement.className =
+        index === 0 ? "codex-command-notice-title" : "codex-command-notice-line";
+      if (line.startsWith("Commands:")) lineElement.classList.add("codex-command-notice-commands");
+      lineElement.textContent = line;
+      this.commandNotice.append(lineElement);
+    }
   }
 
   private renderApproval(bubble: HTMLElement, message: PeskSettings["codexHistory"][number]): void {

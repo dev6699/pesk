@@ -462,6 +462,164 @@ describe("CodexController", () => {
     });
   });
 
+  test("sets a native goal without echoing the objective as a user message", () => {
+    const { controller, socket } = connectedController();
+    const objective = "Prepare a verified weekend itinerary with a complete budget";
+
+    expect(controller.submitPrompt(`/goal ${objective}`)).toBe(true);
+    const goalRequest = lastMessage(socket);
+    expect(goalRequest).toMatchObject({
+      method: "thread/goal/set",
+      params: { threadId: "thread-1", objective, status: "active" },
+    });
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: goalRequest.id,
+        result: {
+          goal: {
+            threadId: "thread-1",
+            objective,
+            status: "active",
+            tokenBudget: null,
+            tokensUsed: 0,
+            timeUsedSeconds: 0,
+          },
+        },
+      }),
+    );
+
+    expect(socket.sent.map((entry) => JSON.parse(entry).method)).not.toContain("turn/start");
+    expect(controller.getState().goal).toMatchObject({ objective, status: "active" });
+  });
+
+  test("maps goal pause, resume, and clear commands to native lifecycle requests", () => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.submitPrompt("/goal pause")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/goal/set",
+      params: { threadId: "thread-1", status: "paused" },
+    });
+
+    expect(controller.submitPrompt("/goal resume")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/goal/set",
+      params: { threadId: "thread-1", status: "active" },
+    });
+
+    expect(controller.submitPrompt("/goal clear")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/goal/clear",
+      params: { threadId: "thread-1" },
+    });
+  });
+
+  test("routes background goal notifications to the owning thread", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/goal/updated",
+        params: {
+          threadId: "other-thread",
+          goal: { threadId: "other-thread", objective: "background goal", status: "active" },
+        },
+      }),
+    );
+
+    expect(controller.getState().threadId).toBe("thread-1");
+    expect(threadRuntime(controller, "other-thread").state.goal?.objective).toBe("background goal");
+    expect(threadRuntime(controller).state.goal).toBeUndefined();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/goal/cleared",
+        params: { threadId: "other-thread" },
+      }),
+    );
+
+    expect(threadRuntime(controller, "other-thread").state.goal).toBeUndefined();
+  });
+
+  test("edits an existing goal through thread/goal/set", () => {
+    const { controller, socket } = connectedController();
+    threadRuntime(controller).setGoal({
+      threadId: "thread-1",
+      objective: "old objective",
+      status: "active",
+      tokenBudget: null,
+      tokensUsed: 12,
+      timeUsedSeconds: 4,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    expect(controller.submitPrompt("/goal edit new objective")).toBe(true);
+    const request = lastMessage(socket);
+    expect(request).toMatchObject({
+      method: "thread/goal/set",
+      params: { threadId: "thread-1", objective: "new objective" },
+    });
+    expect(request.params).not.toHaveProperty("status");
+  });
+
+  test("shows current goal details for bare goal command", () => {
+    const { controller, socket } = connectedController();
+    threadRuntime(controller).setGoal({
+      threadId: "thread-1",
+      objective: "say hi",
+      status: "complete",
+      tokenBudget: null,
+      tokensUsed: 9710,
+      timeUsedSeconds: 3,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    expect(controller.submitPrompt("/goal")).toBe(true);
+    expect(controller.getState().commandNotice).toBe(
+      [
+        "Goal",
+        "Status: complete",
+        "Objective: say hi",
+        "Time used: 3s",
+        "Tokens used: 9.71K",
+        "Commands: /goal edit <objective>, /goal clear",
+      ].join("\n"),
+    );
+    expect(socket.sent.map((entry) => JSON.parse(entry).method)).not.toContain("turn/start");
+  });
+
+  test("does not synthesize a visible continuation prompt after an idle turn", () => {
+    const { controller, socket } = connectedController();
+    const runtime = threadRuntime(controller);
+    runtime.setGoal({
+      threadId: "thread-1",
+      objective: "Produce a verified final report",
+      status: "active",
+      tokenBudget: null,
+      tokensUsed: 10,
+      timeUsedSeconds: 2,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    runtime.setStatus("working");
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "turn/completed",
+        params: { threadId: "thread-1", turn: { status: "completed" } },
+      }),
+    );
+
+    expect(socket.sent.map((entry) => JSON.parse(entry).method)).not.toContain("turn/start");
+  });
+
   test("wraps steer input and keeps the wrapped text in history", () => {
     const { controller, socket } = connectedController();
     const state = threadState(controller);
@@ -1126,6 +1284,27 @@ describe("CodexController", () => {
 
     expect(controller.getState().tokenUsage?.total.totalTokens).toBe(2100);
     expect(controller.getState().tokenUsage?.modelContextWindow).toBe(128000);
+  });
+
+  test("stores token usage included in an interrupted turn completion", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          threadId: "other-thread",
+          turn: {
+            status: "interrupted",
+            usage: { total: { totalTokens: 900 } },
+          },
+        },
+      }),
+    );
+
+    expect(controller.getState().tokenUsage).toBeUndefined();
+    expect(threadRuntime(controller, "other-thread").state.tokenUsage?.total.totalTokens).toBe(900);
   });
 
   test("does not clear live token usage when history has no persisted usage", () => {

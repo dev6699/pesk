@@ -90,9 +90,13 @@
         <div id="codex-rate-limit" aria-live="polite" hidden></div>
         <div id="codex-error" role="alert" hidden></div>
         <div id="codex-history-shell">
+          <div id="codex-goal" aria-live="polite" hidden></div>
           <div id="codex-history" aria-live="polite"></div>
-          <div id="codex-working-status" aria-live="polite" hidden>
-            <span>Working…</span><time id="codex-working-elapsed">0s</time>
+          <div id="codex-status-dock">
+            <div id="codex-command-notice" role="status" aria-live="polite" hidden></div>
+            <div id="codex-working-status" aria-live="polite" hidden>
+              <span>Working…</span><time id="codex-working-elapsed">0s</time>
+            </div>
           </div>
         </div>
         <div id="codex-token-usage-row">

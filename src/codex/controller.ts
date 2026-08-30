@@ -40,6 +40,10 @@ import type {
   CommandExecResponse,
   ThreadArchiveResponse,
   ThreadDeleteResponse,
+  ThreadGoal,
+  ThreadGoalClearResponse,
+  ThreadGoalGetResponse,
+  ThreadGoalSetResponse,
 } from "../codex-schema/v2";
 import type { UserInput } from "../codex-schema/v2/UserInput";
 import type { CodexState, CodexThreadActivity } from "./types";
@@ -60,6 +64,9 @@ import type {
   ThreadResumeRequest,
   ThreadShellCommandRequest,
   ThreadStartRequest,
+  ThreadGoalGetRequest,
+  ThreadGoalClearRequest,
+  ThreadGoalSetRequest,
   TurnInterruptRequest,
   TurnStartRequest,
   TurnSteerRequest,
@@ -201,6 +208,7 @@ export class CodexController {
       readOnly: Boolean(this.threadId && this.readonlyThreadIds.has(this.threadId)),
       cwd: thread.workingDirectory ?? process.cwd(),
       error: this.connectionError,
+      commandNotice: thread.commandNotice,
       status: thread.status,
       aggregateStatus,
       connected: thread.connected,
@@ -217,6 +225,7 @@ export class CodexController {
       pendingUserInput: thread.pendingUserInput,
       pendingApproval: thread.pendingApproval,
       queuedSubmissions: thread.queuedSubmissions,
+      goal: thread.goal,
     };
   }
 
@@ -276,6 +285,119 @@ export class CodexController {
   setCollaborationMode(mode: "default" | "plan"): void {
     this.threadRuntime().setCollaborationMode(mode);
     this.options.publishRendererState();
+  }
+
+  /** Handles the native /goal command and its lifecycle controls. */
+  manageGoal(command: string): boolean {
+    if (!this.initialized || !this.threadId) return false;
+    const value = command.trim();
+    if (!value) {
+      const goal = this.threadRuntime().state.goal;
+      this.threadRuntime().setCommandNotice(
+        goal
+          ? [
+              "Goal",
+              `Status: ${goal.status}`,
+              `Objective: ${goal.objective}`,
+              `Time used: ${formatGoalDuration(goal.timeUsedSeconds)}`,
+              `Tokens used: ${formatGoalTokens(goal.tokensUsed)}`,
+              `Commands: ${goalCommands(goal.status)}`,
+            ].join("\n")
+          : "Usage: /goal [<objective>|clear|edit|pause|resume]\nNo goal is currently set.",
+      );
+      this.options.publishRendererState();
+      return true;
+    }
+    const threadId = this.threadId;
+    if (value.toLowerCase() === "clear") {
+      return this.clearGoal(threadId);
+    }
+    if (value.toLowerCase() === "pause" || value.toLowerCase() === "resume") {
+      const status = value.toLowerCase() === "pause" ? "paused" : "active";
+      this.setThreadGoal(threadId, undefined, status);
+      return true;
+    }
+    const editMatch = value.match(/^edit(?:\s+(.+))?$/is);
+    if (editMatch) {
+      const objective = editMatch[1]?.trim();
+      const goal = this.threadRuntime().state.goal;
+      if (!objective) {
+        this.threadRuntime().setCommandNotice(
+          goal
+            ? "Usage: /goal edit <objective>\nEnter the replacement objective."
+            : "No goal is currently set to edit.",
+        );
+        this.options.publishRendererState();
+        return true;
+      }
+      if (!goal) {
+        this.threadRuntime().setCommandNotice("No goal is currently set to edit.");
+        this.options.publishRendererState();
+        return true;
+      }
+      this.setThreadGoal(threadId, objective, undefined, undefined, "Unable to edit the goal.");
+      return true;
+    }
+    this.setThreadGoal(threadId, value, "active", () => {
+      this.setCollaborationMode("default");
+    });
+    return true;
+  }
+
+  private setThreadGoal(
+    threadId: string,
+    objective: string | undefined,
+    status: ThreadGoal["status"] | undefined,
+    onSuccess?: () => void,
+    failureMessage = "Unable to create the goal; implementation was not started.",
+  ): void {
+    const id = ++this.nextId;
+    this.setRequest<ThreadGoalSetResponse>(id, (message) => {
+      const goal = message.result?.goal;
+      if (message.error || !goal || (objective && goal.objective !== objective)) {
+        this.connectionError = failureMessage;
+        this.options.publishRendererState();
+        return;
+      }
+      this.withRuntime(threadId, () => this.runtime(threadId).setGoal(goal));
+      this.options.publishRendererState();
+      onSuccess?.();
+    });
+    this.send({
+      method: "thread/goal/set",
+      id,
+      params: { threadId, ...(objective ? { objective } : {}), ...(status ? { status } : {}) },
+    } satisfies ThreadGoalSetRequest);
+  }
+
+  private clearGoal(threadId: string): boolean {
+    const id = ++this.nextId;
+    this.setRequest<ThreadGoalClearResponse>(id, (message) => {
+      if (message.error || message.result?.cleared !== true) return;
+      this.runtime(threadId).setGoal(undefined);
+      this.options.publishRendererState();
+    });
+    this.send({
+      method: "thread/goal/clear",
+      id,
+      params: { threadId },
+    } satisfies ThreadGoalClearRequest);
+    return true;
+  }
+
+  private restoreGoal(threadId: string): void {
+    const id = ++this.nextId;
+    this.setRequest<ThreadGoalGetResponse>(id, (message) => {
+      this.withRuntime(threadId, () =>
+        this.runtime(threadId).setGoal(message.result?.goal ?? undefined),
+      );
+      this.options.publishRendererState();
+    });
+    this.send({
+      method: "thread/goal/get",
+      id,
+      params: { threadId },
+    } satisfies ThreadGoalGetRequest);
   }
 
   /** Starts implementation from a completed plan confirmation. */
@@ -477,6 +599,9 @@ export class CodexController {
     }
 
     const prompt = value.trim();
+    this.threadRuntime().setCommandNotice(undefined);
+    const goalCommand = prompt.match(/^\/goal(?:\s+(.+))?$/is);
+    if (goalCommand) return this.manageGoal(goalCommand[1] ?? "");
     const modeCommand = prompt.match(/^\/(plan|default)$/i);
     if (modeCommand) {
       this.setCollaborationMode(modeCommand[1].toLowerCase() as "plan" | "default");
@@ -1135,6 +1260,7 @@ export class CodexController {
         setTimeout(() => this.refreshQueue(threadId), 0);
         const turns = records(thread?.turns);
         this.threadRuntime().restoreTurns(turns);
+        setTimeout(() => this.restoreGoal(threadId), 0);
         this.options.publishRendererState();
       });
     });
@@ -1265,6 +1391,18 @@ export class CodexController {
       case "thread/settings/updated":
         this.handleThreadSettingsUpdated(message);
         break;
+      case "thread/goal/updated":
+        this.withRuntime(message.params.threadId, () => {
+          this.threadRuntime().setGoal(message.params.goal);
+        });
+        this.options.publishRendererState();
+        break;
+      case "thread/goal/cleared":
+        this.withRuntime(message.params.threadId, () => {
+          this.threadRuntime().setGoal(undefined);
+        });
+        this.options.publishRendererState();
+        break;
       case "thread/status/changed":
         this.handleThreadStatusChanged(message);
         break;
@@ -1365,6 +1503,7 @@ export class CodexController {
 
   /** Adds echoed user input and visible activity from a started item. */
   private handleItemStarted(message: Extract<ServerMessage, { method: "item/started" }>): void {
+    const threadId = message.params.threadId;
     this.threadRuntime().setStatus("working");
     this.options.publishRendererState();
     const item = isRecord(message.params.item)
@@ -1403,7 +1542,7 @@ export class CodexController {
       : undefined;
     const usage = parseTokenUsageValue(turn?.tokenUsage ?? turn?.usage);
     if (usage && !this.startingNewThread) {
-      this.threadRuntime().setTokenUsage(usage);
+      runtime.setTokenUsage(usage);
       this.options.debug("Pesk Codex token usage", {
         source: "turn/completed",
         usage,
@@ -1695,4 +1834,27 @@ function imageMetadata(
   images: Array<{ url: string; name: string }>,
 ): Array<{ url: string; name?: string }> {
   return images.map(({ url, name }) => ({ url, name }));
+}
+
+function formatGoalTokens(tokens: number): string {
+  return new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(tokens);
+}
+
+function formatGoalDuration(seconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(seconds));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainderSeconds = totalSeconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainderSeconds}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m ${remainderSeconds}s`;
+}
+
+function goalCommands(status: ThreadGoal["status"]): string {
+  if (status === "complete") return "/goal edit <objective>, /goal clear";
+  if (status === "paused") return "/goal edit <objective>, /goal resume, /goal clear";
+  return "/goal edit <objective>, /goal pause, /goal clear";
 }

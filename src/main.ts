@@ -42,6 +42,8 @@ interface RendererSettings extends PeskSettings {
   codexPendingUserInput?: CodexPendingUserInput;
   codexPendingApproval?: CodexPendingApproval;
   codexQueuedSubmissions: CodexQueuedSubmission[];
+  codexGoal?: import("./codex-schema/v2").ThreadGoal;
+  codexCommandNotice?: string;
   codexStatusSoundUrl: string;
 }
 
@@ -120,6 +122,8 @@ function rendererSettings(): RendererSettings {
     codexPendingUserInput: state.pendingUserInput,
     codexPendingApproval: state.pendingApproval,
     codexQueuedSubmissions: state.queuedSubmissions,
+    codexGoal: state.goal,
+    codexCommandNotice: state.commandNotice,
     codexStatusSoundUrl,
   };
 }

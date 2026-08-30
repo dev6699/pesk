@@ -17,6 +17,7 @@ interface CodexRuntimeState {
   codexReadOnly: boolean;
   codexCwd?: string;
   codexError?: string;
+  codexCommandNotice?: string;
   codexThreads: Array<{ id: string; preview?: string; status?: string }>;
   codexThreadActivities: Array<{
     threadId: string;
@@ -85,6 +86,14 @@ interface CodexRuntimeState {
     images?: Array<{ url: string; name?: string }>;
     clientUserMessageId: string;
   }>;
+  codexGoal?: {
+    threadId: string;
+    objective: string;
+    status: "active" | "paused" | "blocked" | "usageLimited" | "budgetLimited" | "complete";
+    tokenBudget: number | null;
+    tokensUsed: number;
+    timeUsedSeconds: number;
+  };
   codexHistory: Array<{
     role: "user" | "assistant" | "system";
     text: string;

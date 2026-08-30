@@ -32,6 +32,7 @@ function makeRenderer(
     workingStatus: HTMLElement;
     workingElapsed: HTMLElement;
     tokenUsage: HTMLElement;
+    statusDock: HTMLElement;
     form: HTMLFormElement;
     input: HTMLTextAreaElement;
     suggestions: HTMLElement;
@@ -46,8 +47,11 @@ function makeRenderer(
     <button id="copy">Copy</button>
     <div id="error"></div>
     <div id="history"></div>
-    <div id="working"><span></span><span id="elapsed"></span></div>
-    <div id="usage"></div>
+    <div id="codex-status-dock" hidden>
+      <div id="codex-command-notice" hidden></div>
+      <div id="working"><span></span><span id="elapsed"></span></div>
+    </div>
+    <div id="token-row"><div id="usage"></div></div>
     <section id="user-input"></section>
     <form id="form">
       <div id="command-mode" hidden></div>
@@ -64,6 +68,7 @@ function makeRenderer(
     workingStatus: document.querySelector("#working") as HTMLElement,
     workingElapsed: document.querySelector("#elapsed") as HTMLElement,
     tokenUsage: document.querySelector("#usage") as HTMLElement,
+    statusDock: document.querySelector("#codex-status-dock") as HTMLElement,
     form: document.querySelector("#form") as HTMLFormElement,
     input: document.querySelector("#input") as HTMLTextAreaElement,
     suggestions: document.querySelector("#suggestions") as HTMLElement,
@@ -260,6 +265,24 @@ test("renders readable keyboard-friendly user questions", () => {
   });
   expect(window.peskApi.focusCodexInput).toHaveBeenCalled();
   expect(document.activeElement).toBe(elements.input);
+});
+
+test("can show the same command notice again after it is cleared", () => {
+  const { renderer } = makeRenderer();
+  const notice = document.querySelector("#codex-command-notice") as HTMLElement;
+  const settings: Settings = {
+    ...defaultSettings(),
+    codexCommandNotice: "Usage: /goal [<objective>|clear|edit|pause|resume]",
+  };
+
+  renderer.updateSettings(settings);
+  expect(notice.hidden).toBe(false);
+
+  renderer.updateSettings({ ...defaultSettings(), codexCommandNotice: undefined });
+  expect(notice.hidden).toBe(true);
+
+  renderer.updateSettings(settings);
+  expect(notice.hidden).toBe(false);
 });
 
 test("preserves modified arrow shortcuts while a question is focused", () => {
@@ -974,6 +997,7 @@ test("shows and selects slash commands", () => {
     [...elements.suggestions.querySelectorAll("button")].map((button) => button.textContent),
   ).toEqual([
     "/planSwitch to Plan mode",
+    "/goalUsage: /goal [<objective>|clear|edit|pause|resume]",
     "/defaultSwitch to Default mode",
     "/newStart a new Codex session",
     "/archiveArchive the current session",
@@ -985,7 +1009,7 @@ test("shows and selects slash commands", () => {
   elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
   elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 
-  expect(elements.input.value).toBe("/default ");
+  expect(elements.input.value).toBe("/goal ");
   expect(elements.suggestions.hidden).toBe(true);
 });
 
@@ -1517,6 +1541,7 @@ test("renders working and completed elapsed states", () => {
     ...defaultSettings(),
     codexWorkedElapsed: 3661000,
   });
+  expect(elements.workingStatus.hidden).toBe(false);
   expect(elements.workingStatus.textContent).toContain("Worked for");
   expect(elements.workingElapsed.textContent).toBe("1h 1m 1s");
 
@@ -1525,6 +1550,7 @@ test("renders working and completed elapsed states", () => {
     codexWorkedElapsed: 1000,
     codexInterrupted: true,
   });
+  expect(elements.workingStatus.hidden).toBe(false);
   expect(elements.workingStatus.textContent).toContain("Conversation interrupted");
   expect(elements.workingStatus.classList.contains("codex-working-status-interrupted")).toBe(true);
 });
