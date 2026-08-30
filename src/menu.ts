@@ -121,9 +121,10 @@ export class MenuController {
     this.menuWindow.on("focus", () =>
       this.menuWindow?.webContents.send("menu-focus-changed", true),
     );
-    this.menuWindow.on("blur", () =>
-      this.menuWindow?.webContents.send("menu-focus-changed", false),
-    );
+    this.menuWindow.on("blur", () => {
+      this.menuWindow?.webContents.send("menu-focus-changed", false);
+      this.menuWindow?.hide();
+    });
     this.menuWindow.on("closed", () => {
       this.menuWindow = null;
     });

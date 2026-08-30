@@ -133,6 +133,7 @@ interface Window {
     startDrag: () => void;
     endDrag: () => void;
     focusPet: () => void;
+    unfocusPesk: () => void;
     zoomPet: (scale: number) => void;
     showPetMenu: () => void;
     togglePaused: () => void;

@@ -19,6 +19,7 @@ import { MenuController } from "./menu";
 import { routePetFocusShortcut } from "./focus-shortcut";
 import { ChatWebServer } from "./chat-web-server";
 import { NotificationController } from "./notification";
+import { shortcutAccelerator } from "./renderer/shortcuts";
 
 interface RendererSettings extends PeskSettings {
   codexThreadId?: string;
@@ -491,21 +492,27 @@ app.whenReady().then(() => {
   ipcMain.on("drag-start", () => pet.startDragging());
   ipcMain.on("drag-end", () => pet.stopDragging());
   ipcMain.on("focus-pet", () => pet.focus());
+  ipcMain.on("unfocus-pesk", () => {
+    chat.hide();
+    pet.window?.blur();
+  });
   ipcMain.on("zoom-pet", (_event, scale: number) => pet.resize(scale));
   ipcMain.on("show-pet-menu", () => menu.showPetMenu());
   ipcMain.on("run-preset", (_event, name: string) => {
     presets.run(name);
   });
   ipcMain.on("close-menu-window", () => menu.hide());
-  const shortcutRegistered = globalShortcut.register(config.menuShortcut, () =>
+  const menuShortcut = shortcutAccelerator("menu");
+  const shortcutRegistered = globalShortcut.register(menuShortcut, () =>
     menu.showWindow(),
   );
   debug("menu shortcut", {
-    shortcut: config.menuShortcut,
+    shortcut: menuShortcut,
     registered: shortcutRegistered,
   });
+  const petFocusShortcut = shortcutAccelerator("petFocus");
   const petFocusShortcutRegistered = globalShortcut.register(
-    config.petFocusShortcut,
+    petFocusShortcut,
     () =>
       routePetFocusShortcut(
         chat,
@@ -514,7 +521,7 @@ app.whenReady().then(() => {
       ),
   );
   debug("pet focus shortcut", {
-    shortcut: config.petFocusShortcut,
+    shortcut: petFocusShortcut,
     registered: petFocusShortcutRegistered,
   });
   pet.create();

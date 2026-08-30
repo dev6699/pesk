@@ -30,7 +30,10 @@
     },
     "testMatch": [
       "**/tests/**/*.test.ts"
-    ]
+    ],
+    "moduleNameMapper": {
+      "^(\\.{1,2}/shortcuts)\\.js$": "$1"
+    }
   },
   "devDependencies": {
     "@swc/core": "^1.16.1",

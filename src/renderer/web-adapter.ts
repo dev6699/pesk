@@ -1,3 +1,5 @@
+import { matchesShortcut } from "./shortcuts.js";
+
 const listeners = new Set<(settings: PeskSettings) => void>();
 const pendingFileSearches = new Map<
   number,
@@ -376,7 +378,11 @@ if (
 const connectionStatus = document.getElementById("web-connection-status");
 connectionStatus?.addEventListener("click", () => location.reload());
 connectionStatus?.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter" && event.key !== " ") return;
+  if (
+    !matchesShortcut(event, "webStatusActivate") &&
+    !matchesShortcut(event, "webStatusActivateSpace")
+  )
+    return;
   event.preventDefault();
   location.reload();
 });

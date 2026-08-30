@@ -1,5 +1,6 @@
 import { CodexRenderer } from "./codex-renderer.js";
 import { defaultSettings } from "./default-settings.js";
+import { matchesShortcut } from "./shortcuts.js";
 
 const codex = new CodexRenderer(
   document.getElementById("codex-chat") as HTMLElement,
@@ -52,6 +53,15 @@ document.addEventListener(
   (event) => codex.handleKeydown(event),
   true,
 );
+document.addEventListener("keydown", (event) => {
+  if (
+    matchesShortcut(event, "unfocusChat") &&
+    !event.defaultPrevented
+  ) {
+    event.preventDefault();
+    window.peskApi.unfocusPesk();
+  }
+});
 window.peskApi.onSettingsChanged((next) => {
   codex.updateSettings(next);
   updateInterruptButton(next);

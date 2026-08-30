@@ -25,8 +25,6 @@ export interface PeskSettings {
 }
 
 export interface AppConfig {
-  menuShortcut: string;
-  petFocusShortcut: string;
   codexAppServerUrl: string;
   codexStatusSound: string;
   webAccessEnabled: boolean;
@@ -75,8 +73,6 @@ const defaultSettings: PeskSettings = {
 };
 
 const defaultConfig: AppConfig = {
-  menuShortcut: "Ctrl+Down",
-  petFocusShortcut: "Ctrl+Up",
   codexAppServerUrl: "ws://127.0.0.1:4500",
   codexStatusSound: "",
   webAccessEnabled: false,
@@ -109,15 +105,6 @@ export function loadConfig(): AppConfig {
   try {
     const config = loadRawConfig();
     return {
-      menuShortcut:
-        typeof config.menuShortcut === "string" && config.menuShortcut.trim()
-          ? config.menuShortcut.trim()
-          : defaultConfig.menuShortcut,
-      petFocusShortcut:
-        typeof config.petFocusShortcut === "string" &&
-        config.petFocusShortcut.trim()
-          ? config.petFocusShortcut.trim()
-          : defaultConfig.petFocusShortcut,
       codexAppServerUrl:
         typeof config.codexAppServerUrl === "string" &&
         /^wss?:\/\//.test(config.codexAppServerUrl)

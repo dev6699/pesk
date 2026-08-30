@@ -1,4 +1,5 @@
 import { marked } from "./vendor/marked.js";
+import { matchesShortcut } from "./shortcuts.js";
 
 const slashCommands = [
   { command: "/plan", description: "Switch to Plan mode" },
@@ -137,37 +138,24 @@ export class CodexRenderer {
   handleKeydown(event: KeyboardEvent): void {
     if (
       !this.chat.hidden &&
-      (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
-      event.ctrlKey &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !event.metaKey
+      (matchesShortcut(event, "sessionPrevious") ||
+        matchesShortcut(event, "sessionNext"))
     ) {
-      const direction = event.key === "ArrowLeft" ? -1 : 1;
+      const direction = matchesShortcut(event, "sessionPrevious") ? -1 : 1;
       if (this.switchSession(direction)) {
         event.preventDefault();
         event.stopPropagation();
       }
       return;
     }
-    if (
-      !this.userInput?.hidden &&
-      event.key === "ArrowUp" &&
-      event.ctrlKey &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !event.metaKey
-    ) {
+    if (!this.userInput?.hidden && matchesShortcut(event, "focusUserInput")) {
       event.preventDefault();
       this.focusUserInputOption();
       return;
     }
     if (
       !this.chat.hidden &&
-      event.key.toLowerCase() === "c" &&
-      (event.ctrlKey || event.metaKey) &&
-      !event.shiftKey &&
-      !event.altKey &&
+      matchesShortcut(event, "copyMessage") &&
       !(
         event.target === this.input &&
         (this.settings.codexStatus === "working" ||
@@ -182,26 +170,21 @@ export class CodexRenderer {
     }
     if (
       !this.chat.hidden &&
-      (event.key === "Home" || event.key === "End") &&
-      event.altKey &&
-      !event.shiftKey &&
-      !event.ctrlKey &&
-      !event.metaKey
+      (matchesShortcut(event, "historyTop") ||
+        matchesShortcut(event, "historyBottom"))
     ) {
       event.preventDefault();
       this.history.scrollTo({
-        top: event.key === "Home" ? 0 : this.history.scrollHeight,
+        top: matchesShortcut(event, "historyTop")
+          ? 0
+          : this.history.scrollHeight,
         behavior: "smooth",
       });
       return;
     }
     if (
       !this.chat.hidden &&
-      event.key === "ArrowRight" &&
-      event.altKey &&
-      !event.shiftKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
+      matchesShortcut(event, "copyMessageToInput") &&
       this.copySelectedMessageToInput()
     ) {
       event.preventDefault();
@@ -210,11 +193,7 @@ export class CodexRenderer {
     }
     if (
       !this.chat.hidden &&
-      event.key === "Enter" &&
-      event.shiftKey &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
+      matchesShortcut(event, "toggleMessage") &&
       this.toggleSelectedMessage()
     ) {
       event.preventDefault();
@@ -225,13 +204,24 @@ export class CodexRenderer {
       !this.chat.hidden &&
       (event.key === "ArrowUp" || event.key === "ArrowDown")
     ) {
-      const direction = event.key === "ArrowUp" ? -1 : 1;
-      if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      const direction =
+        matchesShortcut(event, "selectPreviousUserMessage") ||
+        matchesShortcut(event, "scrollHistoryUp") ||
+        matchesShortcut(event, "selectPreviousMessage")
+          ? -1
+          : 1;
+      if (
+        matchesShortcut(event, "selectPreviousUserMessage") ||
+        matchesShortcut(event, "selectNextUserMessage")
+      ) {
         event.preventDefault();
         this.selectMessage(direction, "user");
         return;
       }
-      if (event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      if (
+        matchesShortcut(event, "scrollHistoryUp") ||
+        matchesShortcut(event, "scrollHistoryDown")
+      ) {
         event.preventDefault();
         this.history.scrollBy({
           top: direction * 64,
@@ -239,7 +229,10 @@ export class CodexRenderer {
         });
         return;
       }
-      if (event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      if (
+        matchesShortcut(event, "selectPreviousMessage") ||
+        matchesShortcut(event, "selectNextMessage")
+      ) {
         event.preventDefault();
         this.selectMessage(direction);
         return;
@@ -712,13 +705,10 @@ export class CodexRenderer {
     });
     form.addEventListener("keydown", (event) => {
       if (
-        (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+        (matchesShortcut(event, "questionNext") ||
+          matchesShortcut(event, "questionPrevious")) &&
         event.target instanceof HTMLInputElement &&
-        event.target.type === "radio" &&
-        !event.shiftKey &&
-        !event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey
+        event.target.type === "radio"
       ) {
         const options = Array.from(
           event.target
@@ -728,7 +718,7 @@ export class CodexRenderer {
         const currentIndex = options.indexOf(event.target);
         if (currentIndex >= 0 && options.length > 1) {
           event.preventDefault();
-          const direction = event.key === "ArrowDown" ? 1 : -1;
+          const direction = matchesShortcut(event, "questionNext") ? 1 : -1;
           const next =
             options[
               (currentIndex + direction + options.length) % options.length
@@ -741,8 +731,7 @@ export class CodexRenderer {
         return;
       }
       if (
-        event.key === "Tab" &&
-        !event.shiftKey &&
+        matchesShortcut(event, "questionToNote") &&
         event.target instanceof HTMLInputElement &&
         event.target.type === "radio"
       ) {
@@ -758,7 +747,7 @@ export class CodexRenderer {
         return;
       }
       if (
-        event.key === "Tab" &&
+        matchesShortcut(event, "questionFromNote") &&
         event.target instanceof HTMLInputElement &&
         event.target.dataset.note === "true"
       ) {
@@ -773,15 +762,11 @@ export class CodexRenderer {
         return;
       }
       if (
-        event.key === "Enter" &&
+        matchesShortcut(event, "submit") &&
         event.target instanceof HTMLInputElement &&
         (event.target.type === "radio" ||
           event.target.type === "text" ||
-          event.target.type === "password") &&
-        !event.shiftKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.metaKey
+          event.target.type === "password")
       ) {
         event.preventDefault();
         form.requestSubmit();
@@ -830,20 +815,14 @@ export class CodexRenderer {
     input.addEventListener("keydown", (event) => {
       this.suggestionInput = input;
       if (this.handleSuggestionKeydown(event)) return;
-      if (event.key === "Escape") {
+      if (matchesShortcut(event, "dismissSuggestions")) {
         event.preventDefault();
         this.hideFileSuggestions();
         cancel.click();
         return;
       }
       if (event.key !== "Enter") return;
-      if (
-        this.webChat &&
-        !event.shiftKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.metaKey
-      ) {
+      if (this.webChat && matchesShortcut(event, "submit")) {
         event.preventDefault();
         const start = input.selectionStart ?? input.value.length;
         const end = input.selectionEnd ?? start;
@@ -852,7 +831,7 @@ export class CodexRenderer {
         input.selectionEnd = start + 1;
         return;
       }
-      if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+      if (matchesShortcut(event, "newline")) {
         event.preventDefault();
         const start = input.selectionStart ?? input.value.length;
         const end = input.selectionEnd ?? start;
@@ -861,7 +840,7 @@ export class CodexRenderer {
         input.selectionEnd = start + 1;
         return;
       }
-      if (!event.shiftKey && !event.altKey && !event.metaKey) {
+      if (matchesShortcut(event, "submit")) {
         event.preventDefault();
         form.requestSubmit();
       }
@@ -1308,9 +1287,12 @@ export class CodexRenderer {
 
   private handleSuggestionKeydown(event: KeyboardEvent): boolean {
     if (!this.suggestionCount()) return false;
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if (
+      matchesShortcut(event, "suggestionNext") ||
+      matchesShortcut(event, "suggestionPrevious")
+    ) {
       event.preventDefault();
-      const direction = event.key === "ArrowDown" ? 1 : -1;
+      const direction = matchesShortcut(event, "suggestionNext") ? 1 : -1;
       const suggestionCount = this.suggestionCount();
       this.fileSuggestionIndex =
         (this.fileSuggestionIndex + direction + suggestionCount) %
@@ -1318,18 +1300,12 @@ export class CodexRenderer {
       this.renderFileSuggestions();
       return true;
     }
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.metaKey
-    ) {
+    if (matchesShortcut(event, "submit")) {
       event.preventDefault();
       this.selectSuggestion(this.fileSuggestionIndex);
       return true;
     }
-    if (event.key === "Escape") {
+    if (matchesShortcut(event, "dismissSuggestions")) {
       event.preventDefault();
       this.hideFileSuggestions();
       return true;
@@ -1342,11 +1318,7 @@ export class CodexRenderer {
       return;
     }
     if (
-      event.key.toLowerCase() === "c" &&
-      event.ctrlKey &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !event.metaKey &&
+      matchesShortcut(event, "interrupt") &&
       (this.settings.codexStatus === "working" ||
         this.settings.codexStatus === "waiting")
     ) {
@@ -1355,13 +1327,7 @@ export class CodexRenderer {
       return;
     }
     if (event.key !== "Enter") return;
-    if (
-      this.webChat &&
-      !event.shiftKey &&
-      !event.ctrlKey &&
-      !event.altKey &&
-      !event.metaKey
-    ) {
+    if (this.webChat && matchesShortcut(event, "submit")) {
       event.preventDefault();
       const start = this.input.selectionStart;
       const end = this.input.selectionEnd;
@@ -1371,7 +1337,7 @@ export class CodexRenderer {
       this.resizeInput();
       return;
     }
-    if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+    if (matchesShortcut(event, "newline")) {
       event.preventDefault();
       const start = this.input.selectionStart;
       const end = this.input.selectionEnd;
@@ -1381,15 +1347,10 @@ export class CodexRenderer {
       this.resizeInput();
     } else if (event.shiftKey) {
       event.preventDefault();
-    } else if (!event.altKey && !event.metaKey) {
+    } else if (matchesShortcut(event, "submit")) {
       event.preventDefault();
       this.form.requestSubmit();
-    } else if (
-      event.altKey &&
-      !event.shiftKey &&
-      !event.ctrlKey &&
-      !event.metaKey
-    ) {
+    } else if (matchesShortcut(event, "steer")) {
       event.preventDefault();
       const prompt = this.input.value.trim();
       if (
