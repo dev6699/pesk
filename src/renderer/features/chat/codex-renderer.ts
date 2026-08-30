@@ -2027,6 +2027,7 @@ function sanitizeMarkdownHtml(html: string): string {
     "H5",
     "H6",
     "HR",
+    "IMG",
     "LI",
     "OL",
     "P",
@@ -2050,11 +2051,21 @@ function sanitizeMarkdownHtml(html: string): string {
       for (const attribute of [...child.attributes]) {
         const name = attribute.name.toLowerCase();
         const keep =
-          child.tagName === "A" &&
-          ((name === "href" && /^(https?:|mailto:|#)/i.test(attribute.value)) || name === "title");
+          child.tagName === "A"
+            ? (name === "href" && /^(https?:|mailto:|#)/i.test(attribute.value)) || name === "title"
+            : child.tagName === "IMG"
+              ? (name === "src" &&
+                  /^(https?:|data:image\/(?:png|jpe?g|gif|webp|avif);)/i.test(attribute.value)) ||
+                name === "alt" ||
+                name === "title"
+              : false;
         if (!keep) {
           child.removeAttribute(attribute.name);
         }
+      }
+      if (child.tagName === "IMG" && !child.getAttribute("src")) {
+        child.remove();
+        continue;
       }
       if (child.tagName === "A") {
         child.setAttribute("target", "_blank");

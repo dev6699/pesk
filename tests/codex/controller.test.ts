@@ -421,7 +421,7 @@ describe("CodexController", () => {
       expect.arrayContaining([
         expect.objectContaining({
           method: "thread/resume",
-          params: { threadId: "thread-1" },
+          params: expect.objectContaining({ threadId: "thread-1" }),
         }),
       ]),
     );

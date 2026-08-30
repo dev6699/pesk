@@ -841,6 +841,14 @@ body.chat-only #codex-chat {
   text-decoration: underline;
 }
 
+.codex-markdown img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 5px 0;
+  border-radius: 6px;
+}
+
 .codex-message-user {
   margin-left: auto;
   margin-right: 0;

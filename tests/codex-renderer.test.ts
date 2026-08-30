@@ -10,7 +10,14 @@ jest.mock(
   "../src/renderer/vendor/marked.js",
   () => ({
     marked: {
-      parse: (value: string) => `<p>${value.replace("**world**", "<strong>world</strong>")}</p>`,
+      parse: (value: string) =>
+        `<p>${value
+          .replace("**world**", "<strong>world</strong>")
+          .replace(
+            /!\[([^\]]*)\]\((https?:[^ )]+)(?:\s+"([^"]*)")?\)/g,
+            (_match, alt, src, title) =>
+              `<img src="${src}" alt="${alt}"${title ? ` title="${title}"` : ""}>`,
+          )}</p>`,
     },
   }),
   { virtual: true },
@@ -167,7 +174,10 @@ test("renders session state, history, activities, approvals, and token usage", (
     },
     codexHistory: [
       { role: "user", text: "hello" },
-      { role: "assistant", text: "**world**" },
+      {
+        role: "assistant",
+        text: "**world**\n\n![Cat](https://petsplanet.pk/wp-content/uploads/2024/06/cat-breed.jpg)",
+      },
       {
         role: "system",
         text: "npm test",
@@ -212,6 +222,10 @@ test("renders session state, history, activities, approvals, and token usage", (
   expect(elements.history.querySelector(".codex-markdown")?.innerHTML).toContain(
     "<strong>world</strong>",
   );
+  expect(elements.history.querySelector(".codex-markdown img")).toMatchObject({
+    src: "https://petsplanet.pk/wp-content/uploads/2024/06/cat-breed.jpg",
+    alt: "Cat",
+  });
   expect(elements.history.querySelector(".codex-command-details")).not.toBeNull();
   expect(elements.history.querySelector(".codex-file-change-details")).not.toBeNull();
   expect(elements.history.querySelector(".codex-approval-pending")).not.toBeNull();
