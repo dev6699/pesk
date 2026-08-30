@@ -31,6 +31,7 @@ import type {
   Thread,
   ThreadListResponse,
   ThreadResumeResponse,
+  ThreadForkResponse,
   ThreadReadResponse,
   ThreadStartResponse,
   TurnStartResponse,
@@ -62,6 +63,7 @@ import type {
   ThreadArchiveRequest,
   ThreadDeleteRequest,
   ThreadResumeRequest,
+  ThreadForkRequest,
   ThreadShellCommandRequest,
   ThreadStartRequest,
   ThreadGoalGetRequest,
@@ -611,6 +613,9 @@ export class CodexController {
     if (newThreadMatch) {
       return this.startNewThread(newThreadMatch[1]);
     }
+    if (/^\/fork$/i.test(prompt)) {
+      return this.forkThread();
+    }
     if (/^\/archive$/i.test(prompt)) {
       return this.archiveThread();
     }
@@ -693,6 +698,37 @@ export class CodexController {
       id,
       params: { threadId },
     } satisfies ThreadArchiveRequest);
+    return true;
+  }
+
+  /** Forks the currently selected thread and selects the new copy. */
+  private forkThread(): boolean {
+    if (!this.threadId) return false;
+    const sourceThreadId = this.threadId;
+    const sourceCollaborationMode = this.threadRuntime().state.collaborationMode;
+    const id = ++this.nextId;
+    this.setRequest<ThreadForkResponse>(id, (message) => {
+      const thread = message.result?.thread;
+      if (typeof thread?.id !== "string") return;
+      const runtime = this.runtime(thread.id);
+      runtime.reset([], thread.cwd ?? process.cwd());
+      runtime.setCollaborationMode(sourceCollaborationMode);
+      runtime.syncServerThread(thread);
+      runtime.restoreTurns(records(thread.turns));
+      runtime.applyServerStatus(thread.status ?? {});
+      runtime.setConnected(true);
+      this.threads = [thread, ...this.threads.filter((candidate) => candidate.id !== thread.id)];
+      this.threadId = thread.id;
+      this.pendingThreadResumeId = undefined;
+      this.updateModelInfo(message);
+      runtime.setCommandNotice(`Thread forked — switched to ${thread.id}`);
+      this.options.publishRendererState();
+    });
+    this.send({
+      method: "thread/fork",
+      id,
+      params: { threadId: sourceThreadId },
+    } satisfies ThreadForkRequest);
     return true;
   }
 

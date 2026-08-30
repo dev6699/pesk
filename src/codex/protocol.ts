@@ -74,6 +74,7 @@ type RequestOf<Method extends ClientRequest["method"]> = Extract<ClientRequest, 
 export type InitializeRequest = RequestOf<"initialize">;
 export type ThreadStartRequest = RequestOf<"thread/start">;
 export type ThreadResumeRequest = RequestOf<"thread/resume">;
+export type ThreadForkRequest = RequestOf<"thread/fork">;
 export type ThreadListRequest = RequestOf<"thread/list">;
 export type ThreadReadRequest = RequestOf<"thread/read">;
 export type ThreadGoalSetRequest = RequestOf<"thread/goal/set">;

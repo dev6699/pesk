@@ -6,6 +6,7 @@ const slashCommands = [
   { command: "/goal", description: "Usage: /goal [<objective>|clear|edit|pause|resume]" },
   { command: "/default", description: "Switch to Default mode" },
   { command: "/new", description: "Start a new Codex session" },
+  { command: "/fork", description: "Fork the current session" },
   { command: "/archive", description: "Archive the current session" },
   { command: "/delete", description: "Permanently delete the current session" },
   { command: "/review", description: "Review current changes" },

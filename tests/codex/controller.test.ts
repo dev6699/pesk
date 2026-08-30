@@ -870,6 +870,58 @@ describe("CodexController", () => {
     });
   });
 
+  test("forks and selects the current thread with copied history", () => {
+    const { controller, socket } = connectedController();
+    controller.submitPrompt("/plan");
+
+    expect(controller.submitPrompt("/fork")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/fork",
+      params: { threadId: "thread-1" },
+    });
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: lastMessage(socket).id,
+        result: {
+          thread: {
+            id: "forked-thread",
+            cwd: "/workspace/project",
+            status: { type: "idle" },
+            turns: [
+              {
+                items: [
+                  { type: "userMessage", content: [{ text: "copied prompt" }] },
+                  { type: "agentMessage", text: "copied response" },
+                ],
+              },
+            ],
+          },
+          model: "gpt-5",
+          modelProvider: "openai",
+          reasoningEffort: "high",
+        },
+      }),
+    );
+
+    expect(controller.getState()).toMatchObject({
+      threadId: "forked-thread",
+      connected: true,
+      collaborationMode: "plan",
+      modelInfo: {
+        model: "gpt-5",
+        provider: "openai",
+        reasoningEffort: "high",
+      },
+      commandNotice: "Thread forked — switched to forked-thread",
+      history: [
+        expect.objectContaining({ role: "user", text: "copied prompt" }),
+        expect.objectContaining({ role: "assistant", text: "copied response" }),
+      ],
+    });
+  });
+
   test("starts /new in the requested working directory", () => {
     const { controller, socket } = connectedController();
 

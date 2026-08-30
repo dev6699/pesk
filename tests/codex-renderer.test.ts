@@ -1000,6 +1000,7 @@ test("shows and selects slash commands", () => {
     "/goalUsage: /goal [<objective>|clear|edit|pause|resume]",
     "/defaultSwitch to Default mode",
     "/newStart a new Codex session",
+    "/forkFork the current session",
     "/archiveArchive the current session",
     "/deletePermanently delete the current session",
     "/reviewReview current changes",
