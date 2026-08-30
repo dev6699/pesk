@@ -382,6 +382,7 @@ const webApi = {
   refreshCodexRateLimits: async () => send("refreshRateLimits"),
   getChatSize: async () => ({ width: innerWidth, height: innerHeight }),
   selectCodexThread: (threadId: string) => send("selectThread", { threadId }),
+  loadOlderCodexHistory: async () => (await sendCommand("loadOlderHistory")).ok,
   setCodexCollaborationMode: (mode: "default" | "plan") => send("setCollaborationMode", { mode }),
   submitCodexPrompt: async (prompt: string, images?: Array<{ url: string; name: string }>) =>
     (await sendCommand("submitPrompt", { prompt, images })).state ?? state!,

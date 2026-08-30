@@ -43,6 +43,16 @@ function lastMessage(socket: FakeWebSocket): Record<string, unknown> {
   return JSON.parse(socket.sent[socket.sent.length - 1].trim()) as Record<string, unknown>;
 }
 
+function respondHistoryPage(socket: FakeWebSocket, turns: unknown[]): void {
+  socket.emit(
+    "message",
+    JSON.stringify({
+      id: lastMessage(socket).id,
+      result: { data: turns, nextCursor: null, backwardsCursor: null },
+    }),
+  );
+}
+
 function options() {
   return {
     publishRendererState: jest.fn(),
@@ -53,7 +63,7 @@ function options() {
   };
 }
 
-function connectedController(turns: unknown[] = []) {
+function connectedController(turns: unknown[] = [], nextCursor: string | null = null) {
   const controllerOptions = options();
   const controller = new CodexController(controllerOptions);
   (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
@@ -81,9 +91,15 @@ function connectedController(turns: unknown[] = []) {
         thread: {
           id: "thread-1",
           status: { type: "idle" },
-          turns,
         },
       },
+    }),
+  );
+  socket.emit(
+    "message",
+    JSON.stringify({
+      id: 5,
+      result: { data: turns, nextCursor, backwardsCursor: null },
     }),
   );
 
@@ -811,11 +827,14 @@ describe("CodexController", () => {
   });
 
   test("treats /new as a new-session command", () => {
-    const { controller, socket } = connectedController([
-      {
-        items: [{ type: "userMessage", content: [{ text: "old message" }] }],
-      },
-    ]);
+    const { controller, socket } = connectedController(
+      [
+        {
+          items: [{ type: "userMessage", content: [{ text: "old message" }] }],
+        },
+      ],
+      "older",
+    );
 
     socket.emit(
       "message",
@@ -849,7 +868,11 @@ describe("CodexController", () => {
       params: { serviceName: "pesk" },
     });
 
-    socket.emit("message", JSON.stringify({ id: 5, result: { thread: { id: "new-thread" } } }));
+    const startId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({ id: startId, result: { thread: { id: "new-thread" } } }),
+    );
 
     socket.emit(
       "message",
@@ -877,7 +900,7 @@ describe("CodexController", () => {
     expect(controller.submitPrompt("/fork")).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/fork",
-      params: { threadId: "thread-1" },
+      params: { threadId: "thread-1", excludeTurns: true },
     });
 
     socket.emit(
@@ -901,6 +924,42 @@ describe("CodexController", () => {
           model: "gpt-5",
           modelProvider: "openai",
           reasoningEffort: "high",
+        },
+      }),
+    );
+
+    const pageId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: pageId,
+        result: {
+          data: [
+            {
+              id: "fork-turn",
+              createdAt: 1,
+              status: "completed",
+              items: [
+                {
+                  type: "userMessage",
+                  id: "copied-user",
+                  clientId: null,
+                  content: [{ text: "copied prompt" }],
+                },
+                {
+                  type: "agentMessage",
+                  id: "copied-agent",
+                  text: "copied response",
+                  phase: null,
+                  memoryCitation: null,
+                  delivery: null,
+                },
+              ],
+              itemsView: "full",
+            },
+          ],
+          nextCursor: null,
+          backwardsCursor: null,
         },
       }),
     );
@@ -1035,6 +1094,11 @@ describe("CodexController", () => {
         },
       }),
     );
+    respondHistoryPage(socket, [
+      {
+        items: [{ id: "search-1", type: "webSearch", status: "completed", query: "weather today" }],
+      },
+    ]);
 
     expect(controller.getState().history).toEqual(
       expect.arrayContaining([
@@ -1569,8 +1633,14 @@ describe("CodexController", () => {
       threads: [{ id: "thread-1" }],
     });
     expect(lastMessage(socket)).toMatchObject({
-      method: "thread/read",
-      id: 4,
+      method: "thread/turns/list",
+      id: 5,
+      params: {
+        threadId: "thread-1",
+        limit: 5,
+        sortDirection: "desc",
+        itemsView: "full",
+      },
     });
   });
 
@@ -1768,6 +1838,25 @@ describe("CodexController", () => {
         },
       }),
     );
+    respondHistoryPage(socket, [
+      {
+        items: [
+          { id: "review-enter", type: "enteredReviewMode", review: "review styles.css changes" },
+          { id: "review-exit", type: "exitedReviewMode", review: "full review report" },
+          {
+            id: "review-user-1",
+            type: "userMessage",
+            content: [{ type: "text", text: "review styles.css changes" }],
+          },
+          {
+            id: "review-user-2",
+            type: "userMessage",
+            content: [{ type: "text", text: "review styles.css changes" }],
+          },
+          { id: "review-report", type: "agentMessage", text: "The review is complete." },
+        ],
+      },
+    ]);
 
     const history = controller.getState().history;
     expect(history.filter((message) => message.role === "user")).toHaveLength(0);
@@ -1829,6 +1918,22 @@ describe("CodexController", () => {
         },
       }),
     );
+    respondHistoryPage(socket, [
+      {
+        items: [
+          { id: "review-exit", type: "exitedReviewMode", review: "review a.txt" },
+          {
+            id: "review-user",
+            type: "userMessage",
+            content: [{ type: "text", text: "review a.txt" }],
+          },
+          { id: "review-report", type: "agentMessage", text: "Full review comments" },
+        ],
+      },
+      {
+        items: [{ id: "review-enter", type: "enteredReviewMode", review: "review a.txt" }],
+      },
+    ]);
 
     const history = controller.getState().history;
     expect(history.filter((message) => message.role === "user")).toHaveLength(0);
@@ -1867,18 +1972,19 @@ describe("CodexController", () => {
     const { controller, socket } = connectedController();
 
     expect(controller.submitPrompt('/exec bash -lc "printf hello"')).toBe(true);
+    const execProcessId = (lastMessage(socket).params as { processId: string }).processId;
     expect(lastMessage(socket)).toMatchObject({
       method: "command/exec",
       params: {
         command: ["bash", "-lc", "printf hello"],
-        processId: "pesk-exec-5",
+        processId: execProcessId,
       },
     });
 
     socket.emit(
       "message",
       JSON.stringify({
-        id: 5,
+        id: lastMessage(socket).id,
         result: { exitCode: 0, stdout: "hello", stderr: "" },
       }),
     );
@@ -1896,6 +2002,7 @@ describe("CodexController", () => {
 
     expect(controller.submitPrompt('/exec bash -lc "printf hello"')).toBe(true);
     const execId = lastMessage(socket).id;
+    const processId = (lastMessage(socket).params as { processId: string }).processId;
 
     controller.selectThread("other-thread");
     socket.emit(
@@ -1903,7 +2010,7 @@ describe("CodexController", () => {
       JSON.stringify({
         method: "command/exec/outputDelta",
         params: {
-          processId: "pesk-exec-5",
+          processId,
           stream: "stdout",
           deltaBase64: Buffer.from("hello").toString("base64"),
         },
@@ -2968,5 +3075,46 @@ describe("CodexController", () => {
       ]),
     );
     expect(controller.getState().status).toBe("working");
+  });
+
+  test("loads older history through cursor pagination", async () => {
+    const { controller, socket } = connectedController(
+      [
+        {
+          id: "new-turn",
+          items: [{ id: "new-item", type: "userMessage", content: [{ text: "new" }] }],
+        },
+      ],
+      "older",
+    );
+
+    const request = controller.loadOlderHistory();
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/turns/list",
+      params: { threadId: "thread-1", cursor: "older", limit: 5, sortDirection: "desc" },
+    });
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: lastMessage(socket).id,
+        result: {
+          data: [
+            {
+              id: "old-turn",
+              items: [{ id: "old-item", type: "userMessage", content: [{ text: "old" }] }],
+            },
+          ],
+          nextCursor: null,
+          backwardsCursor: "newer",
+        },
+      }),
+    );
+    await request;
+
+    expect(controller.getState().history.map((message) => message.text)).toEqual(["old", "new"]);
+    expect(controller.getState()).toMatchObject({
+      hasOlderHistory: false,
+      historyLoading: false,
+    });
   });
 });

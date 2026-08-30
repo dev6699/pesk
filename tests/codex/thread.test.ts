@@ -429,7 +429,7 @@ describe("CodexThread", () => {
     ]);
   });
 
-  test("continues streaming after history is trimmed", () => {
+  test("retains unlimited history while continuing to stream", () => {
     const thread = new CodexThread("thread-1");
     thread.state.history = Array.from({ length: 40 }, (_, index) => ({
       role: "user",
@@ -439,6 +439,7 @@ describe("CodexThread", () => {
     thread.appendAssistantDelta("first");
     thread.appendAssistantDelta(" second");
 
+    expect(thread.state.history).toHaveLength(41);
     expect(thread.state.history.at(-1)).toMatchObject({
       role: "assistant",
       text: "first second",

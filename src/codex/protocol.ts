@@ -77,6 +77,7 @@ export type ThreadResumeRequest = RequestOf<"thread/resume">;
 export type ThreadForkRequest = RequestOf<"thread/fork">;
 export type ThreadListRequest = RequestOf<"thread/list">;
 export type ThreadReadRequest = RequestOf<"thread/read">;
+export type ThreadTurnsListRequest = RequestOf<"thread/turns/list">;
 export type ThreadGoalSetRequest = RequestOf<"thread/goal/set">;
 export type ThreadGoalGetRequest = RequestOf<"thread/goal/get">;
 export type ThreadGoalClearRequest = RequestOf<"thread/goal/clear">;

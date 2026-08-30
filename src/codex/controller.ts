@@ -45,6 +45,7 @@ import type {
   ThreadGoalClearResponse,
   ThreadGoalGetResponse,
   ThreadGoalSetResponse,
+  ThreadTurnsListResponse,
 } from "../codex-schema/v2";
 import type { UserInput } from "../codex-schema/v2/UserInput";
 import type { CodexState, CodexThreadActivity } from "./types";
@@ -60,6 +61,7 @@ import type {
   ReviewStartRequest,
   ThreadListRequest,
   ThreadReadRequest,
+  ThreadTurnsListRequest,
   ThreadArchiveRequest,
   ThreadDeleteRequest,
   ThreadResumeRequest,
@@ -82,6 +84,15 @@ If the steer is materially ambiguous, ask one concise clarifying question. Other
 
 Steer message:
 `;
+
+const HISTORY_PAGE_LIMIT = 5;
+
+interface HistoryPaginationState {
+  nextCursor: string | null;
+  loading: boolean;
+  hasOlderHistory: boolean;
+  paginated: boolean;
+}
 
 /** Codex-related settings persisted alongside the pet settings. */
 interface Options {
@@ -146,6 +157,7 @@ export class CodexController {
   private suppressedPublication = 0;
   /** Pending background requests, retained in first-arrival order. */
   private readonly attentionQueue = new Map<string, "approval" | "userInput">();
+  private readonly historyPagination = new Map<string, HistoryPaginationState>();
 
   /** Creates a controller with callbacks for renderer and window updates. */
   constructor(options: Options) {
@@ -197,6 +209,7 @@ export class CodexController {
   /** Returns the current state snapshot for renderer IPC responses. */
   getState(): CodexState {
     const thread = this.threadRuntime().snapshot();
+    const pagination = this.threadId ? this.historyState(this.threadId) : undefined;
     const threadActivities = this.getThreadActivities();
     const aggregateStatus: CodexState["status"] = threadActivities.some(
       (activity) => activity.status === "waiting",
@@ -228,7 +241,29 @@ export class CodexController {
       pendingApproval: thread.pendingApproval,
       queuedSubmissions: thread.queuedSubmissions,
       goal: thread.goal,
+      hasOlderHistory: pagination?.hasOlderHistory ?? false,
+      historyLoading: pagination?.loading ?? false,
     };
+  }
+
+  private historyState(threadId: string): HistoryPaginationState {
+    let state = this.historyPagination.get(threadId);
+    if (!state) {
+      state = { nextCursor: null, loading: false, hasOlderHistory: false, paginated: false };
+      this.historyPagination.set(threadId, state);
+    }
+    return state;
+  }
+
+  /** Loads the next older persisted history page for the selected thread. */
+  loadOlderHistory(): Promise<boolean> {
+    const threadId = this.threadId;
+    if (!threadId) return Promise.resolve(false);
+    const state = this.historyState(threadId);
+    if (!state.paginated || state.loading || !state.hasOlderHistory) {
+      return Promise.resolve(false);
+    }
+    return this.loadHistoryPage(threadId, state.nextCursor, false);
   }
 
   /** Returns normalized activity for every known or currently materialized thread. */
@@ -714,8 +749,9 @@ export class CodexController {
       runtime.reset([], thread.cwd ?? process.cwd());
       runtime.setCollaborationMode(sourceCollaborationMode);
       runtime.syncServerThread(thread);
-      runtime.restoreTurns(records(thread.turns));
       runtime.applyServerStatus(thread.status ?? {});
+      this.historyPagination.delete(thread.id);
+      this.loadHistoryPage(thread.id, null, true);
       runtime.setConnected(true);
       this.threads = [thread, ...this.threads.filter((candidate) => candidate.id !== thread.id)];
       this.threadId = thread.id;
@@ -727,7 +763,7 @@ export class CodexController {
     this.send({
       method: "thread/fork",
       id,
-      params: { threadId: sourceThreadId },
+      params: { threadId: sourceThreadId, excludeTurns: true },
     } satisfies ThreadForkRequest);
     return true;
   }
@@ -1151,6 +1187,7 @@ export class CodexController {
     this.pendingThreadResumeId = undefined;
     this.locallyStartedThreads.clear();
     this.threadControllers.clear();
+    this.historyPagination.clear();
     this.standaloneThread.resetTransportState();
     selectedRuntime.setStatus("idle");
     this.options.publishRendererState();
@@ -1215,6 +1252,7 @@ export class CodexController {
     if (!existing) {
       this.runtime(id).reset(preserveHistory ? (pendingHistory ?? []) : []);
     }
+    if (!preserveHistory) this.historyPagination.delete(id);
     this.options.publishRendererState();
     if (resume) {
       this.resume(id);
@@ -1273,6 +1311,7 @@ export class CodexController {
       id,
       params: {
         threadId,
+        excludeTurns: true,
       },
     } satisfies ThreadResumeRequest);
   }
@@ -1294,10 +1333,8 @@ export class CodexController {
         this.threadRuntime().applyServerStatus(thread?.status ?? {});
         this.options.publishRendererState();
         setTimeout(() => this.refreshQueue(threadId), 0);
-        const turns = records(thread?.turns);
-        this.threadRuntime().restoreTurns(turns);
+        this.loadHistoryPage(threadId, null, true);
         setTimeout(() => this.restoreGoal(threadId), 0);
-        this.options.publishRendererState();
       });
     });
     this.send({
@@ -1305,9 +1342,57 @@ export class CodexController {
       id,
       params: {
         threadId,
-        includeTurns: true,
+        includeTurns: false,
       },
     } satisfies ThreadReadRequest);
+  }
+
+  private loadHistoryPage(
+    threadId: string,
+    cursor: string | null,
+    replace: boolean,
+  ): Promise<boolean> {
+    const state = this.historyState(threadId);
+    if (state.loading) return Promise.resolve(false);
+    state.loading = true;
+    if (replace) {
+      state.paginated = true;
+      state.nextCursor = null;
+      state.hasOlderHistory = false;
+    }
+    if (this.threadId === threadId) this.options.publishRendererState();
+    const id = ++this.nextId;
+    return new Promise((resolve) => {
+      this.setRequest<ThreadTurnsListResponse>(id, (message) => {
+        this.withRuntime(threadId, () => {
+          const result = message.result;
+          if (!result) {
+            state.loading = false;
+            state.hasOlderHistory = false;
+            if (this.threadId === threadId) this.options.publishRendererState();
+            resolve(false);
+            return;
+          }
+          this.threadRuntime().restoreTurns([...result.data].reverse(), !replace);
+          state.nextCursor = result.nextCursor;
+          state.hasOlderHistory = result.nextCursor !== null;
+          state.loading = false;
+          if (this.threadId === threadId) this.options.publishRendererState();
+          resolve(true);
+        });
+      });
+      this.send({
+        method: "thread/turns/list",
+        id,
+        params: {
+          threadId,
+          cursor,
+          limit: HISTORY_PAGE_LIMIT,
+          sortDirection: "desc",
+          itemsView: "full",
+        },
+      } satisfies ThreadTurnsListRequest);
+    });
   }
 
   /** Dispatches JSON-RPC responses and app-server notifications. */

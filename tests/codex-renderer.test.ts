@@ -89,6 +89,7 @@ function makeRenderer(
   window.peskApi = {
     ...window.peskApi,
     selectCodexThread: jest.fn(),
+    loadOlderCodexHistory: jest.fn(async () => false),
     setCodexCollaborationMode: jest.fn(),
     focusCodexInput: jest.fn(),
     implementCodexPlan: jest.fn(async () => settings),
@@ -535,6 +536,25 @@ test("keeps the selected thread visible when the thread list is temporarily stal
 
   expect(elements.select.value).toBe("selected-thread");
   expect(elements.select.options[0].value).toBe("selected-thread");
+});
+
+test("requests older history when scrolled to the top", () => {
+  const { renderer, elements } = makeRenderer({
+    ...defaultSettings(),
+    codexThreadId: "thread-1",
+    codexHasOlderHistory: true,
+  });
+  const loadOlder = window.peskApi.loadOlderCodexHistory as jest.Mock;
+
+  renderer.updateSettings({
+    ...defaultSettings(),
+    codexThreadId: "thread-1",
+    codexHasOlderHistory: true,
+  });
+  elements.history.scrollTop = 0;
+  elements.history.dispatchEvent(new Event("scroll"));
+
+  expect(loadOlder).toHaveBeenCalledTimes(1);
 });
 
 test("scrolls to a new user question without repeating for the same request", () => {
@@ -1163,6 +1183,16 @@ test("uses the documented default expansion for every activity type", () => {
           status: "completed",
         },
       },
+      {
+        role: "system",
+        text: "context compacted",
+        itemId: "context-compaction",
+        activity: {
+          kind: "other",
+          label: "contextCompaction",
+          status: "completed",
+        },
+      },
       { role: "assistant", text: "ordinary response", itemId: "message" },
     ],
   });
@@ -1175,8 +1205,9 @@ test("uses the documented default expansion for every activity type", () => {
     "codex-activity-details-block",
     "codex-plan-details",
     "codex-activity-details-block",
+    "codex-activity-details-block",
   ]);
-  expect(details.map((item) => item.open)).toEqual([false, true, false, false, true, true]);
+  expect(details.map((item) => item.open)).toEqual([false, true, false, false, true, true, true]);
   expect(elements.history.querySelectorAll(".codex-message-assistant")).toHaveLength(1);
 });
 

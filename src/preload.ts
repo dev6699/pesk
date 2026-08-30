@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("peskApi", {
   toggleCodexStatusSound: () => ipcRenderer.send("toggle-codex-status-sound"),
   openConfigFolder: () => ipcRenderer.send("open-config-folder"),
   selectCodexThread: (threadId: string) => ipcRenderer.send("select-codex-thread", threadId),
+  loadOlderCodexHistory: () => ipcRenderer.invoke("load-older-codex-history"),
   setCodexCollaborationMode: (mode: "default" | "plan") =>
     ipcRenderer.send("set-codex-collaboration-mode", mode),
   focusCodexInput: () => ipcRenderer.send("focus-codex-input"),

@@ -59,7 +59,6 @@ export class CodexThread {
   /** Creates an isolated runtime for one server or standalone thread. */
   constructor(
     readonly id: string,
-    private readonly maxHistory = 20,
     workingDirectory = process.cwd(),
   ) {
     this.state.workingDirectory = workingDirectory;
@@ -111,7 +110,6 @@ export class CodexThread {
     this.state.prompts.clear();
     this.state.pendingApprovals.clear();
     this.state.workingDirectory = workingDirectory;
-    this.trim();
   }
 
   setGoal(goal: ThreadGoal | undefined): void {
@@ -138,7 +136,6 @@ export class CodexThread {
       turnId,
       ...(images?.length ? { images } : {}),
     });
-    this.trim();
   }
 
   /** Records user-authored conversation text and supersedes stale approvals. */
@@ -185,7 +182,6 @@ export class CodexThread {
       ...(images?.length ? { images } : {}),
     });
     if (this.state.streamingAssistant >= 0) this.state.streamingAssistant += 1;
-    this.trim();
     return true;
   }
 
@@ -205,7 +201,6 @@ export class CodexThread {
       this.state.history.push({ ...message, itemId });
       if (itemId) this.state.activityIndexes.set(itemId, this.state.history.length - 1);
     }
-    this.trim();
   }
 
   /** Converts and records a server activity item. */
@@ -349,7 +344,6 @@ export class CodexThread {
     } else {
       current.text += delta;
     }
-    this.trim();
   }
 
   /** Finalizes an assistant message, replacing its streamed partial text. */
@@ -372,7 +366,6 @@ export class CodexThread {
     }
     this.state.streamingAssistant = -1;
     this.state.streamingAssistantItemId = undefined;
-    this.trim();
   }
 
   /** Normalizes a server item when it starts and records its visible output. */
@@ -422,12 +415,14 @@ export class CodexThread {
   }
 
   /** Restores renderer history from the app-server's persisted turn records. */
-  restoreTurns(turns: Array<Record<string, unknown>>): void {
+  restoreTurns(turns: Array<Record<string, unknown>>, prepend = false): void {
     const restoredTokenUsage = [...turns]
       .reverse()
       .map((turn) => parseTokenUsageValue(turn.tokenUsage ?? turn.usage))
       .find((usage): usage is ThreadTokenUsage => usage !== undefined);
-    if (restoredTokenUsage) this.state.tokenUsage = restoredTokenUsage;
+    if (restoredTokenUsage && (!prepend || !this.state.tokenUsage)) {
+      this.state.tokenUsage = restoredTokenUsage;
+    }
 
     const reviewPromptTexts = new Set<string>();
     for (const turn of turns) {
@@ -501,7 +496,12 @@ export class CodexThread {
     const hasMissingLiveUser = this.state.history.some(
       (message) => message.role === "user" && !restoredUsers.has(message.text),
     );
-    if (!(this.state.status === "working" && this.state.history.length) && !hasMissingLiveUser) {
+    if (prepend) {
+      this.prependHistory(restored);
+    } else if (
+      !(this.state.status === "working" && this.state.history.length) &&
+      !hasMissingLiveUser
+    ) {
       this.replaceHistory(restored);
     }
   }
@@ -593,7 +593,6 @@ export class CodexThread {
     this.state.pendingApprovals.delete(key);
     this.state.pendingApproval = nextDisplayed;
     this.state.history.push(historyMessage);
-    this.trim();
   }
 
   /** Resolves one approval and appends the thread-local audit message. */
@@ -752,7 +751,21 @@ export class CodexThread {
     this.state.streamingAssistant = -1;
     this.state.streamingAssistantItemId = undefined;
     this.rebuildActivityIndexes();
-    this.trim();
+  }
+
+  /** Prepends one older persisted page without disturbing newer live history. */
+  prependHistory(history: CodexMessage[]): void {
+    const existingKeys = new Set(this.state.history.map(historyMessageKey));
+    const older = history.filter((message) => {
+      const key = historyMessageKey(message);
+      if (existingKeys.has(key)) return false;
+      existingKeys.add(key);
+      return true;
+    });
+    if (!older.length) return;
+    this.state.history = [...older, ...this.state.history];
+    if (this.state.streamingAssistant >= 0) this.state.streamingAssistant += older.length;
+    this.rebuildActivityIndexes();
   }
 
   /** Applies a local status while preserving approval-blocked waiting state. */
@@ -783,22 +796,7 @@ export class CodexThread {
     if (this.state.workingSince === undefined) this.state.workingSince = Date.now();
   }
 
-  /** Enforces the history limit and repairs indexes after truncation. */
-  trim(): void {
-    const removed = Math.max(0, this.state.history.length - this.maxHistory);
-    if (!removed) return;
-    this.state.history = this.state.history.slice(-this.maxHistory);
-    this.rebuildActivityIndexes();
-    if (this.state.streamingAssistant >= 0) {
-      this.state.streamingAssistant -= removed;
-      if (this.state.streamingAssistant < 0) {
-        this.state.streamingAssistant = -1;
-        this.state.streamingAssistantItemId = undefined;
-      }
-    }
-  }
-
-  /** Rebuilds item-to-history indexes after history replacement or trimming. */
+  /** Rebuilds item-to-history indexes after history replacement. */
   private rebuildActivityIndexes(): void {
     this.state.activityIndexes = new Map(
       this.state.history.flatMap((message, index) =>
@@ -925,6 +923,16 @@ export function parseTokenUsageValue(value: unknown): ThreadTokenUsage | undefin
     last: parseTokenCounts(usage.last ?? usage.lastTurnUsage) as TokenUsageBreakdown,
     modelContextWindow: numberValue(usage.modelContextWindow) ?? null,
   };
+}
+
+function historyMessageKey(message: CodexMessage): string {
+  return [
+    message.role,
+    message.itemId ?? "",
+    message.turnId ?? "",
+    message.timestamp ?? "",
+    message.text,
+  ].join("\u0000");
 }
 
 function parseTokenCounts(value: unknown): TokenUsageBreakdown | undefined {

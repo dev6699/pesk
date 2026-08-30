@@ -86,6 +86,8 @@ interface CodexRuntimeState {
     images?: Array<{ url: string; name?: string }>;
     clientUserMessageId: string;
   }>;
+  codexHasOlderHistory: boolean;
+  codexHistoryLoading: boolean;
   codexGoal?: {
     threadId: string;
     objective: string;
@@ -169,6 +171,7 @@ interface Window {
     toggleCodexStatusSound: () => void;
     openConfigFolder: () => void;
     selectCodexThread: (threadId: string) => void;
+    loadOlderCodexHistory: () => Promise<boolean>;
     setCodexCollaborationMode: (mode: "default" | "plan") => void;
     focusCodexInput: () => void;
     setChatFileDialogOpen: (open: boolean) => void;

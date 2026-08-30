@@ -44,6 +44,8 @@ interface RendererSettings extends PeskSettings {
   codexQueuedSubmissions: CodexQueuedSubmission[];
   codexGoal?: import("./codex-schema/v2").ThreadGoal;
   codexCommandNotice?: string;
+  codexHasOlderHistory: boolean;
+  codexHistoryLoading: boolean;
   codexStatusSoundUrl: string;
 }
 
@@ -124,6 +126,8 @@ function rendererSettings(): RendererSettings {
     codexQueuedSubmissions: state.queuedSubmissions,
     codexGoal: state.goal,
     codexCommandNotice: state.commandNotice,
+    codexHasOlderHistory: state.hasOlderHistory,
+    codexHistoryLoading: state.historyLoading,
     codexStatusSoundUrl,
   };
 }
@@ -169,6 +173,9 @@ function handleWebCommand(message: unknown, reply: (message: unknown) => void): 
       break;
     case "selectThread":
       if (typeof command.threadId === "string") codexController.selectThread(command.threadId);
+      break;
+    case "loadOlderHistory":
+      void codexController.loadOlderHistory().then((ok) => replyCommand(ok));
       break;
     case "setCollaborationMode":
       if (command.mode === "default" || command.mode === "plan") {
@@ -406,6 +413,7 @@ app.whenReady().then(() => {
     const validRoots = roots.filter((root): root is string => typeof root === "string");
     return codexController.fuzzyFileSearch(query, validRoots);
   });
+  ipcMain.handle("load-older-codex-history", () => codexController.loadOlderHistory());
   ipcMain.handle("interrupt-codex-turn", () => codexController.interruptTurn());
   ipcMain.handle("steer-codex-turn", (_event, prompt: unknown) => {
     if (typeof prompt === "string") codexController.steerPrompt(prompt);

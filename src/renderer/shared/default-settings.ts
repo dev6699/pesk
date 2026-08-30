@@ -22,6 +22,8 @@ export function defaultCodexRuntimeState(): CodexRuntimeState {
     codexThreadActivities: [],
     codexQueuedSubmissions: [],
     codexCollaborationMode: "default",
+    codexHasOlderHistory: false,
+    codexHistoryLoading: false,
   };
 }
 

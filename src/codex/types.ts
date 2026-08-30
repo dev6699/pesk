@@ -118,6 +118,8 @@ export interface CodexState {
   queuedSubmissions: CodexQueuedSubmission[];
   goal?: ThreadGoal;
   commandNotice?: string;
+  hasOlderHistory: boolean;
+  historyLoading: boolean;
 }
 
 export type ApprovalDecision = CommandExecutionApprovalDecision | FileChangeApprovalDecision;

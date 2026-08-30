@@ -93,6 +93,15 @@ export class CodexRenderer {
       if (sessionSelect.value) window.peskApi.selectCodexThread(sessionSelect.value);
     });
     sessionCopy.addEventListener("click", () => void this.copySessionId());
+    this.history.addEventListener("scroll", () => {
+      if (
+        this.settings.codexHasOlderHistory &&
+        !this.settings.codexHistoryLoading &&
+        this.history.scrollTop <= 48
+      ) {
+        void this.loadOlderHistory();
+      }
+    });
     this.steerButton?.addEventListener("click", () => {
       const prompt = this.input.value.trim();
       if (!prompt) return;
@@ -321,6 +330,18 @@ export class CodexRenderer {
       this.modeToggle.classList.toggle("codex-mode-plan", plan);
       this.modeToggle.title = plan ? "Plan mode enabled for the next turn" : "Default mode";
     }
+  }
+
+  /** Requests one older history page while preserving the current scroll anchor. */
+  private async loadOlderHistory(): Promise<void> {
+    if (!this.settings.codexHasOlderHistory || this.settings.codexHistoryLoading) return;
+    const previousHeight = this.history.scrollHeight;
+    const previousTop = this.history.scrollTop;
+    await window.peskApi.loadOlderCodexHistory();
+    requestAnimationFrame(() => {
+      const heightDelta = this.history.scrollHeight - previousHeight;
+      this.history.scrollTop = previousTop + heightDelta;
+    });
   }
 
   focusInput(): void {
@@ -1672,7 +1693,10 @@ export class CodexRenderer {
       const details = document.createElement("details");
       details.className = "codex-activity-details-block";
       details.dataset.activityKey = activityKey;
-      details.open = openActivityKeys.has(activityKey) || isReviewActivity(message.activity);
+      details.open =
+        openActivityKeys.has(activityKey) ||
+        isReviewActivity(message.activity) ||
+        message.activity.label === "contextCompaction";
       const summary = document.createElement("summary");
       const label = activityLabel(message.activity.kind);
       summary.textContent = `${label} · ${message.activity.status ?? "in progress"}`;
