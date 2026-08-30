@@ -27,13 +27,7 @@ body {
   z-index: 0;
   border-radius: 50%;
   background:
-    radial-gradient(
-      ellipse at 50% 76%,
-      #fff7ed 0 8%,
-      #fde68a 18%,
-      #fbbf2466 38%,
-      transparent 70%
-    ),
+    radial-gradient(ellipse at 50% 76%, #fff7ed 0 8%, #fde68a 18%, #fbbf2466 38%, transparent 70%),
     conic-gradient(
       from 180deg at 50% 76%,
       transparent 0deg 10deg,
@@ -66,13 +60,7 @@ body {
 
 #pet.codex-update::after {
   background:
-    radial-gradient(
-      ellipse at 50% 76%,
-      #dbeafe 0 8%,
-      #60a5fa 18%,
-      #38bdf866 38%,
-      transparent 70%
-    ),
+    radial-gradient(ellipse at 50% 76%, #dbeafe 0 8%, #60a5fa 18%, #38bdf866 38%, transparent 70%),
     conic-gradient(
       from 180deg at 50% 76%,
       transparent 0deg 10deg,

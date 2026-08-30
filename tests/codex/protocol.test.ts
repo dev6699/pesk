@@ -16,10 +16,7 @@ import {
 } from "../../src/codex/protocol";
 import type { ServerMessage } from "../../src/codex/protocol";
 
-const startedThreadMessage: Extract<
-  ServerMessage,
-  { method: "thread/started" }
-> = {
+const startedThreadMessage: Extract<ServerMessage, { method: "thread/started" }> = {
   method: "thread/started",
   params: {
     thread: {
@@ -51,27 +48,23 @@ const startedThreadMessage: Extract<
   },
 };
 
-const approvalMessage: Extract<
-  ServerMessage,
-  { method: "item/commandExecution/requestApproval" }
-> = {
-  method: "item/commandExecution/requestApproval",
-  id: "approval-1",
-  params: {
-    kind: "command",
-    threadId: "thread-1",
-    turnId: "turn-1",
-    itemId: "item-1",
-    startedAtMs: 0,
-    environmentId: null,
-    command: "npm test",
-    reason: "run tests",
-    proposedExecpolicyAmendment: ["npm", "test"],
-    proposedNetworkPolicyAmendments: [
-      { host: "registry.npmjs.org", action: "allow" },
-    ],
-  },
-};
+const approvalMessage: Extract<ServerMessage, { method: "item/commandExecution/requestApproval" }> =
+  {
+    method: "item/commandExecution/requestApproval",
+    id: "approval-1",
+    params: {
+      kind: "command",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "item-1",
+      startedAtMs: 0,
+      environmentId: null,
+      command: "npm test",
+      reason: "run tests",
+      proposedExecpolicyAmendment: ["npm", "test"],
+      proposedNetworkPolicyAmendments: [{ host: "registry.npmjs.org", action: "allow" }],
+    },
+  };
 
 describe("Codex protocol helpers", () => {
   test("resumes an active session when Pesk is disconnected", () => {
@@ -83,9 +76,7 @@ describe("Codex protocol helpers", () => {
   });
 
   test("reconciles after a working session becomes idle", () => {
-    expect(shouldReconcileOnIdle("working", { type: "idle" }, false)).toBe(
-      false,
-    );
+    expect(shouldReconcileOnIdle("working", { type: "idle" }, false)).toBe(false);
   });
 
   test("does not reconcile an idle session with a pending Pesk turn while disabled", () => {
@@ -93,9 +84,7 @@ describe("Codex protocol helpers", () => {
   });
 
   test("does not reconcile an active session without a pending turn", () => {
-    expect(shouldReconcileOnIdle("working", { type: "active" }, false)).toBe(
-      false,
-    );
+    expect(shouldReconcileOnIdle("working", { type: "active" }, false)).toBe(false);
   });
 
   test("narrows JSON-RPC responses and records safely", () => {
@@ -145,9 +134,7 @@ describe("Codex protocol helpers", () => {
     expect(requestIdKey("4")).toBe("string:4");
     expect(shouldResumeOnActiveStatus(false, { type: "active" })).toBe(true);
     expect(shouldResumeOnActiveStatus(true, { type: "active" })).toBe(false);
-    expect(shouldReconcileOnIdle("working", { type: "idle" }, true)).toBe(
-      false,
-    );
+    expect(shouldReconcileOnIdle("working", { type: "idle" }, true)).toBe(false);
   });
 
   test("formats socket errors with useful context", () => {

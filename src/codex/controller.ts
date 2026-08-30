@@ -2,6 +2,8 @@ import type {
   ClientNotification,
   InitializeResponse,
   RequestId,
+  FuzzyFileSearchResponse,
+  FuzzyFileSearchResult,
 } from "../codex-schema";
 import {
   describeSocketError,
@@ -40,10 +42,6 @@ import type {
   ThreadDeleteResponse,
 } from "../codex-schema/v2";
 import type { UserInput } from "../codex-schema/v2/UserInput";
-import type {
-  FuzzyFileSearchResponse,
-  FuzzyFileSearchResult,
-} from "../codex-schema";
 import type { CodexState, CodexThreadActivity } from "./types";
 import type {
   AccountRateLimitsRequest,
@@ -125,10 +123,7 @@ export class CodexController {
   /** Correlates local thread/start responses with thread/started events. */
   private readonly locallyStartedThreads = new Set<string>();
   /** Callbacks waiting for JSON-RPC responses keyed by request id. */
-  private readonly requests = new Map<
-    number,
-    (message: JsonRpcResponse) => void
-  >();
+  private readonly requests = new Map<number, (message: JsonRpcResponse) => void>();
   /** Isolated runtime state for every known or active thread. */
   private readonly threadControllers = new Map<string, CodexThread>();
   /** Local command/exec activity before a Codex thread exists. */
@@ -153,8 +148,7 @@ export class CodexController {
         }
       },
       handleNotification: (request) => {
-        if (this.suppressedPublication === 0)
-          options.handleNotification(request);
+        if (this.suppressedPublication === 0) options.handleNotification(request);
       },
     };
   }
@@ -204,9 +198,7 @@ export class CodexController {
         : "idle";
     return {
       threadId: this.threadId,
-      readOnly: Boolean(
-        this.threadId && this.readonlyThreadIds.has(this.threadId),
-      ),
+      readOnly: Boolean(this.threadId && this.readonlyThreadIds.has(this.threadId)),
       cwd: thread.workingDirectory ?? process.cwd(),
       error: this.connectionError,
       status: thread.status,
@@ -306,10 +298,7 @@ export class CodexController {
     const pending = runtime.state.pendingUserInput;
     if (!pending || !this.initialized) return false;
     const responseAnswers = Object.fromEntries(
-      Object.entries(answers).map(([questionId, values]) => [
-        questionId,
-        { answers: values },
-      ]),
+      Object.entries(answers).map(([questionId, values]) => [questionId, { answers: values }]),
     );
     this.send({
       id: pending.requestId,
@@ -318,17 +307,11 @@ export class CodexController {
     const answerText = pending.questions
       .map((question) => {
         const values = answers[question.id] ?? [];
-        const displayed = question.isSecret
-          ? values.map(() => "[hidden]")
-          : values;
+        const displayed = question.isSecret ? values.map(() => "[hidden]") : values;
         return `${question.header || question.question}: ${displayed.join(", ") || "No answer"}`;
       })
       .join("\n");
-    runtime.addMessage(
-      "user",
-      answerText || "No answer provided.",
-      pending.turnId,
-    );
+    runtime.addMessage("user", answerText || "No answer provided.", pending.turnId);
     runtime.clearUserInput();
     this.clearAttention(pending.threadId);
     this.options.publishRendererState();
@@ -356,15 +339,8 @@ export class CodexController {
   }
 
   /** Searches files below the requested roots for the renderer's picker. */
-  fuzzyFileSearch(
-    query: string,
-    roots: string[],
-  ): Promise<FuzzyFileSearchResult[]> {
-    if (
-      !this.initialized ||
-      this.socket?.readyState !== WebSocket.OPEN ||
-      !roots.length
-    ) {
+  fuzzyFileSearch(query: string, roots: string[]): Promise<FuzzyFileSearchResult[]> {
+    if (!this.initialized || this.socket?.readyState !== WebSocket.OPEN || !roots.length) {
       return Promise.resolve([]);
     }
     const id = ++this.nextId;
@@ -495,10 +471,7 @@ export class CodexController {
     return this.submitPromptWithImages(value, []);
   }
 
-  submitPromptWithImages(
-    value: string,
-    images: Array<{ url: string; name: string }>,
-  ): boolean {
+  submitPromptWithImages(value: string, images: Array<{ url: string; name: string }>): boolean {
     if ((!value.trim() && !images.length) || !this.initialized) {
       return false;
     }
@@ -506,9 +479,7 @@ export class CodexController {
     const prompt = value.trim();
     const modeCommand = prompt.match(/^\/(plan|default)$/i);
     if (modeCommand) {
-      this.setCollaborationMode(
-        modeCommand[1].toLowerCase() as "plan" | "default",
-      );
+      this.setCollaborationMode(modeCommand[1].toLowerCase() as "plan" | "default");
       return true;
     }
     const newThreadMatch = prompt.match(/^\/new(?:\s+(.+))?$/);
@@ -534,9 +505,7 @@ export class CodexController {
     if (this.threadRuntime().state.status !== "idle") {
       return this.queuePromptInput(
         [
-          ...(prompt
-            ? [{ type: "text" as const, text: prompt, text_elements: [] }]
-            : []),
+          ...(prompt ? [{ type: "text" as const, text: prompt, text_elements: [] }] : []),
           ...imageInputs(images),
         ],
         prompt,
@@ -545,11 +514,7 @@ export class CodexController {
     }
 
     this.threadRuntime().prepareTurn();
-    this.threadRuntime().addUserMessage(
-      prompt,
-      undefined,
-      imageMetadata(images),
-    );
+    this.threadRuntime().addUserMessage(prompt, undefined, imageMetadata(images));
     this.options.publishRendererState();
     this.threadRuntime().rememberPrompt(prompt);
     const threadId = this.threadId;
@@ -703,15 +668,9 @@ export class CodexController {
           userInitiated: true,
           command: command.join(" "),
           cwd,
-          status: message.error
-            ? "failed"
-            : result?.exitCode === 0
-              ? "completed"
-              : "failed",
+          status: message.error ? "failed" : result?.exitCode === 0 ? "completed" : "failed",
           exitCode: result?.exitCode,
-          aggregatedOutput: [result?.stdout, result?.stderr]
-            .filter(Boolean)
-            .join("\n"),
+          aggregatedOutput: [result?.stdout, result?.stderr].filter(Boolean).join("\n"),
         },
         processId,
       );
@@ -750,9 +709,7 @@ export class CodexController {
     const queuedImages =
       queuedImageMetadata ??
       input
-        .filter((item): item is Extract<UserInput, { type: "image" }> =>
-          item.type === "image",
-        )
+        .filter((item): item is Extract<UserInput, { type: "image" }> => item.type === "image")
         .map(({ url }) => ({ url }));
     const clientUserMessageId = randomUUID();
     const id = ++this.nextId;
@@ -795,9 +752,7 @@ export class CodexController {
     const id = ++this.nextId;
     this.setRequest<LocalQueueListResponse>(id, (message) => {
       this.withRuntime(threadId, () => {
-        this.runtime(threadId).replaceQueueFromServer(
-          message.result?.data ?? [],
-        );
+        this.runtime(threadId).replaceQueueFromServer(message.result?.data ?? []);
         this.options.publishRendererState();
         if (message.result?.nextCursor) {
           this.refreshQueuePage(threadId, message.result.nextCursor);
@@ -816,12 +771,9 @@ export class CodexController {
     const id = ++this.nextId;
     this.setRequest<LocalQueueListResponse>(id, (message) => {
       this.withRuntime(threadId, () => {
-        this.runtime(threadId).appendQueueFromServer(
-          message.result?.data ?? [],
-        );
+        this.runtime(threadId).appendQueueFromServer(message.result?.data ?? []);
         this.options.publishRendererState();
-        if (message.result?.nextCursor)
-          this.refreshQueuePage(threadId, message.result.nextCursor);
+        if (message.result?.nextCursor) this.refreshQueuePage(threadId, message.result.nextCursor);
       });
     });
     this.send({
@@ -876,10 +828,7 @@ export class CodexController {
       runtime.setConnected(true);
       runtime.syncServerThread(thread);
       this.updateModelInfo(message);
-      this.threads = [
-        thread,
-        ...this.threads.filter((candidate) => candidate.id !== thread.id),
-      ];
+      this.threads = [thread, ...this.threads.filter((candidate) => candidate.id !== thread.id)];
       this.options.publishRendererState();
       if (initialPrompt) {
         runtime.addUserMessage(initialPrompt);
@@ -937,8 +886,7 @@ export class CodexController {
     if (this.stopped) return;
     if (
       this.socket &&
-      (this.socket.readyState === WebSocket.OPEN ||
-        this.socket.readyState === WebSocket.CONNECTING)
+      (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)
     ) {
       return;
     }
@@ -1026,9 +974,7 @@ export class CodexController {
       reason: closeEvent.reason,
       wasClean: closeEvent.wasClean,
     });
-    const selectedRuntime = this.threadId
-      ? this.runtime(this.threadId)
-      : this.standaloneThread;
+    const selectedRuntime = this.threadId ? this.runtime(this.threadId) : this.standaloneThread;
     if (this.threadId) {
       this.standaloneThread.replaceHistory(selectedRuntime.state.history);
     }
@@ -1091,16 +1037,8 @@ export class CodexController {
   }
 
   /** Replaces the selected session and optionally resumes it. */
-  private switchThread(
-    id: string,
-    resume = true,
-    preserveHistory = false,
-  ): void {
-    if (
-      !id ||
-      (this.threads.length > 0 &&
-        !this.threads.some((thread) => thread.id === id))
-    ) {
+  private switchThread(id: string, resume = true, preserveHistory = false): void {
+    if (!id || (this.threads.length > 0 && !this.threads.some((thread) => thread.id === id))) {
       return;
     }
     if (this.threadId === id) {
@@ -1110,9 +1048,7 @@ export class CodexController {
       this.options.publishRendererState();
       return;
     }
-    const pendingHistory = preserveHistory
-      ? this.threadRuntime().state.history
-      : undefined;
+    const pendingHistory = preserveHistory ? this.threadRuntime().state.history : undefined;
     this.threadId = id;
     const existing = this.threadControllers.has(id);
     if (!existing) {
@@ -1239,9 +1175,7 @@ export class CodexController {
       const wasBackgroundThread = previousSelectedThread !== threadId;
       const runtime = this.runtime(threadId);
       const previousStatus = runtime.state.status;
-      this.withRuntime(threadId, () =>
-        this.handleServerMessageInternal(message),
-      );
+      this.withRuntime(threadId, () => this.handleServerMessageInternal(message));
       const nextStatus = runtime.state.status;
       if (nextStatus !== previousStatus) {
         this.options.debug("Pesk thread status transition", {
@@ -1338,10 +1272,7 @@ export class CodexController {
         this.handleAgentMessageDelta(message);
         break;
       case "item/plan/delta":
-        this.threadRuntime().appendPlanDelta(
-          message.params.itemId,
-          message.params.delta,
-        );
+        this.threadRuntime().appendPlanDelta(message.params.itemId, message.params.delta);
         this.options.publishRendererState();
         break;
       case "item/commandExecution/outputDelta":
@@ -1361,12 +1292,8 @@ export class CodexController {
         this.handleUserInputRequest(message);
         break;
       case "serverRequest/resolved":
-        if (
-          this.threadRuntime().state.pendingUserInput?.requestId ===
-          message.params.requestId
-        ) {
-          const threadId =
-            this.threadRuntime().state.pendingUserInput?.threadId;
+        if (this.threadRuntime().state.pendingUserInput?.requestId === message.params.requestId) {
+          const threadId = this.threadRuntime().state.pendingUserInput?.threadId;
           this.threadRuntime().clearUserInput();
           if (threadId) {
             this.clearAttention(threadId);
@@ -1396,19 +1323,13 @@ export class CodexController {
   }
 
   /** Selects and initializes a thread announced by the app server. */
-  private handleThreadStarted(
-    message: Extract<ServerMessage, { method: "thread/started" }>,
-  ): void {
+  private handleThreadStarted(message: Extract<ServerMessage, { method: "thread/started" }>): void {
     const { thread } = message.params;
-    this.threads = [
-      thread,
-      ...this.threads.filter((candidate) => candidate.id !== thread.id),
-    ];
+    this.threads = [thread, ...this.threads.filter((candidate) => candidate.id !== thread.id)];
     const locallyStarted = this.consumeLocalThreadStarted(thread.id);
     // Real thread/started payloads always include status. Incomplete legacy
     // payloads are treated as a local announcement for compatibility.
-    const shouldSelect =
-      locallyStarted || this.threadId === undefined || !thread.status;
+    const shouldSelect = locallyStarted || this.threadId === undefined || !thread.status;
     if (!shouldSelect) {
       const runtime = this.runtime(thread.id);
       runtime.syncServerThread(thread);
@@ -1428,9 +1349,7 @@ export class CodexController {
   }
 
   /** Tracks the active turn and associates it with the latest user message. */
-  private handleTurnStarted(
-    message: Extract<ServerMessage, { method: "turn/started" }>,
-  ): void {
+  private handleTurnStarted(message: Extract<ServerMessage, { method: "turn/started" }>): void {
     const turnId = message.params.turn.id;
     if (typeof message.params.threadId !== "string") {
       this.threadRuntime().setActiveTurn(turnId);
@@ -1445,9 +1364,7 @@ export class CodexController {
   }
 
   /** Adds echoed user input and visible activity from a started item. */
-  private handleItemStarted(
-    message: Extract<ServerMessage, { method: "item/started" }>,
-  ): void {
+  private handleItemStarted(message: Extract<ServerMessage, { method: "item/started" }>): void {
     this.threadRuntime().setStatus("working");
     this.options.publishRendererState();
     const item = isRecord(message.params.item)
@@ -1457,28 +1374,21 @@ export class CodexController {
       this.threadRuntime().processStartedItem(
         item,
         message.params.turnId,
-        this.threadRuntime().state.reviewInProgress &&
-        item.type === "userMessage",
+        this.threadRuntime().state.reviewInProgress && item.type === "userMessage",
       );
     }
   }
 
   /** Finalizes turn state and records token usage from a completed turn. */
-  private handleTurnCompleted(
-    message: Extract<ServerMessage, { method: "turn/completed" }>,
-  ): void {
+  private handleTurnCompleted(message: Extract<ServerMessage, { method: "turn/completed" }>): void {
     if (typeof message.params.threadId !== "string") {
-      this.threadRuntime().completeTurn(
-        message.params.turn?.status === "interrupted",
-      );
+      this.threadRuntime().completeTurn(message.params.turn?.status === "interrupted");
       this.threadRuntime().setStatus("idle");
       this.options.publishRendererState();
       const legacyTurn = isRecord(message.params.turn)
         ? (message.params.turn as Record<string, unknown>)
         : undefined;
-      const legacyUsage = parseTokenUsageValue(
-        legacyTurn?.tokenUsage ?? legacyTurn?.usage,
-      );
+      const legacyUsage = parseTokenUsageValue(legacyTurn?.tokenUsage ?? legacyTurn?.usage);
       if (legacyUsage) this.threadRuntime().setTokenUsage(legacyUsage);
       return;
     }
@@ -1521,9 +1431,7 @@ export class CodexController {
   }
 
   /** Stores the model selected after an app-server reroute. */
-  private handleModelRerouted(
-    message: Extract<ServerMessage, { method: "model/rerouted" }>,
-  ): void {
+  private handleModelRerouted(message: Extract<ServerMessage, { method: "model/rerouted" }>): void {
     this.threadRuntime().mergeModelInfo({ model: message.params.toModel });
     this.options.publishRendererState();
   }
@@ -1553,11 +1461,7 @@ export class CodexController {
     this.options.publishRendererState();
     if (
       isSelected &&
-      shouldReconcileOnIdle(
-        previous,
-        status,
-        this.threadRuntime().state.needsReconcile,
-      )
+      shouldReconcileOnIdle(previous, status, this.threadRuntime().state.needsReconcile)
     ) {
       this.threadRuntime().markNeedsReconcile(false);
       this.read(threadId);
@@ -1566,9 +1470,7 @@ export class CodexController {
     if (status?.type === "active" && this.pendingThreadResumeId === threadId) {
       this.pendingThreadResumeId = undefined;
       this.resume(threadId);
-    } else if (
-      shouldResumeOnActiveStatus(this.threadRuntime().state.connected, status)
-    ) {
+    } else if (shouldResumeOnActiveStatus(this.threadRuntime().state.connected, status)) {
       this.resume(threadId);
     }
   }
@@ -1597,16 +1499,10 @@ export class CodexController {
 
   /** Appends streamed command output to its activity message. */
   private handleCommandOutputDelta(
-    message: Extract<
-      ServerMessage,
-      { method: "item/commandExecution/outputDelta" }
-    >,
+    message: Extract<ServerMessage, { method: "item/commandExecution/outputDelta" }>,
   ): void {
     if (this.threadId || this.routedThreadId) {
-      this.threadRuntime().appendActivityOutput(
-        message.params.itemId,
-        message.params.delta,
-      );
+      this.threadRuntime().appendActivityOutput(message.params.itemId, message.params.delta);
       this.options.publishRendererState();
     }
   }
@@ -1638,12 +1534,8 @@ export class CodexController {
   }
 
   /** Commits a completed assistant or activity item to conversation history. */
-  private handleItemCompleted(
-    message: Extract<ServerMessage, { method: "item/completed" }>,
-  ): void {
-    const item = isRecord(message.params.item)
-      ? message.params.item
-      : undefined;
+  private handleItemCompleted(message: Extract<ServerMessage, { method: "item/completed" }>): void {
+    const item = isRecord(message.params.item) ? message.params.item : undefined;
     if (item) this.threadRuntime().processCompletedItem(item);
     this.options.publishRendererState();
   }
@@ -1653,16 +1545,13 @@ export class CodexController {
     message: Extract<
       ServerMessage,
       {
-        method:
-        | "item/commandExecution/requestApproval"
-        | "item/fileChange/requestApproval";
+        method: "item/commandExecution/requestApproval" | "item/fileChange/requestApproval";
       }
     >,
   ): void {
     const id = message.id;
     const decisions = approvalDecisions(message);
-    const command =
-      "command" in message.params ? (message.params.command ?? "") : "";
+    const command = "command" in message.params ? (message.params.command ?? "") : "";
     const reason = message.params.reason ?? "";
     const approval = {
       requestId: id,
@@ -1693,18 +1582,13 @@ export class CodexController {
     this.options.publishRendererState();
   }
 
-  private noteAttention(
-    threadId: string,
-    type: "approval" | "userInput",
-  ): void {
-    if (!this.attentionQueue.has(threadId))
-      this.attentionQueue.set(threadId, type);
+  private noteAttention(threadId: string, type: "approval" | "userInput"): void {
+    if (!this.attentionQueue.has(threadId)) this.attentionQueue.set(threadId, type);
   }
 
   private routeAttention(threadId: string): void {
     const nextThreadId = this.attentionQueue.keys().next().value;
-    if (typeof nextThreadId !== "string" || this.threadId === nextThreadId)
-      return;
+    if (typeof nextThreadId !== "string" || this.threadId === nextThreadId) return;
     this.switchThread(nextThreadId, false);
   }
 
@@ -1721,11 +1605,7 @@ export class CodexController {
   }
 
   /** Starts a text turn and creates a temporary working message. */
-  private startTurn(
-    threadId: string,
-    prompt: string,
-    extraInput: UserInput[] = [],
-  ): void {
+  private startTurn(threadId: string, prompt: string, extraInput: UserInput[] = []): void {
     const runtime = this.runtime(threadId);
     runtime.prepareTurn();
     const id = ++this.nextId;
@@ -1741,9 +1621,7 @@ export class CodexController {
     const params: PlanTurnStartParams = {
       threadId,
       input: [
-        ...(prompt
-          ? [{ type: "text" as const, text: prompt, text_elements: [] }]
-          : []),
+        ...(prompt ? [{ type: "text" as const, text: prompt, text_elements: [] }] : []),
         ...extraInput,
       ],
     };
@@ -1751,8 +1629,7 @@ export class CodexController {
       mode: runtime.state.collaborationMode,
       settings: {
         model: runtime.state.modelInfo?.model ?? "gpt-5.1-codex",
-        reasoning_effort:
-          runtime.state.collaborationMode === "plan" ? "medium" : null,
+        reasoning_effort: runtime.state.collaborationMode === "plan" ? "medium" : null,
         developer_instructions: null,
       },
     };
@@ -1807,9 +1684,7 @@ export class CodexController {
   }
 }
 
-function imageInputs(
-  images: Array<{ url: string; name: string }>,
-): UserInput[] {
+function imageInputs(images: Array<{ url: string; name: string }>): UserInput[] {
   return images.map(({ url }) => ({
     type: "image",
     url,

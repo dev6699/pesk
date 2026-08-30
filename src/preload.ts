@@ -18,38 +18,29 @@ contextBridge.exposeInMainWorld("peskApi", {
   createPairing: (name: string) => ipcRenderer.invoke("create-pairing", name),
   getPairingStatus: () => ipcRenderer.invoke("get-pairing-status"),
   getPairingDevices: () => ipcRenderer.invoke("get-pairing-devices"),
-  revokePairingDevice: (id: string) =>
-    ipcRenderer.invoke("revoke-pairing-device", id),
+  revokePairingDevice: (id: string) => ipcRenderer.invoke("revoke-pairing-device", id),
   setPairingDevicePush: (id: string, enabled: boolean) =>
     ipcRenderer.invoke("set-pairing-device-push", id, enabled),
   toggleCodexStatusSound: () => ipcRenderer.send("toggle-codex-status-sound"),
   openConfigFolder: () => ipcRenderer.send("open-config-folder"),
-  selectCodexThread: (threadId: string) =>
-    ipcRenderer.send("select-codex-thread", threadId),
+  selectCodexThread: (threadId: string) => ipcRenderer.send("select-codex-thread", threadId),
   setCodexCollaborationMode: (mode: "default" | "plan") =>
     ipcRenderer.send("set-codex-collaboration-mode", mode),
   focusCodexInput: () => ipcRenderer.send("focus-codex-input"),
-  setChatFileDialogOpen: (open: boolean) =>
-    ipcRenderer.send("chat-file-dialog", open),
+  setChatFileDialogOpen: (open: boolean) => ipcRenderer.send("chat-file-dialog", open),
   implementCodexPlan: (planText: string, clearContext: boolean) =>
     ipcRenderer.invoke("implement-codex-plan", planText, clearContext),
-  respondCodexUserInput: (
-    requestId: string | number,
-    answers: Record<string, string[]>,
-  ) => ipcRenderer.send("respond-codex-user-input", requestId, answers),
+  respondCodexUserInput: (requestId: string | number, answers: Record<string, string[]>) =>
+    ipcRenderer.send("respond-codex-user-input", requestId, answers),
   interruptCodexTurn: () => ipcRenderer.invoke("interrupt-codex-turn"),
-  steerCodexTurn: (prompt: string) =>
-    ipcRenderer.invoke("steer-codex-turn", prompt),
+  steerCodexTurn: (prompt: string) => ipcRenderer.invoke("steer-codex-turn", prompt),
   selectAnimation: (name: string) => ipcRenderer.send("select-animation", name),
-  setAnimationMode: (mode: "selected" | "shuffle") =>
-    ipcRenderer.send("set-animation-mode", mode),
+  setAnimationMode: (mode: "selected" | "shuffle") => ipcRenderer.send("set-animation-mode", mode),
   quitPesk: () => ipcRenderer.send("quit-pesk"),
   respondCodexPermission: (requestId: string | number, optionId: string) =>
     ipcRenderer.send("respond-codex-permission", requestId, optionId),
-  submitCodexPrompt: (
-    prompt: string,
-    images?: Array<{ url: string; name: string }>,
-  ) => ipcRenderer.invoke("submit-codex-prompt", prompt, images),
+  submitCodexPrompt: (prompt: string, images?: Array<{ url: string; name: string }>) =>
+    ipcRenderer.invoke("submit-codex-prompt", prompt, images),
   startCodexReview: (instructions: string) =>
     ipcRenderer.invoke("start-codex-review", instructions),
   fuzzyFileSearch: (query: string, roots: string[]) =>
@@ -61,19 +52,13 @@ contextBridge.exposeInMainWorld("peskApi", {
     ipcRenderer.on("menu-updated", () => callback());
   },
   onMenuFocusChanged: (callback: (focused: boolean) => void) => {
-    ipcRenderer.on("menu-focus-changed", (_event, focused: boolean) =>
-      callback(focused),
-    );
+    ipcRenderer.on("menu-focus-changed", (_event, focused: boolean) => callback(focused));
   },
   onPetFocusChanged: (callback: (focused: boolean) => void) => {
-    ipcRenderer.on("pet-focus-changed", (_event, focused: boolean) =>
-      callback(focused),
-    );
+    ipcRenderer.on("pet-focus-changed", (_event, focused: boolean) => callback(focused));
   },
   onPetCodexUpdateChanged: (callback: (active: boolean) => void) => {
-    ipcRenderer.on("pet-codex-update-changed", (_event, active: boolean) =>
-      callback(active),
-    );
+    ipcRenderer.on("pet-codex-update-changed", (_event, active: boolean) => callback(active));
   },
   onPetCodexStatusSound: (callback: () => void) => {
     ipcRenderer.on("pet-codex-status-sound", () => callback());
@@ -85,8 +70,6 @@ contextBridge.exposeInMainWorld("peskApi", {
     ipcRenderer.on("codex-user-input-focus", () => callback());
   },
   onSettingsChanged: (callback: (settings: unknown) => void) => {
-    ipcRenderer.on("settings-changed", (_event, settings) =>
-      callback(settings),
-    );
+    ipcRenderer.on("settings-changed", (_event, settings) => callback(settings));
   },
 });

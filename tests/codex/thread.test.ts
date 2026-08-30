@@ -43,9 +43,7 @@ describe("CodexThread", () => {
     const snapshot = thread.snapshot();
     snapshot.history.push({ role: "user", text: "snapshot mutation" });
     expect(thread.state.history).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ text: "snapshot mutation" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ text: "snapshot mutation" })]),
     );
   });
 
@@ -68,9 +66,7 @@ describe("CodexThread", () => {
       ]),
     );
     expect(first.state.history).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ text: "second output" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ text: "second output" })]),
     );
     expect(second.state.activeTurnId).toBe("turn-2");
   });
@@ -90,9 +86,7 @@ describe("CodexThread", () => {
     thread.appendAssistantDelta("partial", "item-1", "turn-1");
     thread.completeAssistant("completed", "item-1");
     expect(thread.state.history).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ text: "completed", itemId: "item-1" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ text: "completed", itemId: "item-1" })]),
     );
     thread.completeTurn(false);
     expect(thread.state.activeTurnId).toBeUndefined();
@@ -138,9 +132,7 @@ describe("CodexThread", () => {
 
     expect(first.state.history).toEqual([]);
     expect(first.state.workingDirectory).toBe(process.cwd());
-    expect(second.state.history).toEqual([
-      expect.objectContaining({ text: "second prompt" }),
-    ]);
+    expect(second.state.history).toEqual([expect.objectContaining({ text: "second prompt" })]);
     expect(second.state.workingDirectory).toBe("/workspace/second");
   });
 
@@ -161,9 +153,7 @@ describe("CodexThread", () => {
     expect(thread.state.activeTurnId).toBeUndefined();
     expect(thread.state.pendingUserInput).toBeUndefined();
     expect(thread.state.queuedSubmissions).toEqual([]);
-    expect(thread.state.history).toEqual([
-      expect.objectContaining({ text: "keep this message" }),
-    ]);
+    expect(thread.state.history).toEqual([expect.objectContaining({ text: "keep this message" })]);
   });
 
   test("clears a standalone conversation and its activity indexes", () => {
@@ -219,11 +209,9 @@ describe("CodexThread", () => {
       false,
     );
 
-    expect(
-      thread.state.history.filter(
-        (message) => message.text === "already shown",
-      ),
-    ).toHaveLength(1);
+    expect(thread.state.history.filter((message) => message.text === "already shown")).toHaveLength(
+      1,
+    );
   });
 
   test("records images from an echoed user message", () => {
@@ -265,14 +253,10 @@ describe("CodexThread", () => {
     ]);
 
     expect(thread.state.history).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ text: "live prompt" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ text: "live prompt" })]),
     );
     expect(thread.state.history).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ text: "persisted answer" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ text: "persisted answer" })]),
     );
   });
 
@@ -300,12 +284,8 @@ describe("CodexThread", () => {
         activity: expect.objectContaining({ label: "enteredReviewMode" }),
       }),
     );
-    expect(thread.state.history[1]).toEqual(
-      expect.objectContaining({ text: "review result" }),
-    );
-    expect(thread.state.history[2]).toEqual(
-      expect.objectContaining({ text: "actual request" }),
-    );
+    expect(thread.state.history[1]).toEqual(expect.objectContaining({ text: "review result" }));
+    expect(thread.state.history[2]).toEqual(expect.objectContaining({ text: "actual request" }));
     expect(thread.state.tokenUsage?.total.totalTokens).toBe(6);
   });
 
@@ -498,9 +478,7 @@ describe("CodexThread", () => {
 
     expect(thread.consumePrompt("expired")).toBe(false);
     expect(thread.state.history).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ text: "fallback assistant" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ text: "fallback assistant" })]),
     );
   });
 });

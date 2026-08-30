@@ -37,9 +37,7 @@ export class CodexRenderer {
   private activePlanConfirmation: { key: string; planText: string } | undefined;
   private reviewPromptOpen = false;
   private pendingImages: Array<{ url: string; name: string }> = [];
-  private readonly imageAttachments = document.getElementById(
-    "codex-image-attachments",
-  );
+  private readonly imageAttachments = document.getElementById("codex-image-attachments");
   private readonly imageInput = document.getElementById(
     "codex-image-input",
   ) as HTMLInputElement | null;
@@ -82,8 +80,7 @@ export class CodexRenderer {
     this.renderWorkingStatus();
     this.renderCommandMode();
     sessionSelect.addEventListener("change", () => {
-      if (sessionSelect.value)
-        window.peskApi.selectCodexThread(sessionSelect.value);
+      if (sessionSelect.value) window.peskApi.selectCodexThread(sessionSelect.value);
     });
     sessionCopy.addEventListener("click", () => void this.copySessionId());
     this.steerButton?.addEventListener("click", () => {
@@ -106,9 +103,7 @@ export class CodexRenderer {
       this.renderCommandMode();
       void this.updateSuggestions(input);
     });
-    input.addEventListener("keydown", (event) =>
-      this.handleInputKeydown(event),
-    );
+    input.addEventListener("keydown", (event) => this.handleInputKeydown(event));
     if (this.webChat) {
       const visualViewport = window.visualViewport;
       const keepFormVisible = (): void => {
@@ -126,9 +121,7 @@ export class CodexRenderer {
         input.removeEventListener("focus", keepFormVisible);
         visualViewport?.removeEventListener("resize", keepFormVisible);
         window.removeEventListener("pagehide", removeListeners);
-        document.documentElement.style.removeProperty(
-          "--web-chat-viewport-height",
-        );
+        document.documentElement.style.removeProperty("--web-chat-viewport-height");
       };
       window.addEventListener("pagehide", removeListeners, { once: true });
     }
@@ -138,8 +131,7 @@ export class CodexRenderer {
   handleKeydown(event: KeyboardEvent): void {
     if (
       !this.chat.hidden &&
-      (matchesShortcut(event, "sessionPrevious") ||
-        matchesShortcut(event, "sessionNext"))
+      (matchesShortcut(event, "sessionPrevious") || matchesShortcut(event, "sessionNext"))
     ) {
       const direction = matchesShortcut(event, "sessionPrevious") ? -1 : 1;
       if (this.switchSession(direction)) {
@@ -158,8 +150,7 @@ export class CodexRenderer {
       matchesShortcut(event, "copyMessage") &&
       !(
         event.target === this.input &&
-        (this.settings.codexStatus === "working" ||
-          this.settings.codexStatus === "waiting")
+        (this.settings.codexStatus === "working" || this.settings.codexStatus === "waiting")
       ) &&
       this.selectedMessageIndex >= 0 &&
       !this.hasHighlightedText()
@@ -170,14 +161,11 @@ export class CodexRenderer {
     }
     if (
       !this.chat.hidden &&
-      (matchesShortcut(event, "historyTop") ||
-        matchesShortcut(event, "historyBottom"))
+      (matchesShortcut(event, "historyTop") || matchesShortcut(event, "historyBottom"))
     ) {
       event.preventDefault();
       this.history.scrollTo({
-        top: matchesShortcut(event, "historyTop")
-          ? 0
-          : this.history.scrollHeight,
+        top: matchesShortcut(event, "historyTop") ? 0 : this.history.scrollHeight,
         behavior: "smooth",
       });
       return;
@@ -200,10 +188,7 @@ export class CodexRenderer {
       event.stopPropagation();
       return;
     }
-    if (
-      !this.chat.hidden &&
-      (event.key === "ArrowUp" || event.key === "ArrowDown")
-    ) {
+    if (!this.chat.hidden && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       const direction =
         matchesShortcut(event, "selectPreviousUserMessage") ||
         matchesShortcut(event, "scrollHistoryUp") ||
@@ -285,9 +270,7 @@ export class CodexRenderer {
       for (const thread of displayedThreads) {
         const option = document.createElement("option");
         option.value = thread.id;
-        option.textContent = thread.preview
-          ? `${thread.id} — ${thread.preview}`
-          : thread.id;
+        option.textContent = thread.preview ? `${thread.id} — ${thread.preview}` : thread.id;
         option.title = thread.id;
         this.sessionSelect.append(option);
       }
@@ -295,31 +278,22 @@ export class CodexRenderer {
     }
     this.sessionSelect.disabled = !displayedThreads.length;
     this.sessionCopy.disabled = !next.codexThreadId;
-    this.renderHistory(
-      next.codexHistory,
-      Boolean(next.codexThreadId),
-      next.codexQueuedSubmissions,
-    );
+    this.renderHistory(next.codexHistory, Boolean(next.codexThreadId), next.codexQueuedSubmissions);
     this.renderWorkingStatus();
     this.renderCommandMode();
     this.renderTokenUsage();
     this.renderRateLimit();
     this.renderUserInput();
     const steerable =
-      !next.codexReadOnly &&
-      (next.codexStatus === "working" || next.codexStatus === "waiting");
+      !next.codexReadOnly && (next.codexStatus === "working" || next.codexStatus === "waiting");
     if (this.steerButton) {
       this.steerButton.hidden = !steerable;
       this.steerButton.disabled = !steerable;
     }
     this.readOnlyStatus.hidden = !next.codexReadOnly;
-    this.readOnlyStatus.textContent = next.codexReadOnly
-      ? "Read-only · active elsewhere"
-      : "";
+    this.readOnlyStatus.textContent = next.codexReadOnly ? "Read-only · active elsewhere" : "";
     this.input.disabled = next.codexReadOnly;
-    const sendButton = this.form.querySelector<HTMLButtonElement>(
-      "button[type='submit']",
-    );
+    const sendButton = this.form.querySelector<HTMLButtonElement>("button[type='submit']");
     if (sendButton) sendButton.disabled = next.codexReadOnly;
     this.form.hidden = Boolean(
       next.codexPendingUserInput ||
@@ -332,9 +306,7 @@ export class CodexRenderer {
       this.modeToggle.hidden = !plan;
       this.modeToggle.textContent = plan ? "Plan" : "Default";
       this.modeToggle.classList.toggle("codex-mode-plan", plan);
-      this.modeToggle.title = plan
-        ? "Plan mode enabled for the next turn"
-        : "Default mode";
+      this.modeToggle.title = plan ? "Plan mode enabled for the next turn" : "Default mode";
     }
   }
 
@@ -364,10 +336,7 @@ export class CodexRenderer {
     if (!prompt && !this.pendingImages.length) return;
     if (this.settings.codexReadOnly) return;
     if (/^\/review$/i.test(prompt)) {
-      if (
-        this.settings.codexStatus !== "idle" ||
-        !this.settings.codexThreadId
-      ) {
+      if (this.settings.codexStatus !== "idle" || !this.settings.codexThreadId) {
         return;
       }
       this.input.value = "";
@@ -408,32 +377,24 @@ export class CodexRenderer {
     });
     this.input.addEventListener("paste", (event) => {
       const files = Array.from(event.clipboardData?.items ?? [])
-        .filter(
-          (item) => item.kind === "file" && item.type.startsWith("image/"),
-        )
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
         .map((item) => item.getAsFile())
         .filter((file): file is File => file !== null);
       if (!files.length) return;
       event.preventDefault();
       void this.addImageFiles(files);
     });
-    document
-      .getElementById("codex-image-select")
-      ?.addEventListener("click", () => {
-        window.peskApi.setChatFileDialogOpen(true);
-        this.imageInput?.click();
-      });
+    document.getElementById("codex-image-select")?.addEventListener("click", () => {
+      window.peskApi.setChatFileDialogOpen(true);
+      this.imageInput?.click();
+    });
     dropTarget.addEventListener("dragover", (event) => {
       if (!this.hasImageFiles(event.dataTransfer)) return;
       event.preventDefault();
       dropTarget.classList.add("codex-drop-active");
     });
     dropTarget.addEventListener("dragleave", (event) => {
-      if (
-        event.relatedTarget instanceof Node &&
-        dropTarget.contains(event.relatedTarget)
-      )
-        return;
+      if (event.relatedTarget instanceof Node && dropTarget.contains(event.relatedTarget)) return;
       dropTarget.classList.remove("codex-drop-active");
     });
     dropTarget.addEventListener("drop", (event) => {
@@ -452,15 +413,12 @@ export class CodexRenderer {
     );
   }
 
-  private async addImageFiles(
-    files: Iterable<File> | null | undefined,
-  ): Promise<void> {
+  private async addImageFiles(files: Iterable<File> | null | undefined): Promise<void> {
     for (const file of Array.from(files ?? [])) {
       if (!file.type.startsWith("image/")) continue;
       const url = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () =>
-          resolve(typeof reader.result === "string" ? reader.result : "");
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
         reader.onerror = () => reject(reader.error);
         reader.readAsDataURL(file);
       }).catch(() => "");
@@ -518,12 +476,7 @@ export class CodexRenderer {
     const pendingApproval = this.settings.codexPendingApproval;
     const planConfirmation = this.activePlanConfirmation;
     if (!container) return;
-    if (
-      !pending &&
-      !pendingApproval &&
-      !planConfirmation &&
-      !this.reviewPromptOpen
-    ) {
+    if (!pending && !pendingApproval && !planConfirmation && !this.reviewPromptOpen) {
       container.replaceChildren();
       container.hidden = true;
       this.renderedUserInputRequestId = undefined;
@@ -532,23 +485,13 @@ export class CodexRenderer {
       this.userInputAnswers = {};
       return;
     }
-    if (
-      !pending &&
-      !pendingApproval &&
-      !planConfirmation &&
-      this.reviewPromptOpen
-    ) {
+    if (!pending && !pendingApproval && !planConfirmation && this.reviewPromptOpen) {
       this.renderReviewPrompt(force);
       return;
     }
     if (!pending && !pendingApproval && planConfirmation) {
-      const existing = container.querySelector<HTMLElement>(
-        ".codex-plan-implementation-prompt",
-      );
-      if (
-        !force &&
-        existing?.dataset.planConfirmationKey === planConfirmation.key
-      ) {
+      const existing = container.querySelector<HTMLElement>(".codex-plan-implementation-prompt");
+      if (!force && existing?.dataset.planConfirmationKey === planConfirmation.key) {
         return;
       }
       container.replaceChildren();
@@ -558,10 +501,7 @@ export class CodexRenderer {
       this.userInputQuestionIndex = 0;
       this.userInputAnswers = {};
       container.append(
-        this.renderPlanImplementationPrompt(
-          planConfirmation.key,
-          planConfirmation.planText,
-        ),
+        this.renderPlanImplementationPrompt(planConfirmation.key, planConfirmation.planText),
       );
       requestAnimationFrame(() => {
         this.history.scrollTop = this.history.scrollHeight;
@@ -574,8 +514,7 @@ export class CodexRenderer {
     }
     if (!pending) return;
 
-    const requestChanged =
-      this.renderedUserInputRequestId !== pending.requestId;
+    const requestChanged = this.renderedUserInputRequestId !== pending.requestId;
     if (requestChanged) {
       this.renderedUserInputRequestId = pending.requestId;
       this.userInputQuestionIndex = 0;
@@ -594,8 +533,7 @@ export class CodexRenderer {
 
     const instructions = document.createElement("small");
     instructions.className = "codex-user-input-instructions";
-    instructions.textContent =
-      "Use ↑/↓ to select, Tab to add a note, and Enter to submit.";
+    instructions.textContent = "Use ↑/↓ to select, Tab to add a note, and Enter to submit.";
     container.append(instructions);
 
     const form = document.createElement("form");
@@ -627,9 +565,7 @@ export class CodexRenderer {
         this.activeUserInputQuestionId = question.id;
       });
       input.addEventListener("change", () => {
-        for (const radio of fieldset.querySelectorAll<HTMLInputElement>(
-          "input[type='radio']",
-        )) {
+        for (const radio of fieldset.querySelectorAll<HTMLInputElement>("input[type='radio']")) {
           radio.tabIndex = radio === input ? 0 : -1;
         }
       });
@@ -649,10 +585,7 @@ export class CodexRenderer {
       const note = document.createElement("input");
       note.type = "text";
       note.placeholder = "Add a note";
-      note.setAttribute(
-        "aria-label",
-        `Note for ${question.header || question.question}`,
-      );
+      note.setAttribute("aria-label", `Note for ${question.header || question.question}`);
       note.dataset.questionId = question.id;
       note.dataset.note = "true";
       note.addEventListener("focus", () => {
@@ -673,27 +606,21 @@ export class CodexRenderer {
     const submit = document.createElement("button");
     submit.type = "submit";
     submit.textContent =
-      this.userInputQuestionIndex < pending.questions.length - 1
-        ? "Next"
-        : "Submit";
+      this.userInputQuestionIndex < pending.questions.length - 1 ? "Next" : "Submit";
     form.append(submit);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const selected = Array.from(
-        form.querySelectorAll<HTMLInputElement>("[data-question-id]"),
-      )
+      const selected = Array.from(form.querySelectorAll<HTMLInputElement>("[data-question-id]"))
         .filter(
           (input) =>
-            input.dataset.questionId === question.id &&
-            (input.type !== "radio" || input.checked),
+            input.dataset.questionId === question.id && (input.type !== "radio" || input.checked),
         )
         .map((input) => (input.value ?? "").trim())
         .filter(Boolean);
       this.userInputAnswers[question.id] = selected;
       if (this.userInputQuestionIndex < pending.questions.length - 1) {
         this.userInputQuestionIndex += 1;
-        this.activeUserInputQuestionId =
-          pending.questions[this.userInputQuestionIndex]?.id;
+        this.activeUserInputQuestionId = pending.questions[this.userInputQuestionIndex]?.id;
         this.renderUserInput(true);
         this.focusUserInputOption();
         return;
@@ -705,8 +632,7 @@ export class CodexRenderer {
     });
     form.addEventListener("keydown", (event) => {
       if (
-        (matchesShortcut(event, "questionNext") ||
-          matchesShortcut(event, "questionPrevious")) &&
+        (matchesShortcut(event, "questionNext") || matchesShortcut(event, "questionPrevious")) &&
         event.target instanceof HTMLInputElement &&
         event.target.type === "radio"
       ) {
@@ -719,10 +645,7 @@ export class CodexRenderer {
         if (currentIndex >= 0 && options.length > 1) {
           event.preventDefault();
           const direction = matchesShortcut(event, "questionNext") ? 1 : -1;
-          const next =
-            options[
-              (currentIndex + direction + options.length) % options.length
-            ];
+          const next = options[(currentIndex + direction + options.length) % options.length];
           for (const radio of options) radio.checked = false;
           next.checked = true;
           for (const radio of options) radio.tabIndex = radio === next ? 0 : -1;
@@ -736,9 +659,7 @@ export class CodexRenderer {
         event.target.type === "radio"
       ) {
         const fieldset = event.target.closest("fieldset");
-        const note = fieldset?.querySelector<HTMLInputElement>(
-          "input[data-note='true']",
-        );
+        const note = fieldset?.querySelector<HTMLInputElement>("input[data-note='true']");
         const noteLabel = note?.closest("label");
         if (note && noteLabel) {
           event.preventDefault();
@@ -752,9 +673,7 @@ export class CodexRenderer {
         event.target.dataset.note === "true"
       ) {
         const fieldset = event.target.closest("fieldset");
-        const selected = fieldset?.querySelector<HTMLInputElement>(
-          "input[type='radio']:checked",
-        );
+        const selected = fieldset?.querySelector<HTMLInputElement>("input[type='radio']:checked");
         event.preventDefault();
         event.target.value = "";
         const noteLabel = event.target.closest("label");
@@ -795,8 +714,7 @@ export class CodexRenderer {
     container.append(title);
     const instructions = document.createElement("small");
     instructions.className = "codex-user-input-instructions";
-    instructions.textContent =
-      "Codex will use this conversation and the current project changes.";
+    instructions.textContent = "Codex will use this conversation and the current project changes.";
     container.append(instructions);
     const form = document.createElement("form");
     form.className = "codex-user-input-form codex-review-prompt";
@@ -899,11 +817,7 @@ export class CodexRenderer {
     const container = this.userInput;
     if (!container) return;
     const existing = container.querySelector("form");
-    if (
-      !force &&
-      existing?.dataset.approvalRequestId === String(pending.requestId)
-    )
-      return;
+    if (!force && existing?.dataset.approvalRequestId === String(pending.requestId)) return;
     container.replaceChildren();
     container.hidden = false;
     const title = document.createElement("strong");
@@ -945,9 +859,7 @@ export class CodexRenderer {
     form.append(submit);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const selected = form.querySelector<HTMLInputElement>(
-        "input[type='radio']:checked",
-      );
+      const selected = form.querySelector<HTMLInputElement>("input[type='radio']:checked");
       if (!selected) return;
       window.peskApi.respondCodexPermission(pending.requestId, selected.value);
       submit.disabled = true;
@@ -964,15 +876,12 @@ export class CodexRenderer {
     const container = this.userInput;
     if (!container || container.hidden) return;
     const questionId = this.activeUserInputQuestionId;
-    const fieldset = Array.from(
-      container.querySelectorAll<HTMLElement>("fieldset"),
-    ).find(
+    const fieldset = Array.from(container.querySelectorAll<HTMLElement>("fieldset")).find(
       (candidate) => !questionId || candidate.dataset.questionId === questionId,
     );
     const option =
-      fieldset?.querySelector<HTMLInputElement>(
-        "input[type='radio']:checked",
-      ) ?? fieldset?.querySelector<HTMLInputElement>("input[type='radio']");
+      fieldset?.querySelector<HTMLInputElement>("input[type='radio']:checked") ??
+      fieldset?.querySelector<HTMLInputElement>("input[type='radio']");
     option?.focus();
   }
 
@@ -1001,13 +910,11 @@ export class CodexRenderer {
   private resizeInput(): void {
     const maxHeight = 220;
     const wasAtBottom =
-      this.history.scrollTop + this.history.clientHeight >=
-      this.history.scrollHeight - 24;
+      this.history.scrollTop + this.history.clientHeight >= this.history.scrollHeight - 24;
     this.input.style.height = "auto";
     const height = Math.min(this.input.scrollHeight, maxHeight);
     this.input.style.height = `${height}px`;
-    this.input.style.overflowY =
-      this.input.scrollHeight > maxHeight ? "auto" : "hidden";
+    this.input.style.overflowY = this.input.scrollHeight > maxHeight ? "auto" : "hidden";
     if (wasAtBottom) {
       requestAnimationFrame(() => {
         this.history.scrollTop = this.history.scrollHeight;
@@ -1045,16 +952,12 @@ export class CodexRenderer {
     const modelParts = [
       modelInfo?.model ?? "",
       modelInfo?.provider ? `(${modelInfo.provider})` : "",
-      modelInfo?.reasoningEffort
-        ? `Reasoning ${modelInfo.reasoningEffort}`
-        : "",
+      modelInfo?.reasoningEffort ? `Reasoning ${modelInfo.reasoningEffort}` : "",
       modelInfo?.serviceTier ? `Tier ${modelInfo.serviceTier}` : "",
     ].filter(Boolean);
     const usageParts = [
       total !== undefined ? `Total ${formatTokens(total)}` : "",
-      usage?.total.inputTokens !== undefined
-        ? `In ${formatTokens(usage.total.inputTokens)}`
-        : "",
+      usage?.total.inputTokens !== undefined ? `In ${formatTokens(usage.total.inputTokens)}` : "",
       usage?.total.outputTokens !== undefined
         ? `Out ${formatTokens(usage.total.outputTokens)}`
         : "",
@@ -1067,9 +970,7 @@ export class CodexRenderer {
     ].filter(Boolean);
     const modelLine = modelParts.join(" · ");
     const cwd = this.settings.codexCwd;
-    const lines = [modelLine, contextLabel, cwd, usageParts.join(" · ")].filter(
-      Boolean,
-    );
+    const lines = [modelLine, contextLabel, cwd, usageParts.join(" · ")].filter(Boolean);
     this.tokenUsage.replaceChildren();
     if (modelLine || contextLabel || cwd) {
       const modelRow = document.createElement("div");
@@ -1104,12 +1005,7 @@ export class CodexRenderer {
       if (this.modeToggle) usageLine.append(this.modeToggle);
       this.tokenUsage.append(usageLine);
     }
-    this.tokenUsage.title = [
-      ...modelParts,
-      contextLabel,
-      cwd ?? "",
-      ...usageParts,
-    ]
+    this.tokenUsage.title = [...modelParts, contextLabel, cwd ?? "", ...usageParts]
       .filter(Boolean)
       .join(" · ");
     this.tokenUsage.hidden = lines.length === 0 && !cwd;
@@ -1124,9 +1020,7 @@ export class CodexRenderer {
       return;
     }
     const used = Math.round(primary.usedPercent);
-    const reached = Boolean(
-      limits?.rateLimitReachedType || limits?.spendControlReached,
-    );
+    const reached = Boolean(limits?.rateLimitReachedType || limits?.spendControlReached);
     this.rateLimit.textContent = formatRateLimitDetails(limits).join(" · ");
     this.rateLimit.className = reached
       ? "codex-rate-limit-reached"
@@ -1142,46 +1036,24 @@ export class CodexRenderer {
     direction: -1 | 1,
     role?: PeskSettings["codexHistory"][number]["role"],
   ): void {
-    const messages = Array.from(
-      this.history.querySelectorAll<HTMLElement>(".codex-message"),
-    );
+    const messages = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message"));
     if (!messages.length) return;
 
     const candidateIndices = messages
       .map((message, index) => ({ message, index }))
-      .filter(
-        ({ message }) =>
-          !role || message.classList.contains(`codex-message-${role}`),
-      )
+      .filter(({ message }) => !role || message.classList.contains(`codex-message-${role}`))
       .map(({ index }) => index);
     if (!candidateIndices.length) return;
     this.input.blur();
-    const visibleIndices = this.visibleMessageIndices(
-      messages,
-      candidateIndices,
-    );
-    const selectionIsVisible = visibleIndices.includes(
-      this.selectedMessageIndex,
-    );
-    const currentCandidateIndex = candidateIndices.indexOf(
-      this.selectedMessageIndex,
-    );
+    const visibleIndices = this.visibleMessageIndices(messages, candidateIndices);
+    const selectionIsVisible = visibleIndices.includes(this.selectedMessageIndex);
+    const currentCandidateIndex = candidateIndices.indexOf(this.selectedMessageIndex);
     const nextIndex = selectionIsVisible
       ? candidateIndices[
-          Math.max(
-            0,
-            Math.min(
-              candidateIndices.length - 1,
-              currentCandidateIndex + direction,
-            ),
-          )
+          Math.max(0, Math.min(candidateIndices.length - 1, currentCandidateIndex + direction))
         ]
-      : ((direction < 0
-          ? visibleIndices[visibleIndices.length - 1]
-          : visibleIndices[0]) ??
-        (direction < 0
-          ? candidateIndices[candidateIndices.length - 1]
-          : candidateIndices[0]));
+      : ((direction < 0 ? visibleIndices[visibleIndices.length - 1] : visibleIndices[0]) ??
+        (direction < 0 ? candidateIndices[candidateIndices.length - 1] : candidateIndices[0]));
     this.selectedMessageIndex = nextIndex;
     this.applySelectedMessage();
     messages[nextIndex]?.scrollIntoView({
@@ -1191,9 +1063,7 @@ export class CodexRenderer {
   }
 
   private applySelectedMessage(): void {
-    const messages = Array.from(
-      this.history.querySelectorAll<HTMLElement>(".codex-message"),
-    );
+    const messages = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message"));
     messages.forEach((message, index) => {
       const selected = index === this.selectedMessageIndex;
       message.classList.toggle("codex-message-selected", selected);
@@ -1212,9 +1082,7 @@ export class CodexRenderer {
         bounds: messages[index].getBoundingClientRect(),
       }))
       .filter(
-        ({ bounds }) =>
-          bounds.bottom > historyBounds.top &&
-          bounds.top < historyBounds.bottom,
+        ({ bounds }) => bounds.bottom > historyBounds.top && bounds.top < historyBounds.bottom,
       )
       .map(({ index }) => index);
   }
@@ -1222,9 +1090,7 @@ export class CodexRenderer {
   private toggleSelectedMessage(): boolean {
     if (this.selectedMessageIndex < 0) return false;
     const message =
-      this.history.querySelectorAll<HTMLElement>(".codex-message")[
-        this.selectedMessageIndex
-      ];
+      this.history.querySelectorAll<HTMLElement>(".codex-message")[this.selectedMessageIndex];
     const details = message?.querySelector<HTMLDetailsElement>("details");
     if (!details) return false;
     details.open = !details.open;
@@ -1260,9 +1126,7 @@ export class CodexRenderer {
   private selectedMessageText(): string | undefined {
     if (this.selectedMessageIndex < 0) return undefined;
     const message =
-      this.history.querySelectorAll<HTMLElement>(".codex-message")[
-        this.selectedMessageIndex
-      ];
+      this.history.querySelectorAll<HTMLElement>(".codex-message")[this.selectedMessageIndex];
     if (!message) return undefined;
     const content = message.cloneNode(true) as HTMLElement;
     content
@@ -1287,16 +1151,12 @@ export class CodexRenderer {
 
   private handleSuggestionKeydown(event: KeyboardEvent): boolean {
     if (!this.suggestionCount()) return false;
-    if (
-      matchesShortcut(event, "suggestionNext") ||
-      matchesShortcut(event, "suggestionPrevious")
-    ) {
+    if (matchesShortcut(event, "suggestionNext") || matchesShortcut(event, "suggestionPrevious")) {
       event.preventDefault();
       const direction = matchesShortcut(event, "suggestionNext") ? 1 : -1;
       const suggestionCount = this.suggestionCount();
       this.fileSuggestionIndex =
-        (this.fileSuggestionIndex + direction + suggestionCount) %
-        suggestionCount;
+        (this.fileSuggestionIndex + direction + suggestionCount) % suggestionCount;
       this.renderFileSuggestions();
       return true;
     }
@@ -1319,8 +1179,7 @@ export class CodexRenderer {
     }
     if (
       matchesShortcut(event, "interrupt") &&
-      (this.settings.codexStatus === "working" ||
-        this.settings.codexStatus === "waiting")
+      (this.settings.codexStatus === "working" || this.settings.codexStatus === "waiting")
     ) {
       event.preventDefault();
       void window.peskApi.interruptCodexTurn();
@@ -1355,8 +1214,7 @@ export class CodexRenderer {
       const prompt = this.input.value.trim();
       if (
         prompt &&
-        (this.settings.codexStatus === "working" ||
-          this.settings.codexStatus === "waiting") &&
+        (this.settings.codexStatus === "working" || this.settings.codexStatus === "waiting") &&
         this.settings.codexThreadId
       ) {
         void window.peskApi.steerCodexTurn(prompt).then((next) => {
@@ -1414,9 +1272,7 @@ export class CodexRenderer {
   private renderFileSuggestions(): void {
     this.fileSuggestions.replaceChildren();
     const results =
-      this.suggestionKind === "command"
-        ? this.slashCommandResults
-        : this.fileSuggestionResults;
+      this.suggestionKind === "command" ? this.slashCommandResults : this.fileSuggestionResults;
     this.fileSuggestions.hidden = !results.length;
     if (this.suggestionKind === "command") {
       this.slashCommandResults.forEach((result, index) => {
@@ -1424,10 +1280,7 @@ export class CodexRenderer {
         button.type = "button";
         button.className = "codex-file-suggestion";
         button.setAttribute("role", "option");
-        button.setAttribute(
-          "aria-selected",
-          String(index === this.fileSuggestionIndex),
-        );
+        button.setAttribute("aria-selected", String(index === this.fileSuggestionIndex));
         const name = document.createElement("span");
         name.className = "codex-file-suggestion-name";
         name.textContent = result.command;
@@ -1450,21 +1303,14 @@ export class CodexRenderer {
       button.type = "button";
       button.className = "codex-file-suggestion";
       button.setAttribute("role", "option");
-      button.setAttribute(
-        "aria-selected",
-        String(index === this.fileSuggestionIndex),
-      );
+      button.setAttribute("aria-selected", String(index === this.fileSuggestionIndex));
       const name = document.createElement("span");
       name.className = "codex-file-suggestion-name";
       name.textContent = result.file_name;
-      const separatorIndex = Math.max(
-        result.path.lastIndexOf("/"),
-        result.path.lastIndexOf("\\"),
-      );
+      const separatorIndex = Math.max(result.path.lastIndexOf("/"), result.path.lastIndexOf("\\"));
       const parentPath = document.createElement("span");
       parentPath.className = "codex-file-suggestion-path";
-      parentPath.textContent =
-        separatorIndex >= 0 ? result.path.slice(0, separatorIndex) : ".";
+      parentPath.textContent = separatorIndex >= 0 ? result.path.slice(0, separatorIndex) : ".";
       const matchType = document.createElement("span");
       matchType.className = "codex-file-suggestion-type";
       matchType.textContent = result.match_type;
@@ -1485,12 +1331,8 @@ export class CodexRenderer {
     const bottom = top + button.offsetHeight;
     if (top < this.fileSuggestions.scrollTop) {
       this.fileSuggestions.scrollTop = top;
-    } else if (
-      bottom >
-      this.fileSuggestions.scrollTop + this.fileSuggestions.clientHeight
-    ) {
-      this.fileSuggestions.scrollTop =
-        bottom - this.fileSuggestions.clientHeight;
+    } else if (bottom > this.fileSuggestions.scrollTop + this.fileSuggestions.clientHeight) {
+      this.fileSuggestions.scrollTop = bottom - this.fileSuggestions.clientHeight;
     }
   }
 
@@ -1551,10 +1393,7 @@ export class CodexRenderer {
     const planContentChanged = (history ?? []).some((message, index) => {
       if (message.activity?.kind !== "plan") return false;
       const activityKey = message.itemId ?? `history-${index}`;
-      return (
-        this.renderedPlanDetails.get(activityKey) !==
-        (message.activity.details ?? "")
-      );
+      return this.renderedPlanDetails.get(activityKey) !== (message.activity.details ?? "");
     });
     if (
       this.renderedHistoryStructureKey &&
@@ -1570,24 +1409,15 @@ export class CodexRenderer {
     }
     const wasAtBottom =
       this.historyInitialized &&
-      this.history.scrollTop + this.history.clientHeight >=
-        this.history.scrollHeight - 24;
+      this.history.scrollTop + this.history.clientHeight >= this.history.scrollHeight - 24;
     const openActivityKeys = new Set(
-      Array.from(
-        this.history.querySelectorAll<HTMLDetailsElement>(
-          "details[data-activity-key]",
-        ),
-      )
+      Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
         .filter((details) => details.open)
         .map((details) => details.dataset.activityKey)
         .filter((key): key is string => Boolean(key)),
     );
     const renderedActivityKeys = new Set(
-      Array.from(
-        this.history.querySelectorAll<HTMLElement>(
-          "details[data-activity-key]",
-        ),
-      )
+      Array.from(this.history.querySelectorAll<HTMLElement>("details[data-activity-key]"))
         .map((details) => details.dataset.activityKey)
         .filter((key): key is string => Boolean(key)),
     );
@@ -1613,39 +1443,30 @@ export class CodexRenderer {
         bubble.classList.add(`codex-activity-${message.activity.kind}`);
         if (
           message.activity.kind === "command" &&
-          (message.activity.status === "failed" ||
-            message.activity.status === "declined")
+          (message.activity.status === "failed" || message.activity.status === "declined")
         ) {
           bubble.classList.add("codex-activity-command-failed");
         }
         if (isReviewActivity(message.activity)) {
           bubble.classList.add("codex-activity-review");
         }
-        if (message.activity.output)
-          bubble.classList.add("codex-activity-output");
+        if (message.activity.output) bubble.classList.add("codex-activity-output");
       }
       if (message.temporary) bubble.classList.add("codex-message-working");
       const activityKey = message.itemId ?? `history-${index}`;
       if (message.itemId) bubble.dataset.messageItemId = message.itemId;
       if (message.activity?.kind === "plan") {
-        this.renderedPlanDetails.set(
-          activityKey,
-          message.activity.details ?? "",
-        );
+        this.renderedPlanDetails.set(activityKey, message.activity.details ?? "");
       }
       bubble.append(
-        this.renderMessageContent(
-          message,
-          activityKey,
-          openActivityKeys,
-          renderedActivityKeys,
-        ),
+        this.renderMessageContent(message, activityKey, openActivityKeys, renderedActivityKeys),
       );
       const time = document.createElement("time");
       time.className = "codex-message-time";
-      time.textContent = new Date(
-        message.timestamp ?? Date.now(),
-      ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      time.textContent = new Date(message.timestamp ?? Date.now()).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
       bubble.append(time);
       if (message.approval) this.renderApproval(bubble, message);
       this.history.append(bubble);
@@ -1666,9 +1487,7 @@ export class CodexRenderer {
           const preview = document.createElement("img");
           preview.className = "codex-queued-submission-image";
           preview.src = image.url;
-          preview.alt = image.name
-            ? `Queued image: ${image.name}`
-            : "Queued image";
+          preview.alt = image.name ? `Queued image: ${image.name}` : "Queued image";
           item.append(preview);
         }
         item.title = "Queued follow-up";
@@ -1683,20 +1502,16 @@ export class CodexRenderer {
     this.historyInitialized = true;
   }
 
-  private updateActivePlanConfirmation(
-    history: PeskSettings["codexHistory"],
-  ): void {
+  private updateActivePlanConfirmation(history: PeskSettings["codexHistory"]): void {
     this.activePlanConfirmation = undefined;
     const lastMessage = history?.[history.length - 1];
     if (
       lastMessage?.activity?.kind !== "plan" ||
-      (lastMessage.activity.status !== "completed" &&
-        lastMessage.activity.status !== "complete")
+      (lastMessage.activity.status !== "completed" && lastMessage.activity.status !== "complete")
     ) {
       return;
     }
-    const activityKey =
-      lastMessage.itemId ?? `history-${(history?.length ?? 1) - 1}`;
+    const activityKey = lastMessage.itemId ?? `history-${(history?.length ?? 1) - 1}`;
     if (this.dismissedPlanConfirmations.has(activityKey)) return;
     this.activePlanConfirmation = {
       key: activityKey,
@@ -1708,26 +1523,17 @@ export class CodexRenderer {
     const planUpdates = (history ?? []).filter((message, index) => {
       if (message.activity?.kind !== "plan") return false;
       const activityKey = message.itemId ?? `history-${index}`;
-      return (
-        this.renderedPlanDetails.get(activityKey) !==
-        (message.activity.details ?? "")
-      );
+      return this.renderedPlanDetails.get(activityKey) !== (message.activity.details ?? "");
     });
     if (!planUpdates.length) return true;
     const activityDetails = Array.from(
-      this.history.querySelectorAll<HTMLDetailsElement>(
-        "details[data-activity-key]",
-      ),
+      this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"),
     );
     if (
       !planUpdates.every((message, index) => {
         const historyIndex = history.indexOf(message);
-        const activityKey =
-          message.itemId ??
-          `history-${historyIndex >= 0 ? historyIndex : index}`;
-        return activityDetails.some(
-          (details) => details.dataset.activityKey === activityKey,
-        );
+        const activityKey = message.itemId ?? `history-${historyIndex >= 0 ? historyIndex : index}`;
+        return activityDetails.some((details) => details.dataset.activityKey === activityKey);
       })
     ) {
       return false;
@@ -1743,22 +1549,15 @@ export class CodexRenderer {
           if (message.activity?.kind !== "plan") continue;
           const activityKey = message.itemId ?? `history-${index}`;
           const details = Array.from(
-            this.history.querySelectorAll<HTMLDetailsElement>(
-              "details[data-activity-key]",
-            ),
+            this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"),
           ).find((candidate) => candidate.dataset.activityKey === activityKey);
-          const content = details?.querySelector<HTMLElement>(
-            ".codex-plan-content",
-          );
+          const content = details?.querySelector<HTMLElement>(".codex-plan-content");
           if (!content) {
             this.renderHistory(nextHistory);
             return;
           }
           content.innerHTML = renderMarkdown(message.activity.details ?? "");
-          this.renderedPlanDetails.set(
-            activityKey,
-            message.activity.details ?? "",
-          );
+          this.renderedPlanDetails.set(activityKey, message.activity.details ?? "");
         }
         requestAnimationFrame(() => {
           this.history.scrollTop = this.history.scrollHeight;
@@ -1780,8 +1579,7 @@ export class CodexRenderer {
       details.dataset.activityKey = activityKey;
       details.open =
         openActivityKeys.has(activityKey) ||
-        (!renderedActivityKeys.has(activityKey) &&
-          message.activity.userInitiated === true);
+        (!renderedActivityKeys.has(activityKey) && message.activity.userInitiated === true);
       const summary = document.createElement("summary");
       const command = message.activity.command?.replace(/\s+/g, " ").trim();
       summary.textContent = `Command · ${message.activity.status ?? "in progress"}`;
@@ -1810,9 +1608,7 @@ export class CodexRenderer {
       const details = document.createElement("details");
       details.className = "codex-plan-details";
       details.dataset.activityKey = activityKey;
-      details.open =
-        openActivityKeys.has(activityKey) ||
-        !renderedActivityKeys.has(activityKey);
+      details.open = openActivityKeys.has(activityKey) || !renderedActivityKeys.has(activityKey);
       const summary = document.createElement("summary");
       summary.textContent = `Plan · ${message.activity.status ?? "in progress"}`;
       details.append(summary);
@@ -1826,17 +1622,14 @@ export class CodexRenderer {
       const details = document.createElement("details");
       details.className = "codex-activity-details-block";
       details.dataset.activityKey = activityKey;
-      details.open =
-        openActivityKeys.has(activityKey) || isReviewActivity(message.activity);
+      details.open = openActivityKeys.has(activityKey) || isReviewActivity(message.activity);
       const summary = document.createElement("summary");
       const label = activityLabel(message.activity.kind);
       summary.textContent = `${label} · ${message.activity.status ?? "in progress"}`;
       if (message.activity.summary) {
         const query = document.createElement("span");
         query.className = "codex-activity-summary-detail";
-        query.textContent = message.activity.summary
-          .replace(/\s+/g, " ")
-          .trim();
+        query.textContent = message.activity.summary.replace(/\s+/g, " ").trim();
         summary.append(query);
       }
       details.append(summary);
@@ -1857,18 +1650,13 @@ export class CodexRenderer {
       const preview = document.createElement("img");
       preview.className = "codex-message-image";
       preview.src = image.url;
-      preview.alt = image.name
-        ? `Attached image: ${image.name}`
-        : "Attached image";
+      preview.alt = image.name ? `Attached image: ${image.name}` : "Attached image";
       content.append(preview);
     }
     return content;
   }
 
-  private renderPlanImplementationPrompt(
-    activityKey: string,
-    planText: string,
-  ): HTMLElement {
+  private renderPlanImplementationPrompt(activityKey: string, planText: string): HTMLElement {
     const prompt = document.createElement("section");
     prompt.className = "codex-plan-implementation-prompt";
     prompt.dataset.planConfirmationKey = activityKey;
@@ -1879,21 +1667,13 @@ export class CodexRenderer {
 
     const form = document.createElement("form");
     const choices = [
-      [
-        "implement",
-        "Yes, implement this plan",
-        "Switch to Default and start coding.",
-      ],
+      ["implement", "Yes, implement this plan", "Switch to Default and start coding."],
       [
         "clear-context",
         "Yes, clear context and implement",
         "Fresh thread. The completed plan will be included.",
       ],
-      [
-        "stay-plan",
-        "No, stay in Plan mode",
-        "Continue planning with the model.",
-      ],
+      ["stay-plan", "No, stay in Plan mode", "Continue planning with the model."],
     ] as const;
     for (const [value, labelText, descriptionText] of choices) {
       const label = document.createElement("label");
@@ -1914,16 +1694,11 @@ export class CodexRenderer {
     form.append(submit);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const selected = form.querySelector<HTMLInputElement>(
-        "input[type='radio']:checked",
-      )?.value;
+      const selected = form.querySelector<HTMLInputElement>("input[type='radio']:checked")?.value;
       if (!selected) return;
       this.dismissedPlanConfirmations.add(activityKey);
       if (selected === "stay-plan") {
-        this.renderHistory(
-          this.settings.codexHistory,
-          Boolean(this.settings.codexThreadId),
-        );
+        this.renderHistory(this.settings.codexHistory, Boolean(this.settings.codexThreadId));
         this.renderUserInput();
         this.form.hidden = false;
         this.focusChatInput();
@@ -1935,10 +1710,7 @@ export class CodexRenderer {
         .then((next) => {
           this.updateSettings(next);
           this.focusChatInput();
-          this.renderHistory(
-            this.settings.codexHistory,
-            Boolean(this.settings.codexThreadId),
-          );
+          this.renderHistory(this.settings.codexHistory, Boolean(this.settings.codexThreadId));
         });
     });
     prompt.append(form);
@@ -1957,9 +1729,7 @@ export class CodexRenderer {
     const details = document.createElement("details");
     details.className = "codex-file-change-details";
     details.dataset.activityKey = activityKey;
-    details.open =
-      openActivityKeys.has(activityKey) ||
-      !renderedActivityKeys.has(activityKey);
+    details.open = openActivityKeys.has(activityKey) || !renderedActivityKeys.has(activityKey);
 
     const summary = document.createElement("summary");
     summary.textContent = `File change · ${activity.status ?? "in progress"}`;
@@ -1988,24 +1758,21 @@ export class CodexRenderer {
   }
 
   private renderWorkingStatus(): void {
-    if (this.workingTimer !== undefined)
-      window.clearInterval(this.workingTimer);
+    if (this.workingTimer !== undefined) window.clearInterval(this.workingTimer);
     this.workingTimer = undefined;
     const since = this.settings.codexWorkingSince;
     const worked = this.settings.codexWorkedElapsed;
     this.workingStatus.hidden = since === undefined && worked === undefined;
     if (since === undefined) {
       this.workingStatus.classList.add("codex-working-status-complete");
-      if (this.workingLabelTimer !== undefined)
-        window.clearInterval(this.workingLabelTimer);
+      if (this.workingLabelTimer !== undefined) window.clearInterval(this.workingLabelTimer);
       this.workingLabelTimer = undefined;
       this.workingLabelSince = undefined;
       this.workingStatus.classList.toggle(
         "codex-working-status-interrupted",
         Boolean(this.settings.codexInterrupted),
       );
-      this.workingStatus.firstElementChild!.textContent = this.settings
-        .codexInterrupted
+      this.workingStatus.firstElementChild!.textContent = this.settings.codexInterrupted
         ? "Conversation interrupted"
         : "Worked for";
       this.workingElapsed.textContent = formatElapsed(worked ?? 0);
@@ -2013,12 +1780,8 @@ export class CodexRenderer {
     }
     this.workingStatus.classList.remove("codex-working-status-complete");
     this.workingStatus.classList.remove("codex-working-status-interrupted");
-    if (
-      this.workingLabelTimer === undefined ||
-      this.workingLabelSince !== since
-    ) {
-      if (this.workingLabelTimer !== undefined)
-        window.clearInterval(this.workingLabelTimer);
+    if (this.workingLabelTimer === undefined || this.workingLabelSince !== since) {
+      if (this.workingLabelTimer !== undefined) window.clearInterval(this.workingLabelTimer);
       this.workingLabelSince = since;
       const workingLabel = this.workingStatus.firstElementChild!;
       const fullLabel = "Working...";
@@ -2050,10 +1813,7 @@ export class CodexRenderer {
     this.workingTimer = window.setInterval(update, 1000);
   }
 
-  private renderApproval(
-    bubble: HTMLElement,
-    message: PeskSettings["codexHistory"][number],
-  ): void {
+  private renderApproval(bubble: HTMLElement, message: PeskSettings["codexHistory"][number]): void {
     const approval = message.approval;
     if (!approval) return;
     bubble.classList.add(`codex-approval-${approval.state}`);
@@ -2080,10 +1840,7 @@ export class CodexRenderer {
         button.textContent = option.label;
         button.title = option.description;
         button.addEventListener("click", () =>
-          window.peskApi.respondCodexPermission(
-            approval.requestId ?? "",
-            option.id,
-          ),
+          window.peskApi.respondCodexPermission(approval.requestId ?? "", option.id),
         );
         actions.append(button);
       }
@@ -2091,8 +1848,7 @@ export class CodexRenderer {
     } else {
       const result = document.createElement("div");
       result.className = "codex-approval-result";
-      result.textContent =
-        approval.state === "approved" ? "Approved" : "Denied";
+      result.textContent = approval.state === "approved" ? "Approved" : "Denied";
       bubble.append(result);
     }
   }
@@ -2118,10 +1874,7 @@ function activityLabel(
 function isReviewActivity(
   activity: NonNullable<PeskSettings["codexHistory"][number]["activity"]>,
 ): boolean {
-  return (
-    activity.label === "enteredReviewMode" ||
-    activity.label === "exitedReviewMode"
-  );
+  return activity.label === "enteredReviewMode" || activity.label === "exitedReviewMode";
 }
 
 function formatElapsed(milliseconds: number): string {
@@ -2149,10 +1902,7 @@ function historyStructureKey(history: PeskSettings["codexHistory"]): string {
       activity: message.activity
         ? {
             ...message.activity,
-            details:
-              message.activity.kind === "plan"
-                ? undefined
-                : message.activity.details,
+            details: message.activity.kind === "plan" ? undefined : message.activity.details,
           }
         : undefined,
     })),
@@ -2205,8 +1955,7 @@ function sanitizeMarkdownHtml(html: string): string {
         const name = attribute.name.toLowerCase();
         const keep =
           child.tagName === "A" &&
-          ((name === "href" && /^(https?:|mailto:|#)/i.test(attribute.value)) ||
-            name === "title");
+          ((name === "href" && /^(https?:|mailto:|#)/i.test(attribute.value)) || name === "title");
         if (!keep) {
           child.removeAttribute(attribute.name);
         }
@@ -2269,22 +2018,13 @@ function formatReset(timestamp: number): string {
 }
 
 function formatPlan(plan: string): string {
-  return plan
-    .replaceAll("_", " ")
-    .replace(/(^| )\S/g, (letter) => letter.toUpperCase());
+  return plan.replaceAll("_", " ").replace(/(^| )\S/g, (letter) => letter.toUpperCase());
 }
 
-function formatRateLimitDetails(
-  limits: NonNullable<PeskSettings["codexRateLimits"]>,
-): string[] {
-  const formatWindow = (
-    label: string,
-    window: typeof limits.primary,
-  ): string => {
+function formatRateLimitDetails(limits: NonNullable<PeskSettings["codexRateLimits"]>): string[] {
+  const formatWindow = (label: string, window: typeof limits.primary): string => {
     if (!window) return `${label}: unavailable`;
-    const reset = window.resetsAt
-      ? ` · resets ${formatReset(window.resetsAt)}`
-      : "";
+    const reset = window.resetsAt ? ` · resets ${formatReset(window.resetsAt)}` : "";
     return `${label}: ${Math.round(window.usedPercent)}% used${reset}`;
   };
   return [

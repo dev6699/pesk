@@ -257,18 +257,9 @@ describe("PetWindowController", () => {
     controller.setCodexUpdateIndicator(true);
     controller.setFocusIndicator(true);
 
-    expect(pet.webContents.send).toHaveBeenCalledWith(
-      "pet-codex-update-changed",
-      true,
-    );
-    expect(pet.webContents.send).toHaveBeenCalledWith(
-      "pet-focus-changed",
-      true,
-    );
-    expect(pet.webContents.send).toHaveBeenCalledWith(
-      "pet-codex-update-changed",
-      false,
-    );
+    expect(pet.webContents.send).toHaveBeenCalledWith("pet-codex-update-changed", true);
+    expect(pet.webContents.send).toHaveBeenCalledWith("pet-focus-changed", true);
+    expect(pet.webContents.send).toHaveBeenCalledWith("pet-codex-update-changed", false);
   });
 
   test("clears the update indicator when focus arrives", () => {
@@ -367,8 +358,7 @@ describe("PetRenderer focus state", () => {
     }) as unknown as HTMLAudioElement;
 
   test("does not play automatically when working becomes idle or waiting", () => {
-    (globalThis as unknown as { window: typeof globalThis }).window =
-      globalThis;
+    (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
     const sound = createStatusSound();
 
     const renderer = new PetRenderer({
@@ -403,8 +393,7 @@ describe("PetRenderer focus state", () => {
   });
 
   test("does not play when the window is focused", () => {
-    (globalThis as unknown as { window: typeof globalThis }).window =
-      globalThis;
+    (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
     const sound = createStatusSound();
     const renderer = new PetRenderer({
       image: new FakeElement() as never,
@@ -433,8 +422,7 @@ describe("PetRenderer focus state", () => {
   });
 
   test("plays an explicit background notification while unfocused", () => {
-    (globalThis as unknown as { window: typeof globalThis }).window =
-      globalThis;
+    (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
     const sound = createStatusSound();
     const renderer = new PetRenderer({
       image: new FakeElement() as never,
@@ -455,8 +443,7 @@ describe("PetRenderer focus state", () => {
   });
 
   test("does not play automatically when the blue indicator activates", () => {
-    (globalThis as unknown as { window: typeof globalThis }).window =
-      globalThis;
+    (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
     const sound = createStatusSound();
     const pet = new FakeElement();
     const renderer = new PetRenderer({
@@ -485,8 +472,7 @@ describe("PetRenderer focus state", () => {
   });
 
   test("does not play the notification when disabled", () => {
-    (globalThis as unknown as { window: typeof globalThis }).window =
-      globalThis;
+    (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
     const sound = createStatusSound();
     const renderer = new PetRenderer({
       image: new FakeElement() as never,
@@ -514,8 +500,7 @@ describe("PetRenderer focus state", () => {
 
   test("shows the aggregate active count in the pet status", () => {
     jest.useFakeTimers();
-    (globalThis as unknown as { window: typeof globalThis }).window =
-      globalThis;
+    (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
     const now = Date.now();
     jest.setSystemTime(now);
     const statusLabel = { textContent: "" } as unknown as HTMLElement;

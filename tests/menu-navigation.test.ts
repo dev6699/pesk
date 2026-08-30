@@ -27,9 +27,7 @@ test("moves from preset search through preset items with Up and Down", async () 
       } as never),
     ),
     getAnimations: jest.fn(() => Promise.resolve([])),
-    getPresets: jest.fn(() =>
-      Promise.resolve([{ name: "First" }, { name: "Second" }]),
-    ),
+    getPresets: jest.fn(() => Promise.resolve([{ name: "First" }, { name: "Second" }])),
     getPairingDevices: jest.fn(() => Promise.resolve([])),
     onMenuUpdated: jest.fn(),
     onMenuFocusChanged: jest.fn(),
@@ -44,9 +42,7 @@ test("moves from preset search through preset items with Up and Down", async () 
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   const search = document.getElementById("preset-search") as HTMLInputElement;
-  const presets = Array.from(
-    document.querySelectorAll<HTMLButtonElement>("#preset-list button"),
-  );
+  const presets = Array.from(document.querySelectorAll<HTMLButtonElement>("#preset-list button"));
   expect(document.activeElement).toBe(search);
 
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));

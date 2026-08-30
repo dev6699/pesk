@@ -33,8 +33,7 @@ export class PetRenderer {
     this.updateStatus(this.settings);
     options.pet.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
-      if (event.target !== options.pet && event.target !== options.image)
-        return;
+      if (event.target !== options.pet && event.target !== options.image) return;
       if (this.settings.locked) return;
       window.peskApi.startDrag();
       window.getSelection()?.removeAllRanges();
@@ -51,8 +50,7 @@ export class PetRenderer {
     });
     options.pet.addEventListener("click", (event) => {
       if (event.button !== 0) return;
-      if (event.target !== options.pet && event.target !== options.image)
-        return;
+      if (event.target !== options.pet && event.target !== options.image) return;
       window.peskApi.focusPet();
     });
     options.pet.addEventListener("mouseup", () => window.peskApi.endDrag());
@@ -69,10 +67,7 @@ export class PetRenderer {
     this.updateStatusSound(next.codexStatusSoundUrl);
     this.updateStatus(next);
     this.updateAggregateStatus(next);
-    if (
-      animationChanged ||
-      (modeChanged && next.animationMode === "selected")
-    ) {
+    if (animationChanged || (modeChanged && next.animationMode === "selected")) {
       void this.selectAnimation(next.animation);
     }
     this.resizeElement();
@@ -86,10 +81,7 @@ export class PetRenderer {
       this.options.pet.classList.toggle("codex-update", false);
     }
     this.options.pet.classList.toggle("focused", focused);
-    this.options.pet.setAttribute(
-      "aria-label",
-      focused ? "Desktop pet (focused)" : "Desktop pet",
-    );
+    this.options.pet.setAttribute("aria-label", focused ? "Desktop pet (focused)" : "Desktop pet");
   }
 
   updateCodexUpdate(active: boolean): void {
@@ -108,19 +100,14 @@ export class PetRenderer {
     const animations = await window.peskApi.getAnimations();
     this.availableAnimations = animations;
     const selected =
-      animations.find(
-        (animation) => animation.name === this.settings.animation,
-      ) ??
+      animations.find((animation) => animation.name === this.settings.animation) ??
       animations.find((animation) => animation.name.toLowerCase() === "idle") ??
       animations[0];
     if (selected?.frames.length) this.applyAnimation(selected);
   }
 
   animate(now: number): void {
-    if (
-      !this.settings.paused &&
-      now - this.lastFrame > 1000 / this.animationFps
-    ) {
+    if (!this.settings.paused && now - this.lastFrame > 1000 / this.animationFps) {
       this.frame = (this.frame + 1) % this.animationFrames.length;
       this.options.image.src = this.animationFrames[this.frame];
       this.lastFrame = now;
@@ -168,26 +155,19 @@ export class PetRenderer {
       this.statusTimer = undefined;
     }
     const render = (): void => {
-      const label =
-        next.codexStatus[0].toUpperCase() + next.codexStatus.slice(1);
+      const label = next.codexStatus[0].toUpperCase() + next.codexStatus.slice(1);
       const elapsed =
         next.codexWorkingSince !== undefined
           ? ` · ${formatElapsed(Date.now() - next.codexWorkingSince)}`
           : "";
       this.options.statusLabel.textContent = `${label}${elapsed}`;
-      this.options.status.setAttribute(
-        "aria-label",
-        this.options.statusLabel.textContent,
-      );
+      this.options.status.setAttribute("aria-label", this.options.statusLabel.textContent);
       this.options.status.title = next.codexThreadId
         ? `Selected thread: ${next.codexThreadId}`
         : "Selected thread";
     };
     render();
-    if (
-      next.codexStatus === "working" &&
-      next.codexWorkingSince !== undefined
-    ) {
+    if (next.codexStatus === "working" && next.codexWorkingSince !== undefined) {
       this.statusTimer = window.setInterval(render, 1000);
     }
     this.options.status.className = `status-${next.codexStatus}`;
@@ -197,15 +177,10 @@ export class PetRenderer {
     const label = this.options.aggregateStatusLabel;
     if (!label) return;
     const otherThreads = next.codexThreadActivities.filter(
-      (activity) =>
-        activity.threadId !== next.codexThreadId && activity.status !== "idle",
+      (activity) => activity.threadId !== next.codexThreadId && activity.status !== "idle",
     );
-    const waitingCount = otherThreads.filter(
-      (activity) => activity.status === "waiting",
-    ).length;
-    const workingCount = otherThreads.filter(
-      (activity) => activity.status === "working",
-    ).length;
+    const waitingCount = otherThreads.filter((activity) => activity.status === "waiting").length;
+    const workingCount = otherThreads.filter((activity) => activity.status === "working").length;
     const counts = [
       waitingCount ? `Waiting · ${waitingCount}` : "",
       workingCount ? `Working · ${workingCount}` : "",
@@ -213,18 +188,13 @@ export class PetRenderer {
     const separator = document.createElement("span");
     separator.className = "aggregate-status-separator";
     separator.textContent = "|";
-    label.replaceChildren(
-      `Wait ${waitingCount}`,
-      separator,
-      `Work ${workingCount}`,
-    );
+    label.replaceChildren(`Wait ${waitingCount}`, separator, `Work ${workingCount}`);
     label.className = "";
     label.hidden = false;
     label.style.display = "inline-flex";
     label.title = otherThreads
       .map((activity) => {
-        const threadStatus =
-          activity.status[0].toUpperCase() + activity.status.slice(1);
+        const threadStatus = activity.status[0].toUpperCase() + activity.status.slice(1);
         const elapsed =
           activity.workingSince !== undefined
             ? ` · ${formatElapsed(Date.now() - activity.workingSince)}`

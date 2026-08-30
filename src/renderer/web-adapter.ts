@@ -1,14 +1,8 @@
 import { matchesShortcut } from "./shortcuts.js";
 
 const listeners = new Set<(settings: PeskSettings) => void>();
-const pendingFileSearches = new Map<
-  number,
-  (results: FuzzyFileSearchResult[]) => void
->();
-const pendingCommands = new Map<
-  number,
-  (result: { ok: boolean; state?: PeskSettings }) => void
->();
+const pendingFileSearches = new Map<number, (results: FuzzyFileSearchResult[]) => void>();
+const pendingCommands = new Map<number, (result: { ok: boolean; state?: PeskSettings }) => void>();
 let nextFileSearchId = 0;
 let nextCommandId = 0;
 let state: PeskSettings | undefined;
@@ -48,9 +42,7 @@ const initialState = new Promise<PeskSettings>((resolve) => {
   resolveInitialState = resolve;
 });
 
-function setConnectionStatus(
-  status: "connecting" | "connected" | "reconnecting" | "failed",
-): void {
+function setConnectionStatus(status: "connecting" | "connected" | "reconnecting" | "failed"): void {
   const element = document.getElementById("web-connection-status");
   if (!element) return;
   const labels = {
@@ -134,9 +126,7 @@ async function enableNotifications(): Promise<void> {
     return;
   }
   if (Notification.permission !== "granted") {
-    setNotificationStatus(
-      Notification.permission === "denied" ? "blocked" : "not-configured",
-    );
+    setNotificationStatus(Notification.permission === "denied" ? "blocked" : "not-configured");
     await Notification.requestPermission();
   }
   if (Notification.permission !== "granted") {
@@ -150,9 +140,7 @@ async function enableNotifications(): Promise<void> {
       headers: { Authorization: `Bearer ${credential}` },
     });
     if (configResponse.status === 401) {
-      throw new Error(
-        "This device pairing is no longer authorized. Pair it again.",
-      );
+      throw new Error("This device pairing is no longer authorized. Pair it again.");
     }
     if (!configResponse.ok) throw new Error("Unable to load push settings");
     const config = (await configResponse.json()) as { publicKey?: string };
@@ -161,9 +149,7 @@ async function enableNotifications(): Promise<void> {
       (await registration.pushManager.getSubscription()) ??
       (await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: decodeBase64(
-          config.publicKey,
-        ) as unknown as BufferSource,
+        applicationServerKey: decodeBase64(config.publicKey) as unknown as BufferSource,
       }));
     const response = await fetch("/web-push/subscribe", {
       method: "POST",
@@ -174,9 +160,7 @@ async function enableNotifications(): Promise<void> {
       body: JSON.stringify(subscription),
     });
     if (response.status === 401) {
-      throw new Error(
-        "This device pairing is no longer authorized. Pair it again.",
-      );
+      throw new Error("This device pairing is no longer authorized. Pair it again.");
     }
     if (!response.ok) throw new Error("Unable to save push subscription");
     setNotificationStatus("ready");
@@ -194,9 +178,7 @@ function updateNotificationPrompt(): void {
   if (!header || !("Notification" in window)) return;
   document.getElementById("web-notification-prompt")?.remove();
   if (Notification.permission === "granted") return;
-  setNotificationStatus(
-    Notification.permission === "denied" ? "blocked" : "not-configured",
-  );
+  setNotificationStatus(Notification.permission === "denied" ? "blocked" : "not-configured");
   const button = document.createElement("button");
   button.id = "web-notification-prompt";
   button.type = "button";
@@ -221,8 +203,7 @@ async function pairFromUrl(): Promise<void> {
   });
   if (!response.ok) throw new Error("Pairing code expired or invalid");
   const result = (await response.json()) as { credential?: string };
-  if (!result.credential)
-    throw new Error("Pairing did not return a credential");
+  if (!result.credential) throw new Error("Pairing did not return a credential");
   credential = result.credential;
   saveCredential(credential);
   history.replaceState({}, "", "/web-chat.html");
@@ -272,11 +253,7 @@ function connect(): void {
       const resolve = pendingFileSearches.get(result.requestId);
       if (!resolve) return;
       pendingFileSearches.delete(result.requestId);
-      resolve(
-        Array.isArray(result.files)
-          ? (result.files as FuzzyFileSearchResult[])
-          : [],
-      );
+      resolve(Array.isArray(result.files) ? (result.files as FuzzyFileSearchResult[]) : []);
       return;
     }
     if (type === "commandResult") {
@@ -321,9 +298,7 @@ function connect(): void {
     }
     setConnectionStatus("reconnecting");
     showConnectionError(
-      authenticated
-        ? "Web chat disconnected. Reconnecting..."
-        : "Connecting to web chat...",
+      authenticated ? "Web chat disconnected. Reconnecting..." : "Connecting to web chat...",
     );
     retryTimer = window.setTimeout(() => {
       retryTimer = undefined;
@@ -339,10 +314,7 @@ function reconnectImmediately(): void {
     window.clearTimeout(retryTimer);
     retryTimer = undefined;
   }
-  if (
-    socket.readyState === WebSocket.OPEN ||
-    socket.readyState === WebSocket.CONNECTING
-  ) {
+  if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
     return;
   }
   retryDelay = 1000;
@@ -361,18 +333,12 @@ if (!pairingCode || credential) {
       void enableNotifications();
     })
     .catch((error) => {
-      showConnectionError(
-        error instanceof Error ? error.message : "Pairing failed",
-      );
+      showConnectionError(error instanceof Error ? error.message : "Pairing failed");
       setConnectionStatus("failed");
     });
 }
 updateNotificationPrompt();
-if (
-  credential &&
-  "Notification" in window &&
-  Notification.permission === "granted"
-) {
+if (credential && "Notification" in window && Notification.permission === "granted") {
   void enableNotifications();
 }
 const connectionStatus = document.getElementById("web-connection-status");
@@ -393,8 +359,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 function send(type: string, data: Record<string, unknown> = {}): void {
-  if (socket.readyState === WebSocket.OPEN)
-    socket.send(JSON.stringify({ type, ...data }));
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type, ...data }));
 }
 
 function sendCommand(
@@ -413,33 +378,25 @@ function sendCommand(
 
 const webApi = {
   getSettings: () => (state ? Promise.resolve(state) : initialState),
-  onSettingsChanged: (callback: (settings: PeskSettings) => void) =>
-    listeners.add(callback),
+  onSettingsChanged: (callback: (settings: PeskSettings) => void) => listeners.add(callback),
   refreshCodexRateLimits: async () => send("refreshRateLimits"),
   getChatSize: async () => ({ width: innerWidth, height: innerHeight }),
   selectCodexThread: (threadId: string) => send("selectThread", { threadId }),
-  setCodexCollaborationMode: (mode: "default" | "plan") =>
-    send("setCollaborationMode", { mode }),
-  submitCodexPrompt: async (
-    prompt: string,
-    images?: Array<{ url: string; name: string }>,
-  ) => (await sendCommand("submitPrompt", { prompt, images })).state ?? state!,
+  setCodexCollaborationMode: (mode: "default" | "plan") => send("setCollaborationMode", { mode }),
+  submitCodexPrompt: async (prompt: string, images?: Array<{ url: string; name: string }>) =>
+    (await sendCommand("submitPrompt", { prompt, images })).state ?? state!,
   startCodexReview: async (instructions: string) =>
     (await sendCommand("startReview", { instructions })).state ?? state!,
   implementCodexPlan: async (planText: string, clearContext: boolean) =>
-    (await sendCommand("implementPlan", { planText, clearContext })).state ??
-    state!,
+    (await sendCommand("implementPlan", { planText, clearContext })).state ?? state!,
   interruptCodexTurn: async () => (await sendCommand("interruptTurn")).ok,
   steerCodexTurn: async (prompt: string) =>
     (await sendCommand("steerTurn", { prompt })).state ?? state!,
   respondCodexPermission: (requestId: string | number, optionId: string) =>
     send("respondPermission", { requestId, optionId }),
-  respondCodexUserInput: (
-    requestId: string | number,
-    answers: Record<string, string[]>,
-  ) => send("respondUserInput", { requestId, answers }),
-  focusCodexInput: () =>
-    document.querySelector<HTMLTextAreaElement>("#codex-chat-input")?.focus(),
+  respondCodexUserInput: (requestId: string | number, answers: Record<string, string[]>) =>
+    send("respondUserInput", { requestId, answers }),
+  focusCodexInput: () => document.querySelector<HTMLTextAreaElement>("#codex-chat-input")?.focus(),
   setChatFileDialogOpen: () => undefined,
   onCodexInputFocus: () => undefined,
   onCodexUserInputFocus: () => undefined,

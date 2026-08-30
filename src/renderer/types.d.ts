@@ -95,8 +95,7 @@ interface CodexRuntimeState {
     itemId?: string;
     activity?: {
       kind: "command" | "fileChange" | "webSearch" | "tool" | "plan" | "other";
-      source?:
-        "agent" | "userShell" | "unifiedExecStartup" | "unifiedExecInteraction";
+      source?: "agent" | "userShell" | "unifiedExecStartup" | "unifiedExecInteraction";
       userInitiated?: boolean;
       label?: string;
       status?: string;
@@ -141,9 +140,7 @@ interface Window {
     togglePetVisibility: () => void;
     createPairing: (
       name: string,
-    ) => Promise<
-      { expiresAt: number; qrDataUrl: string; deviceName: string } | undefined
-    >;
+    ) => Promise<{ expiresAt: number; qrDataUrl: string; deviceName: string } | undefined>;
     getPairingStatus: () => Promise<{
       active: boolean;
       pairedDeviceName?: string;
@@ -166,32 +163,20 @@ interface Window {
     setCodexCollaborationMode: (mode: "default" | "plan") => void;
     focusCodexInput: () => void;
     setChatFileDialogOpen: (open: boolean) => void;
-    implementCodexPlan: (
-      planText: string,
-      clearContext: boolean,
-    ) => Promise<PeskSettings>;
-    respondCodexUserInput: (
-      requestId: string | number,
-      answers: Record<string, string[]>,
-    ) => void;
+    implementCodexPlan: (planText: string, clearContext: boolean) => Promise<PeskSettings>;
+    respondCodexUserInput: (requestId: string | number, answers: Record<string, string[]>) => void;
     interruptCodexTurn: () => Promise<boolean>;
     steerCodexTurn: (prompt: string) => Promise<PeskSettings>;
     selectAnimation: (name: string) => void;
     setAnimationMode: (mode: "selected" | "shuffle") => void;
     quitPesk: () => void;
-    respondCodexPermission: (
-      requestId: string | number,
-      optionId: string,
-    ) => void;
+    respondCodexPermission: (requestId: string | number, optionId: string) => void;
     submitCodexPrompt: (
       prompt: string,
       images?: Array<{ url: string; name: string }>,
     ) => Promise<PeskSettings>;
     startCodexReview: (instructions: string) => Promise<PeskSettings>;
-    fuzzyFileSearch: (
-      query: string,
-      roots: string[],
-    ) => Promise<FuzzyFileSearchResult[]>;
+    fuzzyFileSearch: (query: string, roots: string[]) => Promise<FuzzyFileSearchResult[]>;
     getPresets: () => Promise<{ name: string }[]>;
     runPreset: (name: string) => void;
     closeMenuWindow: () => void;

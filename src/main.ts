@@ -76,11 +76,7 @@ function wireChatWindow(): void {
   });
   chatWindow.on("blur", () => {
     setTimeout(() => {
-      if (
-        !chatFileDialogOpen &&
-        !pet.window?.isFocused() &&
-        !chat.window?.isFocused()
-      ) {
+      if (!chatFileDialogOpen && !pet.window?.isFocused() && !chat.window?.isFocused()) {
         pet.setFocusIndicator(false);
         chat.hide();
       }
@@ -135,10 +131,7 @@ function publishRendererState(): void {
   webServer?.broadcast(state);
 }
 
-function handleWebCommand(
-  message: unknown,
-  reply: (message: unknown) => void,
-): void {
+function handleWebCommand(message: unknown, reply: (message: unknown) => void): void {
   if (!message || typeof message !== "object") return;
   const command = message as Record<string, unknown>;
   const requestId = command.requestId;
@@ -150,10 +143,7 @@ function handleWebCommand(
     case "submitPrompt":
       if (typeof command.prompt === "string") {
         replyCommand(
-          codexController.submitPromptWithImages(
-            command.prompt,
-            validImageInputs(command.images),
-          ),
+          codexController.submitPromptWithImages(command.prompt, validImageInputs(command.images)),
         );
       } else {
         replyCommand(false);
@@ -167,20 +157,14 @@ function handleWebCommand(
       }
       break;
     case "implementPlan":
-      if (
-        typeof command.planText === "string" &&
-        typeof command.clearContext === "boolean"
-      ) {
-        replyCommand(
-          codexController.implementPlan(command.planText, command.clearContext),
-        );
+      if (typeof command.planText === "string" && typeof command.clearContext === "boolean") {
+        replyCommand(codexController.implementPlan(command.planText, command.clearContext));
       } else {
         replyCommand(false);
       }
       break;
     case "selectThread":
-      if (typeof command.threadId === "string")
-        codexController.selectThread(command.threadId);
+      if (typeof command.threadId === "string") codexController.selectThread(command.threadId);
       break;
     case "setCollaborationMode":
       if (command.mode === "default" || command.mode === "plan") {
@@ -197,8 +181,7 @@ function handleWebCommand(
       break;
     case "respondPermission":
       if (
-        (typeof command.requestId === "string" ||
-          typeof command.requestId === "number") &&
+        (typeof command.requestId === "string" || typeof command.requestId === "number") &&
         typeof command.optionId === "string"
       ) {
         codexController.respondPermission(command.requestId, command.optionId);
@@ -206,22 +189,14 @@ function handleWebCommand(
       break;
     case "respondUserInput":
       if (
-        (typeof command.requestId === "string" ||
-          typeof command.requestId === "number") &&
+        (typeof command.requestId === "string" || typeof command.requestId === "number") &&
         command.answers &&
         typeof command.answers === "object"
       ) {
         const answers = Object.fromEntries(
           Object.entries(command.answers).flatMap(([id, value]) =>
             Array.isArray(value)
-              ? [
-                  [
-                    id,
-                    value.filter(
-                      (item): item is string => typeof item === "string",
-                    ),
-                  ],
-                ]
+              ? [[id, value.filter((item): item is string => typeof item === "string")]]
               : [],
           ),
         );
@@ -233,31 +208,24 @@ function handleWebCommand(
       break;
     case "fuzzyFileSearch":
       if (
-        (typeof command.requestId === "string" ||
-          typeof command.requestId === "number") &&
+        (typeof command.requestId === "string" || typeof command.requestId === "number") &&
         typeof command.query === "string" &&
         Array.isArray(command.roots)
       ) {
-        const roots = command.roots.filter(
-          (root): root is string => typeof root === "string",
+        const roots = command.roots.filter((root): root is string => typeof root === "string");
+        void codexController.fuzzyFileSearch(command.query, roots).then((files) =>
+          reply({
+            type: "fuzzyFileSearchResult",
+            requestId: command.requestId,
+            files,
+          }),
         );
-        void codexController
-          .fuzzyFileSearch(command.query, roots)
-          .then((files) =>
-            reply({
-              type: "fuzzyFileSearchResult",
-              requestId: command.requestId,
-              files,
-            }),
-          );
       }
       break;
   }
 }
 
-function validImageInputs(
-  value: unknown,
-): Array<{ url: string; name: string }> {
+function validImageInputs(value: unknown): Array<{ url: string; name: string }> {
   if (!Array.isArray(value)) return [];
   return value.filter((image): image is { url: string; name: string } => {
     if (!image || typeof image !== "object") return false;
@@ -282,14 +250,8 @@ app.whenReady().then(() => {
     tlsCert: config.webTlsCert,
     rendererDirectory: path.join(__dirname, "renderer"),
     webPushVapidPath: path.join(app.getPath("userData"), "web-push-vapid.json"),
-    webPushSubscriptionsPath: path.join(
-      app.getPath("userData"),
-      "web-push-subscriptions.json",
-    ),
-    deviceCredentialsPath: path.join(
-      app.getPath("userData"),
-      "web-devices.json",
-    ),
+    webPushSubscriptionsPath: path.join(app.getPath("userData"), "web-push-subscriptions.json"),
+    deviceCredentialsPath: path.join(app.getPath("userData"), "web-devices.json"),
     getState: rendererSettings,
     handleCommand: (message, reply) => handleWebCommand(message, reply),
     debug,
@@ -308,8 +270,7 @@ app.whenReady().then(() => {
     hideChat: () => {
       if (!chat.window?.isFocused()) chat.hide();
       pet.setFocusIndicator(
-        (pet.window?.isFocused() ?? false) ||
-          (chat.window?.isFocused() ?? false),
+        (pet.window?.isFocused() ?? false) || (chat.window?.isFocused() ?? false),
       );
     },
     hideChatImmediately: () => chat.hide(),
@@ -341,15 +302,9 @@ app.whenReady().then(() => {
   });
   codexController.setSocketUrl(config.codexAppServerUrl);
   const configuredAnimations = pet.getAnimations();
-  if (
-    !configuredAnimations.some(
-      (animation) => animation.name === settings.animation,
-    )
-  ) {
+  if (!configuredAnimations.some((animation) => animation.name === settings.animation)) {
     settings.animation =
-      configuredAnimations.find(
-        (animation) => animation.name.toLowerCase() === "idle",
-      )?.name ??
+      configuredAnimations.find((animation) => animation.name.toLowerCase() === "idle")?.name ??
       configuredAnimations[0]?.name ??
       "idle";
     persistSettings();
@@ -379,14 +334,11 @@ app.whenReady().then(() => {
   ipcMain.handle("revoke-pairing-device", (_event, id: unknown) => {
     if (typeof id === "string") webServer.revokeDevice(id);
   });
-  ipcMain.handle(
-    "set-pairing-device-push",
-    (_event, id: unknown, enabled: unknown) => {
-      if (typeof id === "string" && typeof enabled === "boolean") {
-        webServer.setDevicePushEnabled(id, enabled);
-      }
-    },
-  );
+  ipcMain.handle("set-pairing-device-push", (_event, id: unknown, enabled: unknown) => {
+    if (typeof id === "string" && typeof enabled === "boolean") {
+      webServer.setDevicePushEnabled(id, enabled);
+    }
+  });
   ipcMain.on("select-codex-thread", (_event, threadId: unknown) => {
     if (typeof threadId === "string") codexController.selectThread(threadId);
   });
@@ -402,81 +354,54 @@ app.whenReady().then(() => {
   ipcMain.on("chat-file-dialog", (_event, open: unknown) => {
     chatFileDialogOpen = open === true;
   });
-  ipcMain.handle(
-    "implement-codex-plan",
-    (_event, planText: unknown, clearContext: unknown) => {
-      if (typeof planText !== "string" || typeof clearContext !== "boolean") {
-        return rendererSettings();
-      }
-      codexController.implementPlan(planText, clearContext);
+  ipcMain.handle("implement-codex-plan", (_event, planText: unknown, clearContext: unknown) => {
+    if (typeof planText !== "string" || typeof clearContext !== "boolean") {
       return rendererSettings();
-    },
-  );
-  ipcMain.on(
-    "respond-codex-user-input",
-    (_event, requestId: unknown, answers: unknown) => {
-      if (
-        (typeof requestId !== "string" && typeof requestId !== "number") ||
-        !answers ||
-        typeof answers !== "object"
-      ) {
-        return;
-      }
-      const normalized = Object.fromEntries(
-        Object.entries(answers).flatMap(([questionId, value]) => {
-          if (!Array.isArray(value)) return [];
-          const selected = value.filter(
-            (answer): answer is string => typeof answer === "string",
-          );
-          return [[questionId, selected]];
-        }),
-      );
-      codexController.respondUserInput(normalized);
-    },
-  );
-  ipcMain.on("select-animation", (_event, name: string) =>
-    pet.selectAnimation(name),
-  );
-  ipcMain.on(
-    "set-animation-mode",
-    (_event, mode: PeskSettings["animationMode"]) => {
-      if (mode === "selected" || mode === "shuffle") pet.setAnimationMode(mode);
-    },
-  );
+    }
+    codexController.implementPlan(planText, clearContext);
+    return rendererSettings();
+  });
+  ipcMain.on("respond-codex-user-input", (_event, requestId: unknown, answers: unknown) => {
+    if (
+      (typeof requestId !== "string" && typeof requestId !== "number") ||
+      !answers ||
+      typeof answers !== "object"
+    ) {
+      return;
+    }
+    const normalized = Object.fromEntries(
+      Object.entries(answers).flatMap(([questionId, value]) => {
+        if (!Array.isArray(value)) return [];
+        const selected = value.filter((answer): answer is string => typeof answer === "string");
+        return [[questionId, selected]];
+      }),
+    );
+    codexController.respondUserInput(normalized);
+  });
+  ipcMain.on("select-animation", (_event, name: string) => pet.selectAnimation(name));
+  ipcMain.on("set-animation-mode", (_event, mode: PeskSettings["animationMode"]) => {
+    if (mode === "selected" || mode === "shuffle") pet.setAnimationMode(mode);
+  });
   ipcMain.on("quit-pesk", () => app.quit());
-  ipcMain.on(
-    "respond-codex-permission",
-    (_event, requestId: unknown, decision: unknown) => {
-      if (typeof requestId !== "string" && typeof requestId !== "number") {
-        return;
-      }
-      if (typeof decision === "string") {
-        codexController.respondPermission(requestId, decision);
-      }
-    },
-  );
-  ipcMain.handle(
-    "submit-codex-prompt",
-    (_event, prompt: unknown, images: unknown) => {
-      if (typeof prompt === "string") {
-        codexController.submitPromptWithImages(
-          prompt,
-          validImageInputs(images),
-        );
-      }
-      return rendererSettings();
-    },
-  );
-  ipcMain.handle(
-    "fuzzy-file-search",
-    (_event, query: unknown, roots: unknown) => {
-      if (typeof query !== "string" || !Array.isArray(roots)) return [];
-      const validRoots = roots.filter(
-        (root): root is string => typeof root === "string",
-      );
-      return codexController.fuzzyFileSearch(query, validRoots);
-    },
-  );
+  ipcMain.on("respond-codex-permission", (_event, requestId: unknown, decision: unknown) => {
+    if (typeof requestId !== "string" && typeof requestId !== "number") {
+      return;
+    }
+    if (typeof decision === "string") {
+      codexController.respondPermission(requestId, decision);
+    }
+  });
+  ipcMain.handle("submit-codex-prompt", (_event, prompt: unknown, images: unknown) => {
+    if (typeof prompt === "string") {
+      codexController.submitPromptWithImages(prompt, validImageInputs(images));
+    }
+    return rendererSettings();
+  });
+  ipcMain.handle("fuzzy-file-search", (_event, query: unknown, roots: unknown) => {
+    if (typeof query !== "string" || !Array.isArray(roots)) return [];
+    const validRoots = roots.filter((root): root is string => typeof root === "string");
+    return codexController.fuzzyFileSearch(query, validRoots);
+  });
   ipcMain.handle("interrupt-codex-turn", () => codexController.interruptTurn());
   ipcMain.handle("steer-codex-turn", (_event, prompt: unknown) => {
     if (typeof prompt === "string") codexController.steerPrompt(prompt);
@@ -503,22 +428,14 @@ app.whenReady().then(() => {
   });
   ipcMain.on("close-menu-window", () => menu.hide());
   const menuShortcut = shortcutAccelerator("menu");
-  const shortcutRegistered = globalShortcut.register(menuShortcut, () =>
-    menu.showWindow(),
-  );
+  const shortcutRegistered = globalShortcut.register(menuShortcut, () => menu.showWindow());
   debug("menu shortcut", {
     shortcut: menuShortcut,
     registered: shortcutRegistered,
   });
   const petFocusShortcut = shortcutAccelerator("petFocus");
-  const petFocusShortcutRegistered = globalShortcut.register(
-    petFocusShortcut,
-    () =>
-      routePetFocusShortcut(
-        chat,
-        pet,
-        Boolean(codexController.getState().pendingUserInput),
-      ),
+  const petFocusShortcutRegistered = globalShortcut.register(petFocusShortcut, () =>
+    routePetFocusShortcut(chat, pet, Boolean(codexController.getState().pendingUserInput)),
   );
   debug("pet focus shortcut", {
     shortcut: petFocusShortcut,

@@ -12,19 +12,13 @@ class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
   readyState = FakeWebSocket.OPEN;
   readonly sent: string[] = [];
-  private readonly listeners = new Map<
-    string,
-    Array<(event: FakeWebSocketEvent) => void>
-  >();
+  private readonly listeners = new Map<string, Array<(event: FakeWebSocketEvent) => void>>();
 
   constructor(readonly url: string) {
     FakeWebSocket.instances.push(this);
   }
 
-  addEventListener(
-    event: string,
-    callback: (event: FakeWebSocketEvent) => void,
-  ): void {
+  addEventListener(event: string, callback: (event: FakeWebSocketEvent) => void): void {
     this.listeners.set(event, [...(this.listeners.get(event) ?? []), callback]);
   }
 
@@ -109,9 +103,7 @@ test("authenticates and publishes the initial state", async () => {
   });
 
   await expect(settings).resolves.toEqual(next);
-  expect(document.getElementById("web-connection-status")?.textContent).toBe(
-    "Connected",
-  );
+  expect(document.getElementById("web-connection-status")?.textContent).toBe("Connected");
 });
 
 test("round-trips fuzzy file search results", async () => {
@@ -210,9 +202,7 @@ test("reconnects after a transient socket close", () => {
   const first = FakeWebSocket.instances[0];
   first.emit("close", { code: 1006 });
 
-  expect(document.getElementById("web-connection-status")?.textContent).toBe(
-    "Reconnecting…",
-  );
+  expect(document.getElementById("web-connection-status")?.textContent).toBe("Reconnecting…");
   jest.advanceTimersByTime(1000);
 
   expect(FakeWebSocket.instances).toHaveLength(2);
@@ -245,7 +235,5 @@ test("prompts when notification permission is undecided", () => {
   expect(document.getElementById("web-notification-status")?.textContent).toBe(
     "Web Push not configured",
   );
-  expect(
-    document.getElementById("web-notification-status")?.hasAttribute("hidden"),
-  ).toBe(false);
+  expect(document.getElementById("web-notification-status")?.hasAttribute("hidden")).toBe(false);
 });

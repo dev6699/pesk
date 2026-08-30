@@ -11,10 +11,7 @@ class FakeWebSocket {
   static shouldThrow = false;
   readyState = FakeWebSocket.CONNECTING;
   sent: string[] = [];
-  private readonly listeners = new Map<
-    string,
-    Array<(event: unknown) => void>
-  >();
+  private readonly listeners = new Map<string, Array<(event: unknown) => void>>();
 
   constructor(public readonly url: string) {
     if (FakeWebSocket.shouldThrow) throw new Error("socket unavailable");
@@ -38,16 +35,12 @@ class FakeWebSocket {
   emit(event: string, value: unknown = {}): void {
     if (event === "open") this.readyState = FakeWebSocket.OPEN;
     const eventValue = event === "message" ? { data: value } : value;
-    for (const callback of this.listeners.get(event) ?? [])
-      callback(eventValue);
+    for (const callback of this.listeners.get(event) ?? []) callback(eventValue);
   }
 }
 
 function lastMessage(socket: FakeWebSocket): Record<string, unknown> {
-  return JSON.parse(socket.sent[socket.sent.length - 1].trim()) as Record<
-    string,
-    unknown
-  >;
+  return JSON.parse(socket.sent[socket.sent.length - 1].trim()) as Record<string, unknown>;
 }
 
 function options() {
@@ -63,8 +56,7 @@ function options() {
 function connectedController(turns: unknown[] = []) {
   const controllerOptions = options();
   const controller = new CodexController(controllerOptions);
-  (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
-    FakeWebSocket;
+  (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
   (controller as unknown as { connect: () => void }).connect();
   const socket = FakeWebSocket.instances.at(-1) as FakeWebSocket;
 
@@ -114,10 +106,7 @@ function threadState(
   return internal.threadControllers.get(id)!.state;
 }
 
-function threadRuntime(
-  controller: CodexController,
-  id = "thread-1",
-): CodexThread {
+function threadRuntime(controller: CodexController, id = "thread-1"): CodexThread {
   const internal = controller as unknown as {
     threadControllers: Map<string, CodexThread>;
   };
@@ -135,25 +124,20 @@ describe("CodexController", () => {
     FakeWebSocket.shouldThrow = true;
     const callbacks = options();
     const controller = new CodexController(callbacks);
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
-      FakeWebSocket;
+    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
 
     (controller as unknown as { connect: () => void }).connect();
     expect(FakeWebSocket.instances).toHaveLength(0);
     jest.advanceTimersByTime(3000);
     expect(FakeWebSocket.instances).toHaveLength(0);
-    expect(callbacks.debug).toHaveBeenCalledWith(
-      "Codex connection failed",
-      expect.any(Error),
-    );
+    expect(callbacks.debug).toHaveBeenCalledWith("Codex connection failed", expect.any(Error));
     jest.useRealTimers();
   });
 
   test("handles malformed messages and socket errors", () => {
     const callbacks = options();
     const controller = new CodexController(callbacks);
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
-      FakeWebSocket;
+    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
     (controller as unknown as { connect: () => void }).connect();
     const socket = FakeWebSocket.instances[0];
 
@@ -180,8 +164,7 @@ describe("CodexController", () => {
   test("ignores events from an obsolete socket after replacement", () => {
     const callbacks = options();
     const controller = new CodexController(callbacks);
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
-      FakeWebSocket;
+    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
     (controller as unknown as { connect: () => void }).connect();
     const first = FakeWebSocket.instances[0];
     const internal = controller as unknown as {
@@ -196,18 +179,14 @@ describe("CodexController", () => {
     first.emit("error", { message: "obsolete error" });
 
     expect(internal.socket).toBe(second);
-    expect(callbacks.debug).not.toHaveBeenCalledWith(
-      "Codex socket closed",
-      expect.anything(),
-    );
+    expect(callbacks.debug).not.toHaveBeenCalledWith("Codex socket closed", expect.anything());
   });
 
   test("does not reconnect after an explicit stop", () => {
     jest.useFakeTimers();
     try {
       const controller = new CodexController(options());
-      (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
-        FakeWebSocket;
+      (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
       (controller as unknown as { connect: () => void }).connect();
       const socket = FakeWebSocket.instances[0];
 
@@ -275,10 +254,7 @@ describe("CodexController", () => {
     internal.discover();
 
     const threadListId = lastMessage(socket).id;
-    socket.emit(
-      "message",
-      JSON.stringify({ id: threadListId, result: { data: [] } }),
-    );
+    socket.emit("message", JSON.stringify({ id: threadListId, result: { data: [] } }));
 
     expect(controller.getState()).toMatchObject({
       threadId: undefined,
@@ -289,10 +265,7 @@ describe("CodexController", () => {
 
   test("covers controller guards and failed turn paths", () => {
     const { controller, socket } = connectedController();
-    const internal = controller as unknown as Record<
-      string,
-      (...args: unknown[]) => unknown
-    >;
+    const internal = controller as unknown as Record<string, (...args: unknown[]) => unknown>;
     const state = controller as unknown as {
       threads: Array<{ id: string }>;
     };
@@ -308,10 +281,7 @@ describe("CodexController", () => {
     controller.respondPermission("missing", "allow");
     controller.submitPrompt("failed turn");
     const turnId = lastMessage(socket).id;
-    socket.emit(
-      "message",
-      JSON.stringify({ id: turnId, error: { message: "failed" } }),
-    );
+    socket.emit("message", JSON.stringify({ id: turnId, error: { message: "failed" } }));
     expect(controller.getState().status).toBe("idle");
     expect(controller.getState().threadId).toBe("thread-1");
   });
@@ -323,9 +293,7 @@ describe("CodexController", () => {
     const requestId = lastMessage(socket).id;
     controller.refreshRateLimits();
     expect(
-      socket.sent.filter((message) =>
-        message.includes('"account/rateLimits/read"'),
-      ),
+      socket.sent.filter((message) => message.includes('"account/rateLimits/read"')),
     ).toHaveLength(1);
 
     socket.emit(
@@ -358,18 +326,13 @@ describe("CodexController", () => {
 
     const failedSearch = controller.fuzzyFileSearch("missing", ["/workspace"]);
     const failedRequestId = lastMessage(socket).id;
-    socket.emit(
-      "message",
-      JSON.stringify({ id: failedRequestId, error: { message: "failed" } }),
-    );
+    socket.emit("message", JSON.stringify({ id: failedRequestId, error: { message: "failed" } }));
     await expect(failedSearch).resolves.toEqual([]);
     expect(callbacks.debug).toHaveBeenCalledWith(
       "Fuzzy file search failed",
       expect.objectContaining({ message: "failed" }),
     );
-    await expect(controller.fuzzyFileSearch("ignored", [])).resolves.toEqual(
-      [],
-    );
+    await expect(controller.fuzzyFileSearch("ignored", [])).resolves.toEqual([]);
   });
 
   test("finishes a review as idle when the review request fails", () => {
@@ -377,10 +340,7 @@ describe("CodexController", () => {
 
     expect(controller.startReview("inspect this")).toBe(true);
     const requestId = lastMessage(socket).id;
-    socket.emit(
-      "message",
-      JSON.stringify({ id: requestId, error: { message: "review failed" } }),
-    );
+    socket.emit("message", JSON.stringify({ id: requestId, error: { message: "review failed" } }));
 
     expect(controller.getState()).toMatchObject({
       status: "idle",
@@ -427,10 +387,7 @@ describe("CodexController", () => {
   test("waits for active status when the rollout is not ready", () => {
     jest.useFakeTimers();
     const { controller, socket } = connectedController();
-    const internal = controller as unknown as Record<
-      string,
-      (...args: unknown[]) => unknown
-    >;
+    const internal = controller as unknown as Record<string, (...args: unknown[]) => unknown>;
     threadState(controller).connected = false;
 
     internal.resume("thread-1");
@@ -511,9 +468,7 @@ describe("CodexController", () => {
     state.activeTurnId = "turn-1";
     state.status = "working";
 
-    expect(controller.steerPrompt("Change New York to Osaka instead.")).toBe(
-      true,
-    );
+    expect(controller.steerPrompt("Change New York to Osaka instead.")).toBe(true);
 
     expect(lastMessage(socket)).toMatchObject({
       method: "turn/steer",
@@ -561,11 +516,9 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(
-      controller
-        .getState()
-        .history.filter((message) => message.role === "user"),
-    ).toHaveLength(1);
+    expect(controller.getState().history.filter((message) => message.role === "user")).toHaveLength(
+      1,
+    );
   });
 
   test("queues a normal prompt while a turn is active", () => {
@@ -574,9 +527,7 @@ describe("CodexController", () => {
     state.activeTurnId = "turn-1";
     state.status = "working";
 
-    expect(controller.submitPrompt("run this after the current turn")).toBe(
-      true,
-    );
+    expect(controller.submitPrompt("run this after the current turn")).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/queue/add",
       params: {
@@ -600,9 +551,7 @@ describe("CodexController", () => {
     const { controller, socket } = connectedController();
     const image = { url: "data:image/png;base64,abc", name: "screen.png" };
 
-    expect(controller.submitPromptWithImages("inspect this", [image])).toBe(
-      true,
-    );
+    expect(controller.submitPromptWithImages("inspect this", [image])).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "turn/start",
       params: {
@@ -629,9 +578,7 @@ describe("CodexController", () => {
     state.status = "working";
     const image = { url: "data:image/png;base64,queued", name: "queued.png" };
 
-    expect(controller.submitPromptWithImages("inspect later", [image])).toBe(
-      true,
-    );
+    expect(controller.submitPromptWithImages("inspect later", [image])).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/queue/add",
       params: {
@@ -673,8 +620,7 @@ describe("CodexController", () => {
 
   test("starts a new session when no session is selected", () => {
     const controller = new CodexController(options());
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
-      FakeWebSocket;
+    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
     (controller as unknown as { connect: () => void }).connect();
     const socket = FakeWebSocket.instances[0];
     socket.emit("open");
@@ -702,8 +648,7 @@ describe("CodexController", () => {
     });
     expect(controller.getState().connected).toBe(true);
     expect(
-      (threadState(controller, "new-thread") as { workingDirectory?: string })
-        .workingDirectory,
+      (threadState(controller, "new-thread") as { workingDirectory?: string }).workingDirectory,
     ).toBe("/workspace/new-project");
   });
 
@@ -746,10 +691,7 @@ describe("CodexController", () => {
       params: { serviceName: "pesk" },
     });
 
-    socket.emit(
-      "message",
-      JSON.stringify({ id: 5, result: { thread: { id: "new-thread" } } }),
-    );
+    socket.emit("message", JSON.stringify({ id: 5, result: { thread: { id: "new-thread" } } }));
 
     socket.emit(
       "message",
@@ -908,10 +850,7 @@ describe("CodexController", () => {
     expect(
       controller
         .getState()
-        .history.filter(
-          (message) =>
-            message.role === "user" && message.text === "same prompt",
-        ),
+        .history.filter((message) => message.role === "user" && message.text === "same prompt"),
     ).toHaveLength(2);
   });
 
@@ -924,8 +863,7 @@ describe("CodexController", () => {
       controller
         .getState()
         .history.filter(
-          (message) =>
-            message.role === "user" && message.text === "repeat this message",
+          (message) => message.role === "user" && message.text === "repeat this message",
         ),
     ).toHaveLength(2);
   });
@@ -951,9 +889,7 @@ describe("CodexController", () => {
     );
 
     expect(
-      socket.sent
-        .slice(sentBeforeStatusChanges)
-        .map((message) => JSON.parse(message.trim())),
+      socket.sent.slice(sentBeforeStatusChanges).map((message) => JSON.parse(message.trim())),
     ).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -982,9 +918,7 @@ describe("CodexController", () => {
             status: { type: "idle" },
             turns: [
               {
-                items: [
-                  { type: "agentMessage", text: "partial server history" },
-                ],
+                items: [{ type: "agentMessage", text: "partial server history" }],
               },
             ],
           },
@@ -1306,8 +1240,7 @@ describe("CodexController", () => {
   test("retries after the WebSocket closes and reconnects", () => {
     jest.useFakeTimers();
     const controller = new CodexController(options());
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
-      FakeWebSocket;
+    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
 
     controller.start();
     const firstSocket = FakeWebSocket.instances[0];
@@ -1324,8 +1257,7 @@ describe("CodexController", () => {
 
   test("stays healthy when connected without an active session", () => {
     const controller = new CodexController(options());
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
-      FakeWebSocket;
+    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
     (controller as unknown as { connect: () => void }).connect();
     const socket = FakeWebSocket.instances[0];
 
@@ -1343,8 +1275,7 @@ describe("CodexController", () => {
 
   test("lists all sessions returned by thread/list", () => {
     const controller = new CodexController(options());
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket =
-      FakeWebSocket;
+    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
     (controller as unknown as { connect: () => void }).connect();
     const socket = FakeWebSocket.instances[0];
     socket.emit("open");
@@ -1379,9 +1310,7 @@ describe("CodexController", () => {
   test("keeps a session rejected by an active writer", () => {
     const { controller, socket } = connectedController();
 
-    (controller as unknown as { resume: (id: string) => void }).resume(
-      "thread-1",
-    );
+    (controller as unknown as { resume: (id: string) => void }).resume("thread-1");
     const resumeId = lastMessage(socket).id;
     socket.emit(
       "message",
@@ -1466,18 +1395,14 @@ describe("CodexController", () => {
       ]),
     );
     expect(
-      controller
-        .getState()
-        .history.filter((message) => message.role === "assistant"),
+      controller.getState().history.filter((message) => message.role === "assistant"),
     ).toHaveLength(1);
   });
 
   test("starts an inline custom review with the selected thread", () => {
     const { controller, socket } = connectedController();
 
-    expect(
-      controller.startReview("  Check for bugs and missing tests.  "),
-    ).toBe(true);
+    expect(controller.startReview("  Check for bugs and missing tests.  ")).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "review/start",
       params: {
@@ -1514,11 +1439,9 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(
-      controller
-        .getState()
-        .history.filter((message) => message.role === "user"),
-    ).toHaveLength(0);
+    expect(controller.getState().history.filter((message) => message.role === "user")).toHaveLength(
+      0,
+    );
 
     socket.emit(
       "message",
@@ -1537,9 +1460,7 @@ describe("CodexController", () => {
       .getState()
       .history.find((message) => message.itemId === "review-exit");
     expect(reviewActivity?.text).toContain("Review completed");
-    expect(reviewActivity?.text).not.toContain(
-      "Review report should be shown once",
-    );
+    expect(reviewActivity?.text).not.toContain("Review report should be shown once");
     const report = "finding ".repeat(1000).trim();
     socket.emit(
       "message",
@@ -1551,15 +1472,10 @@ describe("CodexController", () => {
       }),
     );
     expect(
-      controller
-        .getState()
-        .history.find((message) => message.itemId === "review-report")?.text,
+      controller.getState().history.find((message) => message.itemId === "review-report")?.text,
     ).toBe(report);
 
-    socket.emit(
-      "message",
-      JSON.stringify({ method: "turn/completed", params: {} }),
-    );
+    socket.emit("message", JSON.stringify({ method: "turn/completed", params: {} }));
     expect(controller.getState().status).toBe("idle");
   });
 
@@ -1602,16 +1518,12 @@ describe("CodexController", () => {
                   {
                     id: "review-user-1",
                     type: "userMessage",
-                    content: [
-                      { type: "text", text: "review styles.css changes" },
-                    ],
+                    content: [{ type: "text", text: "review styles.css changes" }],
                   },
                   {
                     id: "review-user-2",
                     type: "userMessage",
-                    content: [
-                      { type: "text", text: "review styles.css changes" },
-                    ],
+                    content: [{ type: "text", text: "review styles.css changes" }],
                   },
                   {
                     id: "review-report",
@@ -1627,9 +1539,7 @@ describe("CodexController", () => {
     );
 
     const history = controller.getState().history;
-    expect(history.filter((message) => message.role === "user")).toHaveLength(
-      0,
-    );
+    expect(history.filter((message) => message.role === "user")).toHaveLength(0);
     expect(history[0]?.itemId).toBe("review-enter");
     expect(history[1]?.itemId).toBe("review-exit");
     expect(history[2]).toMatchObject({
@@ -1690,9 +1600,7 @@ describe("CodexController", () => {
     );
 
     const history = controller.getState().history;
-    expect(history.filter((message) => message.role === "user")).toHaveLength(
-      0,
-    );
+    expect(history.filter((message) => message.role === "user")).toHaveLength(0);
     expect(history.map((message) => message.itemId)).toEqual([
       "review-enter",
       "review-exit",
@@ -1753,10 +1661,7 @@ describe("CodexController", () => {
     const internal = controller as unknown as {
       threads: Array<{ id: string; status: { type: string } }>;
     };
-    internal.threads = [
-      ...internal.threads,
-      { id: "other-thread", status: { type: "idle" } },
-    ];
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
 
     expect(controller.submitPrompt('/exec bash -lc "printf hello"')).toBe(true);
     const execId = lastMessage(socket).id;
@@ -1785,9 +1690,7 @@ describe("CodexController", () => {
       activity: { kind: "command", status: "completed", output: "hello" },
     });
     expect(controller.getState().history).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ activity: expect.anything() }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ activity: expect.anything() })]),
     );
   });
 
@@ -1873,10 +1776,7 @@ describe("CodexController", () => {
     const internal = controller as unknown as {
       threads: Array<{ id: string; status: { type: string } }>;
     };
-    internal.threads = [
-      ...internal.threads,
-      { id: "other-thread", status: { type: "idle" } },
-    ];
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
 
     socket.emit(
       "message",
@@ -1905,17 +1805,13 @@ describe("CodexController", () => {
 
     expect(controller.getState().threadId).toBe("thread-1");
     expect(controller.getState().history).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ text: "background output" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ text: "background output" })]),
     );
 
     controller.selectThread("other-thread");
     expect(controller.getState().collaborationMode).toBe("plan");
     expect(controller.getState().history).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ text: "background output" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ text: "background output" })]),
     );
   });
 
@@ -1946,10 +1842,7 @@ describe("CodexController", () => {
     const internal = controller as unknown as {
       threads: Array<{ id: string; status: { type: string } }>;
     };
-    internal.threads = [
-      ...internal.threads,
-      { id: "other-thread", status: { type: "active" } },
-    ];
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "active" } }];
 
     socket.emit(
       "message",
@@ -2138,11 +2031,7 @@ describe("CodexController", () => {
   });
 
   test("answers an app-server user-input request", () => {
-    const {
-      controller,
-      socket,
-      options: controllerOptions,
-    } = connectedController();
+    const { controller, socket, options: controllerOptions } = connectedController();
 
     socket.emit(
       "message",
@@ -2200,18 +2089,11 @@ describe("CodexController", () => {
   });
 
   test("switches to a background user-input request", () => {
-    const {
-      controller,
-      socket,
-      options: controllerOptions,
-    } = connectedController();
+    const { controller, socket, options: controllerOptions } = connectedController();
     const internal = controller as unknown as {
       threads: Array<{ id: string; status: { type: string } }>;
     };
-    internal.threads = [
-      ...internal.threads,
-      { id: "other-thread", status: { type: "idle" } },
-    ];
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
     controllerOptions.handleNotification.mockClear();
 
     socket.emit(
@@ -2258,10 +2140,7 @@ describe("CodexController", () => {
     const internal = controller as unknown as {
       threads: Array<{ id: string; status: { type: string } }>;
     };
-    internal.threads = [
-      ...internal.threads,
-      { id: "other-thread", status: { type: "idle" } },
-    ];
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
 
     socket.emit(
       "message",
@@ -2288,18 +2167,11 @@ describe("CodexController", () => {
   });
 
   test("switches to and focuses a background thread after turn completion", () => {
-    const {
-      controller,
-      socket,
-      options: controllerOptions,
-    } = connectedController();
+    const { controller, socket, options: controllerOptions } = connectedController();
     const internal = controller as unknown as {
       threads: Array<{ id: string; status: { type: string } }>;
     };
-    internal.threads = [
-      ...internal.threads,
-      { id: "other-thread", status: { type: "active" } },
-    ];
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "active" } }];
     socket.emit(
       "message",
       JSON.stringify({
@@ -2322,10 +2194,7 @@ describe("CodexController", () => {
     const internal = controller as unknown as {
       threads: Array<{ id: string; status: { type: string } }>;
     };
-    internal.threads = [
-      ...internal.threads,
-      { id: "other-thread", status: { type: "idle" } },
-    ];
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
 
     const request = (id: string, threadId: string): void => {
       socket.emit(
@@ -2418,16 +2287,11 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().history).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ role: "assistant", text: "answer" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ role: "assistant", text: "answer" })]),
     );
     expect(controller.getState().workingSince).toEqual(expect.any(Number));
 
-    socket.emit(
-      "message",
-      JSON.stringify({ method: "turn/completed", params: {} }),
-    );
+    socket.emit("message", JSON.stringify({ method: "turn/completed", params: {} }));
     expect(controller.getState().workingSince).toBeUndefined();
   });
 
@@ -2450,9 +2314,7 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().history).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ role: "user", text: "first prompt" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ role: "user", text: "first prompt" })]),
     );
   });
 
@@ -2532,9 +2394,7 @@ describe("CodexController", () => {
         }),
       ]),
     );
-    expect(
-      history.filter((message) => message.itemId === "command-1"),
-    ).toHaveLength(1);
+    expect(history.filter((message) => message.itemId === "command-1")).toHaveLength(1);
   });
 
   test("renders web search and unknown activity items", () => {
@@ -2599,9 +2459,7 @@ describe("CodexController", () => {
       ]),
     );
     expect(
-      controller
-        .getState()
-        .history.filter((message) => message.itemId === "search-1"),
+      controller.getState().history.filter((message) => message.itemId === "search-1"),
     ).toHaveLength(1);
   });
 
@@ -2624,18 +2482,12 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().history).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ itemId: "reasoning-1" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ itemId: "reasoning-1" })]),
     );
   });
 
   test("requests approval and sends the selected decision", () => {
-    const {
-      controller,
-      socket,
-      options: controllerOptions,
-    } = connectedController();
+    const { controller, socket, options: controllerOptions } = connectedController();
 
     socket.emit(
       "message",
@@ -2659,9 +2511,7 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().status).toBe("waiting");
-    expect(
-      controllerOptions.publishRendererState.mock.invocationCallOrder[0],
-    ).toBeLessThan(
+    expect(controllerOptions.publishRendererState.mock.invocationCallOrder[0]).toBeLessThan(
       controllerOptions.handleNotification.mock.invocationCallOrder[0],
     );
     expect(controller.getState().pendingApproval).toMatchObject({
@@ -2670,9 +2520,7 @@ describe("CodexController", () => {
       reason: "Run the tests",
     });
     expect(controller.getState().history).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ approval: expect.anything() }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ approval: expect.anything() })]),
     );
 
     socket.emit(
@@ -2731,9 +2579,7 @@ describe("CodexController", () => {
     expect(controller.getState().pendingApproval).toMatchObject({
       requestId: 7,
     });
-    expect(controller.submitPrompt("queue while approval is pending")).toBe(
-      true,
-    );
+    expect(controller.submitPrompt("queue while approval is pending")).toBe(true);
 
     controller.respondPermission("approval-1", "decline");
     expect(lastMessage(socket)).toEqual({
@@ -2811,9 +2657,7 @@ describe("CodexController", () => {
           kind: "command",
           command: "curl example.com",
           proposedExecpolicyAmendment: ["curl", "example.com"],
-          proposedNetworkPolicyAmendments: [
-            { host: "example.com", action: "allow" },
-          ],
+          proposedNetworkPolicyAmendments: [{ host: "example.com", action: "allow" }],
         },
       }),
     );

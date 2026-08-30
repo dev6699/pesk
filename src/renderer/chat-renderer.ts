@@ -33,13 +33,10 @@ if (document.body.classList.contains("web-chat")) {
   });
 }
 
-const interruptButton = document.getElementById(
-  "codex-chat-interrupt",
-) as HTMLButtonElement | null;
+const interruptButton = document.getElementById("codex-chat-interrupt") as HTMLButtonElement | null;
 function updateInterruptButton(settings: PeskSettings): void {
   if (!interruptButton) return;
-  const active =
-    settings.codexStatus === "working" || settings.codexStatus === "waiting";
+  const active = settings.codexStatus === "working" || settings.codexStatus === "waiting";
   interruptButton.hidden = !active;
   interruptButton.disabled = !active;
 }
@@ -48,16 +45,9 @@ interruptButton?.addEventListener("click", () => {
   void window.peskApi.interruptCodexTurn();
 });
 
-document.addEventListener(
-  "keydown",
-  (event) => codex.handleKeydown(event),
-  true,
-);
+document.addEventListener("keydown", (event) => codex.handleKeydown(event), true);
 document.addEventListener("keydown", (event) => {
-  if (
-    matchesShortcut(event, "unfocusChat") &&
-    !event.defaultPrevented
-  ) {
+  if (matchesShortcut(event, "unfocusChat") && !event.defaultPrevented) {
     event.preventDefault();
     window.peskApi.unfocusPesk();
   }

@@ -154,9 +154,7 @@ export class CodexThread {
         (message) =>
           message.role === "user" &&
           message.text === value &&
-          (!turnId ||
-            message.turnId === undefined ||
-            message.turnId === turnId),
+          (!turnId || message.turnId === undefined || message.turnId === turnId),
       )
     ) {
       return false;
@@ -179,9 +177,7 @@ export class CodexThread {
 
   /** Adds or updates one activity entry indexed by its server item ID. */
   updateActivity(message: CodexMessage, itemId?: string): void {
-    const existingIndex = itemId
-      ? this.state.activityIndexes.get(itemId)
-      : undefined;
+    const existingIndex = itemId ? this.state.activityIndexes.get(itemId) : undefined;
     if (existingIndex !== undefined && this.state.history[existingIndex]) {
       const existing = this.state.history[existingIndex];
       if (existing.activity && message.activity && !message.activity.output) {
@@ -193,8 +189,7 @@ export class CodexThread {
       existing.itemId = itemId;
     } else {
       this.state.history.push({ ...message, itemId });
-      if (itemId)
-        this.state.activityIndexes.set(itemId, this.state.history.length - 1);
+      if (itemId) this.state.activityIndexes.set(itemId, this.state.history.length - 1);
     }
     this.trim();
   }
@@ -207,19 +202,14 @@ export class CodexThread {
     timestamp = Date.now(),
   ): void {
     const message = this.activityMessage(
-      statusOverride && item.type === "plan"
-        ? { ...item, status: statusOverride }
-        : item,
+      statusOverride && item.type === "plan" ? { ...item, status: statusOverride } : item,
       timestamp,
     );
     this.updateActivity(message, itemId);
   }
 
   /** Converts a raw server item into a renderer activity message. */
-  activityMessage(
-    item: Record<string, unknown>,
-    timestamp: number,
-  ): CodexMessage {
+  activityMessage(item: Record<string, unknown>, timestamp: number): CodexMessage {
     const type = typeof item.type === "string" ? item.type : "unknown";
     const isReviewCompletion = type === "exitedReviewMode";
     const kind: NonNullable<CodexMessage["activity"]>["kind"] =
@@ -235,20 +225,10 @@ export class CodexThread {
                 ? "tool"
                 : "other";
     const changes = records(item.changes).map((change) => {
-      const filePath =
-        typeof change.path === "string" ? change.path : "unknown file";
-      const changeKind =
-        typeof change.kind === "string" ? `${change.kind}: ` : "";
-      const content = firstText(change, [
-        "diff",
-        "patch",
-        "content",
-        "newContent",
-      ]);
-      return [
-        `${changeKind}${filePath}`,
-        content ? indentActivityContent(content) : "",
-      ]
+      const filePath = typeof change.path === "string" ? change.path : "unknown file";
+      const changeKind = typeof change.kind === "string" ? `${change.kind}: ` : "";
+      const content = firstText(change, ["diff", "patch", "content", "newContent"]);
+      return [`${changeKind}${filePath}`, content ? indentActivityContent(content) : ""]
         .filter(Boolean)
         .join("\n");
     });
@@ -258,20 +238,13 @@ export class CodexThread {
       userInitiated: item.userInitiated === true || item.source === "userShell",
       label: type,
       status:
-        typeof item.status === "string"
-          ? item.status
-          : kind === "plan"
-            ? "completed"
-            : undefined,
+        typeof item.status === "string" ? item.status : kind === "plan" ? "completed" : undefined,
       command: typeof item.command === "string" ? item.command : undefined,
       cwd: typeof item.cwd === "string" ? item.cwd : undefined,
       summary:
         firstText(item, ["query", "title", "name", "url", "message"]) ??
         (isReviewCompletion ? "Review completed" : undefined),
-      output:
-        typeof item.aggregatedOutput === "string"
-          ? item.aggregatedOutput
-          : undefined,
+      output: typeof item.aggregatedOutput === "string" ? item.aggregatedOutput : undefined,
       changes,
       details: isReviewCompletion
         ? undefined
@@ -316,8 +289,7 @@ export class CodexThread {
   startTurn(turnId: string): void {
     this.state.activeTurnId = turnId;
     this.state.status = "working";
-    if (this.state.workingSince === undefined)
-      this.state.workingSince = Date.now();
+    if (this.state.workingSince === undefined) this.state.workingSince = Date.now();
     const last = [...this.state.history]
       .reverse()
       .find((message) => message.role === "user" && !message.turnId);
@@ -331,10 +303,7 @@ export class CodexThread {
     this.state.interrupted = interrupted;
     this.state.status = "idle";
     if (this.state.workingSince !== undefined) {
-      this.state.workedElapsed = Math.max(
-        0,
-        Date.now() - this.state.workingSince,
-      );
+      this.state.workedElapsed = Math.max(0, Date.now() - this.state.workingSince);
     }
     this.state.workingSince = undefined;
     this.state.streamingAssistant = -1;
@@ -401,9 +370,7 @@ export class CodexThread {
     if (!suppressUserMessage) {
       const contents = records(item.content);
       const text = contents
-        .map((content) =>
-          typeof content.text === "string" ? content.text.trim() : "",
-        )
+        .map((content) => (typeof content.text === "string" ? content.text.trim() : ""))
         .filter(Boolean)
         .join("\n");
       const images = contents
@@ -421,11 +388,7 @@ export class CodexThread {
       }
     }
     if (isActivityItem(item)) {
-      this.addActivity(
-        item,
-        stringValue(item.id),
-        item.type === "plan" ? "inProgress" : undefined,
-      );
+      this.addActivity(item, stringValue(item.id), item.type === "plan" ? "inProgress" : undefined);
     }
   }
 
@@ -436,17 +399,11 @@ export class CodexThread {
         typeof item.text === "string"
           ? item.text
           : records(item.content)
-            .map((content) =>
-              typeof content.text === "string" ? content.text : "",
-            )
-            .join("");
+              .map((content) => (typeof content.text === "string" ? content.text : ""))
+              .join("");
       this.completeAssistant(text, stringValue(item.id));
     } else if (isActivityItem(item)) {
-      this.addActivity(
-        item,
-        stringValue(item.id),
-        item.type === "plan" ? "completed" : undefined,
-      );
+      this.addActivity(item, stringValue(item.id), item.type === "plan" ? "completed" : undefined);
     }
   }
 
@@ -462,8 +419,7 @@ export class CodexThread {
     for (const turn of turns) {
       for (const item of records(turn.items)) {
         if (
-          (item.type === "enteredReviewMode" ||
-            item.type === "exitedReviewMode") &&
+          (item.type === "enteredReviewMode" || item.type === "exitedReviewMode") &&
           typeof item.review === "string" &&
           item.review.trim()
         ) {
@@ -485,9 +441,7 @@ export class CodexThread {
         if (item.type === "userMessage") {
           const contents = records(item.content);
           const text = contents
-            .map((content) =>
-              typeof content.text === "string" ? content.text.trim() : "",
-            )
+            .map((content) => (typeof content.text === "string" ? content.text.trim() : ""))
             .filter(Boolean)
             .join("\n");
           const images = contents
@@ -512,10 +466,8 @@ export class CodexThread {
             typeof item.text === "string"
               ? item.text
               : records(item.content)
-                .map((part) =>
-                  typeof part.text === "string" ? part.text : "",
-                )
-                .join("");
+                  .map((part) => (typeof part.text === "string" ? part.text : ""))
+                  .join("");
           if (text.trim()) {
             restored.push({
               role: "assistant",
@@ -525,40 +477,28 @@ export class CodexThread {
             });
           }
         }
-        if (isActivityItem(item))
-          restored.push(this.activityMessage(item, timestamp));
+        if (isActivityItem(item)) restored.push(this.activityMessage(item, timestamp));
       }
     }
 
     const restoredUsers = new Set(
-      restored
-        .filter((message) => message.role === "user")
-        .map((message) => message.text),
+      restored.filter((message) => message.role === "user").map((message) => message.text),
     );
     const hasMissingLiveUser = this.state.history.some(
       (message) => message.role === "user" && !restoredUsers.has(message.text),
     );
-    if (
-      !(this.state.status === "working" && this.state.history.length) &&
-      !hasMissingLiveUser
-    ) {
+    if (!(this.state.status === "working" && this.state.history.length) && !hasMissingLiveUser) {
       this.replaceHistory(restored);
     }
   }
 
   /** Adds an optimistic queued submission to this thread. */
   queuePending(submission: CodexQueuedSubmission): void {
-    this.state.queuedSubmissions = [
-      ...this.state.queuedSubmissions,
-      submission,
-    ];
+    this.state.queuedSubmissions = [...this.state.queuedSubmissions, submission];
   }
 
   /** Replaces an optimistic queue entry with the server submission. */
-  resolveQueuedSubmission(
-    clientUserMessageId: string,
-    submission: CodexQueuedSubmission,
-  ): void {
+  resolveQueuedSubmission(clientUserMessageId: string, submission: CodexQueuedSubmission): void {
     this.state.queuedSubmissions = this.state.queuedSubmissions.map((entry) =>
       entry.clientUserMessageId === clientUserMessageId ? submission : entry,
     );
@@ -571,10 +511,7 @@ export class CodexThread {
 
   /** Appends a page of queue entries to this thread. */
   appendQueue(submissions: CodexQueuedSubmission[]): void {
-    this.state.queuedSubmissions = [
-      ...this.state.queuedSubmissions,
-      ...submissions,
-    ];
+    this.state.queuedSubmissions = [...this.state.queuedSubmissions, ...submissions];
   }
 
   /** Replaces the queue from raw app-server submissions. */
@@ -598,9 +535,7 @@ export class CodexThread {
 
   /** Removes all unresolved approval state and its pending history entries. */
   clearPendingApprovals(): boolean {
-    const hadHistory = this.state.history.some(
-      (message) => message.approval?.state === "pending",
-    );
+    const hadHistory = this.state.history.some((message) => message.approval?.state === "pending");
     this.state.pendingApprovals.clear();
     this.state.pendingApproval = undefined;
     this.state.history = this.state.history.filter(
@@ -610,11 +545,7 @@ export class CodexThread {
   }
 
   /** Registers an approval request and exposes its renderer representation. */
-  addApproval(
-    key: string,
-    approval: PendingApproval,
-    displayed: CodexPendingApproval,
-  ): void {
+  addApproval(key: string, approval: PendingApproval, displayed: CodexPendingApproval): void {
     this.state.pendingApprovals.set(key, approval);
     this.state.pendingApproval = displayed;
   }
@@ -660,16 +591,13 @@ export class CodexThread {
     const pending = this.state.pendingApprovals.get(key);
     const decision = pending?.decisions.get(optionId);
     if (!pending || decision === undefined) return undefined;
-    const state =
-      optionId === "decline" || optionId === "cancel" ? "denied" : "approved";
+    const state = optionId === "decline" || optionId === "cancel" ? "denied" : "approved";
     const next = this.nextApproval(key);
     this.resolveApproval(
       key,
       {
         role: "system",
-        text:
-          [pending.command, pending.reason].filter(Boolean).join("\n") ||
-          "Codex approval",
+        text: [pending.command, pending.reason].filter(Boolean).join("\n") || "Codex approval",
         timestamp,
         approval: {
           requestId: pending.requestId,
@@ -679,11 +607,11 @@ export class CodexThread {
       },
       next
         ? {
-          requestId: next.requestId,
-          command: next.command,
-          reason: next.reason,
-          options: approvalOptions(next.decisions),
-        }
+            requestId: next.requestId,
+            command: next.command,
+            reason: next.reason,
+            options: approvalOptions(next.decisions),
+          }
         : undefined,
     );
     return { decision, hasPending: this.state.pendingApprovals.size > 0 };
@@ -829,8 +757,7 @@ export class CodexThread {
   applyServerStatus(status: { type?: unknown; activeFlags?: unknown }): void {
     if (status.type === "active") {
       const waitingOnApproval =
-        Array.isArray(status.activeFlags) &&
-        status.activeFlags.includes("waitingOnApproval");
+        Array.isArray(status.activeFlags) && status.activeFlags.includes("waitingOnApproval");
       this.setStatus(waitingOnApproval ? "waiting" : "working");
     } else if (status.type === "idle" || status.type === "notLoaded") {
       this.setStatus("idle");
@@ -839,8 +766,7 @@ export class CodexThread {
 
   /** Starts the working timer without changing the visible status. */
   ensureWorking(): void {
-    if (this.state.workingSince === undefined)
-      this.state.workingSince = Date.now();
+    if (this.state.workingSince === undefined) this.state.workingSince = Date.now();
   }
 
   /** Enforces the history limit and repairs indexes after truncation. */
@@ -862,9 +788,7 @@ export class CodexThread {
   private rebuildActivityIndexes(): void {
     this.state.activityIndexes = new Map(
       this.state.history.flatMap((message, index) =>
-        message.itemId && message.activity
-          ? [[message.itemId, index] as const]
-          : [],
+        message.itemId && message.activity ? [[message.itemId, index] as const] : [],
       ),
     );
   }
@@ -901,15 +825,11 @@ export class CodexThread {
           clientUserMessageId,
         };
       })
-      .filter((submission): submission is CodexQueuedSubmission =>
-        Boolean(submission),
-      );
+      .filter((submission): submission is CodexQueuedSubmission => Boolean(submission));
   }
 }
 
-function formatActivityText(
-  activity: NonNullable<CodexMessage["activity"]>,
-): string {
+function formatActivityText(activity: NonNullable<CodexMessage["activity"]>): string {
   const title =
     activity.kind === "command"
       ? "Command"
@@ -921,10 +841,7 @@ function formatActivityText(
             ? "Tool"
             : "Activity";
   const lines = [`${title}${activity.status ? ` · ${activity.status}` : ""}`];
-  if (
-    activity.label &&
-    !["commandExecution", "fileChange"].includes(activity.label)
-  ) {
+  if (activity.label && !["commandExecution", "fileChange"].includes(activity.label)) {
     lines.push(`type: ${activity.label}`);
   }
   if (activity.command) lines.push(`$ ${activity.command}`);
@@ -936,15 +853,10 @@ function formatActivityText(
   return lines.join("\n");
 }
 
-export function isActivityItem(
-  item: Record<string, unknown> | undefined,
-): boolean {
+export function isActivityItem(item: Record<string, unknown> | undefined): boolean {
   const type = typeof item?.type === "string" ? item.type : "";
   return (
-    Boolean(type) &&
-    type !== "userMessage" &&
-    type !== "agentMessage" &&
-    !/reasoning/i.test(type)
+    Boolean(type) && type !== "userMessage" && type !== "agentMessage" && !/reasoning/i.test(type)
   );
 }
 
@@ -954,9 +866,7 @@ type ApprovalOption = {
   description: string;
 };
 
-export function approvalOptions(
-  decisions: Map<string, ApprovalDecision>,
-): ApprovalOption[] {
+export function approvalOptions(decisions: Map<string, ApprovalDecision>): ApprovalOption[] {
   const options: ApprovalOption[] = [
     {
       id: "accept",
@@ -991,18 +901,14 @@ export function approvalOptions(
   return options.filter((option) => decisions.has(option.id));
 }
 
-export function parseTokenUsageValue(
-  value: unknown,
-): ThreadTokenUsage | undefined {
+export function parseTokenUsageValue(value: unknown): ThreadTokenUsage | undefined {
   if (!value || typeof value !== "object") return undefined;
   const usage = value as Record<string, unknown>;
   const total = parseTokenCounts(usage.total ?? usage.totalTokenUsage);
   if (!total) return undefined;
   return {
     total,
-    last: parseTokenCounts(
-      usage.last ?? usage.lastTurnUsage,
-    ) as TokenUsageBreakdown,
+    last: parseTokenCounts(usage.last ?? usage.lastTurnUsage) as TokenUsageBreakdown,
     modelContextWindow: numberValue(usage.modelContextWindow) ?? null,
   };
 }
@@ -1024,18 +930,12 @@ function parseTokenCounts(value: unknown): TokenUsageBreakdown | undefined {
 }
 
 function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function firstText(
-  value: Record<string, unknown>,
-  keys: string[],
-): string | undefined {
+function firstText(value: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
-    if (typeof value[key] === "string" && value[key])
-      return value[key] as string;
+    if (typeof value[key] === "string" && value[key]) return value[key] as string;
   }
   return undefined;
 }
@@ -1060,9 +960,7 @@ function isCommandExecutionSource(
 
 function summarizeActivity(item: Record<string, unknown>): string | undefined {
   const details = Object.entries(item)
-    .filter(
-      ([key]) => !["id", "type", "status", "command", "cwd"].includes(key),
-    )
+    .filter(([key]) => !["id", "type", "status", "command", "cwd"].includes(key))
     .map(([key, value]) => `${key}: ${formatActivityValue(value)}`)
     .filter((line) => line.length > 0)
     .join("\n");

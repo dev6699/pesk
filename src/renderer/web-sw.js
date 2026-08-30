@@ -8,9 +8,7 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys
-            .filter((key) => key.startsWith("pesk-web-shell-"))
-            .map((key) => caches.delete(key)),
+          keys.filter((key) => key.startsWith("pesk-web-shell-")).map((key) => caches.delete(key)),
         ),
       ),
   );
@@ -21,13 +19,11 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = event.notification.data?.url;
   event.waitUntil(
-    self.clients
-      .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clients) => {
-        const existing = clients.find((client) => "focus" in client);
-        if (existing) return existing.focus();
-        return url ? self.clients.openWindow(url) : undefined;
-      }),
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => "focus" in client);
+      if (existing) return existing.focus();
+      return url ? self.clients.openWindow(url) : undefined;
+    }),
   );
 });
 
@@ -43,19 +39,17 @@ self.addEventListener("push", (event) => {
     // Use the default notification when a provider sends an empty payload.
   }
   event.waitUntil(
-    self.clients
-      .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clients) => {
-        const foreground = clients.some(
-          (client) => client.visibilityState === "visible" && client.focused,
-        );
-        if (foreground) return;
-        return self.registration.showNotification(payload.title, {
-          body: payload.body,
-          icon: "./pesk-tray.png",
-          data: { url: payload.url ?? "./web-chat.html", kind: payload.kind },
-          tag: `pesk-codex-${payload.kind}`,
-        });
-      }),
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const foreground = clients.some(
+        (client) => client.visibilityState === "visible" && client.focused,
+      );
+      if (foreground) return;
+      return self.registration.showNotification(payload.title, {
+        body: payload.body,
+        icon: "./pesk-tray.png",
+        data: { url: payload.url ?? "./web-chat.html", kind: payload.kind },
+        tag: `pesk-codex-${payload.kind}`,
+      });
+    }),
   );
 });

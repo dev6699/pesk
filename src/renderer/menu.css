@@ -32,8 +32,7 @@ main {
   border-radius: 24px;
   background:
     linear-gradient(325deg, #ffffff66, transparent 42%),
-    linear-gradient(325deg, #ffb347bb, #d9854f99 55%, #ffffff55),
-    #c98a5edd;
+    linear-gradient(325deg, #ffb347bb, #d9854f99 55%, #ffffff55), #c98a5edd;
   box-shadow:
     inset 0 1px 0 #ffffffaa,
     inset 0 -1px 0 #ffffff55;
@@ -74,11 +73,10 @@ h1 {
 }
 
 @keyframes focus-pulse {
-
   0%,
   100% {
     transform: scale(1);
-    opacity: .85;
+    opacity: 0.85;
   }
 
   50% {
@@ -97,7 +95,7 @@ h1 {
 h2 {
   margin: 18px 0 8px;
   font-size: 12px;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #fff !important;
   -webkit-text-fill-color: #fff;
@@ -221,11 +219,26 @@ h2 {
   background: #0003;
 }
 
-.pairing-device span { flex: 1; }
-.pairing-device small { opacity: .85; font-size: 11px; }
-.pairing-device .push-configured { color: #62e676; -webkit-text-fill-color: #62e676; }
-.pairing-device .push-not-configured { color: #ff7777; -webkit-text-fill-color: #ff7777; }
-.pairing-device button { width: auto; padding: 5px 8px; font-size: 12px; }
+.pairing-device span {
+  flex: 1;
+}
+.pairing-device small {
+  opacity: 0.85;
+  font-size: 11px;
+}
+.pairing-device .push-configured {
+  color: #62e676;
+  -webkit-text-fill-color: #62e676;
+}
+.pairing-device .push-not-configured {
+  color: #ff7777;
+  -webkit-text-fill-color: #ff7777;
+}
+.pairing-device button {
+  width: auto;
+  padding: 5px 8px;
+  font-size: 12px;
+}
 
 #controls::-webkit-scrollbar-thumb,
 #animations::-webkit-scrollbar-thumb,
@@ -252,7 +265,9 @@ button {
   font-weight: 700;
   cursor: pointer;
   text-shadow: none;
-  box-shadow: inset 0 1px 0 #ffffff55, 0 0 8px #7778;
+  box-shadow:
+    inset 0 1px 0 #ffffff55,
+    0 0 8px #7778;
   transition: 120ms ease;
 }
 

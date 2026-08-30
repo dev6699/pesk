@@ -9,10 +9,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import webpush from "web-push";
 import { WebSocket as ClientWebSocket } from "ws";
-import {
-  ChatWebServer,
-  type ChatWebServerOptions,
-} from "../src/chat-web-server";
+import { ChatWebServer, type ChatWebServerOptions } from "../src/chat-web-server";
 
 jest.mock("web-push", () => ({
   __esModule: true,
@@ -141,9 +138,7 @@ describe("ChatWebServer", () => {
     jest.clearAllMocks();
   });
 
-  async function pair(
-    name = "Phone",
-  ): Promise<{ credential: string; deviceId: string }> {
+  async function pair(name = "Phone"): Promise<{ credential: string; deviceId: string }> {
     const pairing = await server.createPairing(name);
     expect(pairing?.qrDataUrl).toMatch(/^data:image\/png;base64,/);
     const exchange = await httpRequest(port, "POST", "/pair/exchange", {
@@ -172,52 +167,24 @@ describe("ChatWebServer", () => {
       code: pairing?.code,
     });
     expect(second.status).toBe(400);
-    await expect(server.createPairing("phone")).rejects.toThrow(
-      "already in use",
-    );
+    await expect(server.createPairing("phone")).rejects.toThrow("already in use");
   });
 
   test("protects push configuration and subscription endpoints with the paired credential", async () => {
     const paired = await pair();
-    expect((await httpRequest(port, "GET", "/web-push/config")).status).toBe(
+    expect((await httpRequest(port, "GET", "/web-push/config")).status).toBe(401);
+    expect((await httpRequest(port, "GET", "/web-push/config", undefined, "wrong")).status).toBe(
       401,
     );
     expect(
-      (await httpRequest(port, "GET", "/web-push/config", undefined, "wrong"))
-        .status,
-    ).toBe(401);
-    expect(
-      (
-        await httpRequest(
-          port,
-          "GET",
-          "/web-push/config",
-          undefined,
-          paired.credential,
-        )
-      ).status,
+      (await httpRequest(port, "GET", "/web-push/config", undefined, paired.credential)).status,
     ).toBe(200);
     expect(
-      (
-        await httpRequest(
-          port,
-          "GET",
-          "/web-push/subscribe",
-          undefined,
-          paired.credential,
-        )
-      ).status,
+      (await httpRequest(port, "GET", "/web-push/subscribe", undefined, paired.credential)).status,
     ).toBe(405);
     expect(
-      (
-        await httpRequest(
-          port,
-          "POST",
-          "/web-push/subscribe",
-          { bad: true },
-          paired.credential,
-        )
-      ).status,
+      (await httpRequest(port, "POST", "/web-push/subscribe", { bad: true }, paired.credential))
+        .status,
     ).toBe(400);
   });
 
@@ -243,9 +210,7 @@ describe("ChatWebServer", () => {
       subscription("https://push.test/two"),
       paired.credential,
     );
-    const stored = JSON.parse(
-      readFileSync(path.join(directory, "subscriptions.json"), "utf8"),
-    );
+    const stored = JSON.parse(readFileSync(path.join(directory, "subscriptions.json"), "utf8"));
     expect(stored).toHaveLength(1);
     expect(stored[0]).toMatchObject({
       endpoint: "https://push.test/two",
@@ -293,20 +258,10 @@ describe("ChatWebServer", () => {
     server.revokeDevice(paired.deviceId);
     expect(server.listDevices()).toHaveLength(0);
     expect(
-      JSON.parse(
-        readFileSync(path.join(directory, "subscriptions.json"), "utf8"),
-      ),
+      JSON.parse(readFileSync(path.join(directory, "subscriptions.json"), "utf8")),
     ).toHaveLength(0);
     expect(
-      (
-        await httpRequest(
-          port,
-          "GET",
-          "/web-push/config",
-          undefined,
-          paired.credential,
-        )
-      ).status,
+      (await httpRequest(port, "GET", "/web-push/config", undefined, paired.credential)).status,
     ).toBe(401);
   });
 
@@ -342,12 +297,8 @@ describe("ChatWebServer", () => {
     server.notifyCodexAttention("input");
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(mockedWebpush.sendNotification).toHaveBeenCalledTimes(2);
-    expect(mockedWebpush.sendNotification.mock.calls[0][1]).toContain(
-      '"kind":"approval"',
-    );
-    expect(mockedWebpush.sendNotification.mock.calls[1][1]).toContain(
-      '"kind":"input"',
-    );
+    expect(mockedWebpush.sendNotification.mock.calls[0][1]).toContain('"kind":"approval"');
+    expect(mockedWebpush.sendNotification.mock.calls[1][1]).toContain('"kind":"input"');
   });
 
   test("sends a notification when a background thread finishes", async () => {
@@ -363,9 +314,7 @@ describe("ChatWebServer", () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     expect(mockedWebpush.sendNotification).toHaveBeenCalledTimes(1);
-    expect(mockedWebpush.sendNotification.mock.calls[0][1]).toContain(
-      '"kind":"finished"',
-    );
+    expect(mockedWebpush.sendNotification.mock.calls[0][1]).toContain('"kind":"finished"');
   });
 
   test("removes subscriptions that are permanently rejected", async () => {
@@ -393,31 +342,22 @@ describe("ChatWebServer", () => {
 
   test("authenticates WebSocket clients and replies to commands", async () => {
     const paired = await pair();
-    const handleCommand = (
-      server as unknown as { options: ChatWebServerOptions }
-    ).options.handleCommand as jest.Mock;
+    const handleCommand = (server as unknown as { options: ChatWebServerOptions }).options
+      .handleCommand as jest.Mock;
     const client = new ClientWebSocket(`ws://127.0.0.1:${port}/web-socket`);
     const messages: string[] = [];
     client.on("message", (data) => messages.push(data.toString()));
     await new Promise<void>((resolve) => client.once("open", resolve));
-    client.send(
-      JSON.stringify({ type: "authenticate", credential: paired.credential }),
-    );
-    await waitFor(() =>
-      messages.some((message) => message.includes('"type":"state"')),
-    );
+    client.send(JSON.stringify({ type: "authenticate", credential: paired.credential }));
+    await waitFor(() => messages.some((message) => message.includes('"type":"state"')));
     expect(JSON.parse(messages[0])).toEqual({ type: "state", state });
     client.send(JSON.stringify({ type: "command", value: 1 }));
     await waitFor(() => handleCommand.mock.calls.length > 0);
     expect(handleCommand).toHaveBeenCalled();
     const reply = handleCommand.mock.calls[0][1] as (value: unknown) => void;
     reply({ type: "reply", ok: true });
-    await waitFor(() =>
-      messages.some((message) => message.includes('"ok":true')),
-    );
-    expect(messages.some((message) => message.includes('"ok":true'))).toBe(
-      true,
-    );
+    await waitFor(() => messages.some((message) => message.includes('"ok":true')));
+    expect(messages.some((message) => message.includes('"ok":true'))).toBe(true);
     client.close();
   });
 
@@ -430,16 +370,12 @@ describe("ChatWebServer", () => {
     invalid.send("not-json");
     expect(await invalidClose).toBe(1007);
 
-    const unauthorized = new ClientWebSocket(
-      `ws://127.0.0.1:${port}/web-socket`,
-    );
+    const unauthorized = new ClientWebSocket(`ws://127.0.0.1:${port}/web-socket`);
     await new Promise<void>((resolve) => unauthorized.once("open", resolve));
     const unauthorizedClose = new Promise<number>((resolve) =>
       unauthorized.once("close", (code) => resolve(code)),
     );
-    unauthorized.send(
-      JSON.stringify({ type: "authenticate", credential: "wrong" }),
-    );
+    unauthorized.send(JSON.stringify({ type: "authenticate", credential: "wrong" }));
     expect(await unauthorizedClose).toBe(1008);
   });
 
@@ -449,15 +385,9 @@ describe("ChatWebServer", () => {
     const messages: string[] = [];
     client.on("message", (data) => messages.push(data.toString()));
     await new Promise<void>((resolve) => client.once("open", resolve));
-    const closed = new Promise<number>((resolve) =>
-      client.once("close", (code) => resolve(code)),
-    );
-    client.send(
-      JSON.stringify({ type: "authenticate", credential: paired.credential }),
-    );
-    await waitFor(() =>
-      messages.some((message) => message.includes('"type":"state"')),
-    );
+    const closed = new Promise<number>((resolve) => client.once("close", (code) => resolve(code)));
+    client.send(JSON.stringify({ type: "authenticate", credential: paired.credential }));
+    await waitFor(() => messages.some((message) => message.includes('"type":"state"')));
     server.revokeDevice(paired.deviceId);
     expect(await closed).toBe(1008);
   });

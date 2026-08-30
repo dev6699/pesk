@@ -2,8 +2,7 @@ import type { ChatWindowController } from "./chat";
 import type { ChatWebServer } from "./chat-web-server";
 import type { PetWindowController } from "./pet";
 
-export type NotificationEvent =
-  "turnCompleted" | "approvalRequested" | "userInputRequested";
+export type NotificationEvent = "turnCompleted" | "approvalRequested" | "userInputRequested";
 
 export interface NotificationRequest {
   event: NotificationEvent;
@@ -59,9 +58,7 @@ export class NotificationController {
   }
 
   private isFocused(): boolean {
-    return Boolean(
-      this.pet.window?.isFocused() || this.chat.window?.isFocused(),
-    );
+    return Boolean(this.pet.window?.isFocused() || this.chat.window?.isFocused());
   }
 
   private kindFor(event: NotificationEvent): "finished" | "approval" | "input" {

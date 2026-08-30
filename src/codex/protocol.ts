@@ -39,9 +39,7 @@ export function approvalDecisions(
   message: Extract<
     ServerMessage,
     {
-      method:
-        | "item/commandExecution/requestApproval"
-        | "item/fileChange/requestApproval";
+      method: "item/commandExecution/requestApproval" | "item/fileChange/requestApproval";
     }
   >,
 ): Map<string, ApprovalDecision> {
@@ -72,10 +70,7 @@ export function approvalDecisions(
   return decisions;
 }
 
-type RequestOf<Method extends ClientRequest["method"]> = Extract<
-  ClientRequest,
-  { method: Method }
->;
+type RequestOf<Method extends ClientRequest["method"]> = Extract<ClientRequest, { method: Method }>;
 export type InitializeRequest = RequestOf<"initialize">;
 export type ThreadStartRequest = RequestOf<"thread/start">;
 export type ThreadResumeRequest = RequestOf<"thread/resume">;
@@ -147,8 +142,8 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function records(value: unknown): Array<Record<string, unknown>> {
-  return (Array.isArray(value) ? value : []).filter(
-    (entry): entry is Record<string, unknown> => isRecord(entry),
+  return (Array.isArray(value) ? value : []).filter((entry): entry is Record<string, unknown> =>
+    isRecord(entry),
   );
 }
 
@@ -196,9 +191,7 @@ export function describeSocketError(error: unknown, url: string): string {
     const details = [
       `url=${url}`,
       typeof event.type === "string" ? `type=${event.type}` : "",
-      typeof event.message === "string" && event.message
-        ? `message=${event.message}`
-        : "",
+      typeof event.message === "string" && event.message ? `message=${event.message}` : "",
       typeof nestedError?.name === "string" ? `name=${nestedError.name}` : "",
       typeof nestedError?.message === "string" && nestedError.message
         ? `error=${nestedError.message}`
@@ -228,8 +221,6 @@ export function shouldReconcileOnIdle(
   needsReconcile: boolean,
 ): boolean {
   return (
-    RECONCILE_ON_IDLE &&
-    status?.type === "idle" &&
-    (previousStatus === "working" || needsReconcile)
+    RECONCILE_ON_IDLE && status?.type === "idle" && (previousStatus === "working" || needsReconcile)
   );
 }

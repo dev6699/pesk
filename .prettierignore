@@ -1,0 +1,9 @@
+node_modules/
+build/
+dist/
+coverage/
+src/codex-schema/
+assets/*.ico
+assets/*.png
+*.pem
+*.mp3

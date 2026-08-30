@@ -1,121 +1,159 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Pesk Chat</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      html,
+      body {
+        position: fixed;
+        inset: 0;
+        height: 100%;
+        background: #111827;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Pesk Chat</title>
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css" />
-  <style>
-    html,
-    body {
-      position: fixed;
-      inset: 0;
-      height: 100%;
-      background: #111827;
-      overflow: hidden;
-      overscroll-behavior: none;
-    }
+      body.web-chat {
+        user-select: text;
+      }
 
-    body.web-chat {
-      user-select: text;
-    }
+      body.web-chat #chat {
+        width: 100%;
+        height: 100vh;
+        height: var(--web-chat-viewport-height, 100dvh);
+        min-height: 0;
+        max-width: none;
+        overflow: hidden;
+      }
 
-    body.web-chat #chat {
-      width: 100%;
-      height: 100vh;
-      height: var(--web-chat-viewport-height, 100dvh);
-      min-height: 0;
-      max-width: none;
-      overflow: hidden;
-    }
+      body.web-chat #codex-chat {
+        position: static;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+      }
 
-    body.web-chat #codex-chat {
-      position: static;
-      width: 100%;
-      height: 100%;
-      min-height: 0;
-    }
+      body.web-chat #codex-history-shell {
+        flex: 1 1 0;
+        min-height: 0;
+      }
 
-    body.web-chat #codex-history-shell {
-      flex: 1 1 0;
-      min-height: 0;
-    }
+      body.web-chat #codex-history {
+        flex: 1 1 0;
+        min-height: 0;
+      }
 
-    body.web-chat #codex-history {
-      flex: 1 1 0;
-      min-height: 0;
-    }
+      body.web-chat #codex-chat-form {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
 
-    body.web-chat #codex-chat-form {
-      padding-bottom: env(safe-area-inset-bottom, 0px);
-    }
+      body.web-chat #codex-chat-input {
+        font-size: 14px;
+      }
+    </style>
+  </head>
 
-    body.web-chat #codex-chat-input {
-      font-size: 14px;
-    }
-  </style>
-</head>
-
-<body class="chat-only web-chat">
-  <main id="chat" aria-label="Codex chat">
-    <section id="codex-chat" aria-label="Codex chat">
-      <div id="codex-chat-header">
-        <select id="codex-session-select" aria-label="Codex session">
-          <option value="">No active session</option>
-        </select>
-        <button id="codex-session-copy" type="button" aria-label="Copy session ID" title="Copy session ID">
-          Copy
-        </button>
-        <span id="web-notification-status" aria-live="polite" hidden>Web Push not configured</span>
-        <span id="web-connection-status" role="button" tabindex="0" aria-live="polite"
-          title="Refresh web chat">Connecting…</span>
-      </div>
-      <div id="codex-rate-limit" aria-live="polite" hidden></div>
-      <div id="codex-error" role="alert" hidden></div>
-      <div id="codex-history-shell">
-        <div id="codex-history" aria-live="polite"></div>
-        <div id="codex-working-status" aria-live="polite" hidden>
-          <span>Working…</span><time id="codex-working-elapsed">0s</time>
-        </div>
-      </div>
-      <div id="codex-token-usage-row">
-        <div id="codex-token-usage" aria-live="polite" hidden></div>
-        <span id="codex-mode-toggle" role="status" aria-label="Codex mode" title="Plan mode active" hidden>
-          Plan
-        </span>
-      </div>
-      <div id="codex-read-only" aria-live="polite" hidden></div>
-      <section id="codex-user-input" aria-live="assertive" hidden></section>
-      <form id="codex-chat-form">
-        <div id="codex-command-mode" aria-live="polite" hidden></div>
-        <div id="codex-image-attachments" aria-live="polite" hidden></div>
-        <div class="codex-input-wrap">
-          <textarea id="codex-chat-input" rows="3" placeholder="Message Pesk..." aria-label="Message Codex"
-            autofocus></textarea>
-          <button id="codex-image-select" class="codex-image-select" type="button" aria-label="Attach image"
-            title="Attach image">
-            🖼️
+  <body class="chat-only web-chat">
+    <main id="chat" aria-label="Codex chat">
+      <section id="codex-chat" aria-label="Codex chat">
+        <div id="codex-chat-header">
+          <select id="codex-session-select" aria-label="Codex session">
+            <option value="">No active session</option>
+          </select>
+          <button
+            id="codex-session-copy"
+            type="button"
+            aria-label="Copy session ID"
+            title="Copy session ID"
+          >
+            Copy
           </button>
-          <input id="codex-image-input" type="file" accept="image/*" multiple hidden />
+          <span id="web-notification-status" aria-live="polite" hidden
+            >Web Push not configured</span
+          >
+          <span
+            id="web-connection-status"
+            role="button"
+            tabindex="0"
+            aria-live="polite"
+            title="Refresh web chat"
+            >Connecting…</span
+          >
         </div>
-        <div id="codex-chat-actions">
-          <button id="codex-chat-steer" type="button" aria-label="Steer the active turn"
-            title="Send this message as a steer" hidden>
-            Steer
-          </button>
-          <button id="codex-chat-interrupt" type="button" hidden disabled>
-            Interrupt
-          </button>
-          <button id="codex-chat-send" type="submit">Send</button>
+        <div id="codex-rate-limit" aria-live="polite" hidden></div>
+        <div id="codex-error" role="alert" hidden></div>
+        <div id="codex-history-shell">
+          <div id="codex-history" aria-live="polite"></div>
+          <div id="codex-working-status" aria-live="polite" hidden>
+            <span>Working…</span><time id="codex-working-elapsed">0s</time>
+          </div>
         </div>
-        <div id="codex-file-suggestions" role="listbox" aria-label="File suggestions" hidden></div>
-      </form>
-    </section>
-  </main>
-  <script type="module" src="web-adapter.js"></script>
-  <script type="module" src="chat-renderer.js"></script>
-</body>
-
+        <div id="codex-token-usage-row">
+          <div id="codex-token-usage" aria-live="polite" hidden></div>
+          <span
+            id="codex-mode-toggle"
+            role="status"
+            aria-label="Codex mode"
+            title="Plan mode active"
+            hidden
+          >
+            Plan
+          </span>
+        </div>
+        <div id="codex-read-only" aria-live="polite" hidden></div>
+        <section id="codex-user-input" aria-live="assertive" hidden></section>
+        <form id="codex-chat-form">
+          <div id="codex-command-mode" aria-live="polite" hidden></div>
+          <div id="codex-image-attachments" aria-live="polite" hidden></div>
+          <div class="codex-input-wrap">
+            <textarea
+              id="codex-chat-input"
+              rows="3"
+              placeholder="Message Pesk..."
+              aria-label="Message Codex"
+              autofocus
+            ></textarea>
+            <button
+              id="codex-image-select"
+              class="codex-image-select"
+              type="button"
+              aria-label="Attach image"
+              title="Attach image"
+            >
+              🖼️
+            </button>
+            <input id="codex-image-input" type="file" accept="image/*" multiple hidden />
+          </div>
+          <div id="codex-chat-actions">
+            <button
+              id="codex-chat-steer"
+              type="button"
+              aria-label="Steer the active turn"
+              title="Send this message as a steer"
+              hidden
+            >
+              Steer
+            </button>
+            <button id="codex-chat-interrupt" type="button" hidden disabled>Interrupt</button>
+            <button id="codex-chat-send" type="submit">Send</button>
+          </div>
+          <div
+            id="codex-file-suggestions"
+            role="listbox"
+            aria-label="File suggestions"
+            hidden
+          ></div>
+        </form>
+      </section>
+    </main>
+    <script type="module" src="web-adapter.js"></script>
+    <script type="module" src="chat-renderer.js"></script>
+  </body>
 </html>

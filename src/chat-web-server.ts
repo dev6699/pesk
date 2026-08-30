@@ -1,10 +1,4 @@
-import {
-  createReadStream,
-  existsSync,
-  readFileSync,
-  writeFileSync,
-  mkdirSync,
-} from "node:fs";
+import { createReadStream, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { createServer as createTlsServer } from "node:https";
@@ -82,8 +76,7 @@ export class ChatWebServer {
   private vapidKeys: VapidKeys | undefined;
   private preferredAddress: string | undefined;
   private devices = new Map<string, StoredDevice>();
-  private pairing:
-    { codeHash: string; expiresAt: number; deviceName: string } | undefined;
+  private pairing: { codeHash: string; expiresAt: number; deviceName: string } | undefined;
   private completedPairingName: string | undefined;
   private listeningPort: number | undefined;
 
@@ -94,9 +87,7 @@ export class ChatWebServer {
     ) => this.handleHttpRequest(request, response);
     if (options.tlsKey || options.tlsCert) {
       if (!options.tlsKey || !options.tlsCert) {
-        throw new Error(
-          "Both webTlsKey and webTlsCert are required for HTTPS web access.",
-        );
+        throw new Error("Both webTlsKey and webTlsCert are required for HTTPS web access.");
       }
       this.server = createTlsServer(
         {
@@ -119,9 +110,7 @@ export class ChatWebServer {
         this.sockets.emit("connection", client, request, undefined),
       );
     });
-    this.sockets.on("connection", (client: WebSocket) =>
-      this.handleConnection(client),
-    );
+    this.sockets.on("connection", (client: WebSocket) => this.handleConnection(client));
   }
 
   start(): Promise<void> {
@@ -130,9 +119,7 @@ export class ChatWebServer {
     this.preferredAddress = this.options.tlsCert
       ? certificateAddress(this.options.tlsCert)
       : undefined;
-    this.subscriptions = loadSubscriptions(
-      this.options.webPushSubscriptionsPath,
-    );
+    this.subscriptions = loadSubscriptions(this.options.webPushSubscriptionsPath);
     this.devices = loadDevices(this.options.deviceCredentialsPath);
     webpush.setVapidDetails(
       "mailto:pesk@localhost",
@@ -142,24 +129,14 @@ export class ChatWebServer {
     this.started = true;
     return new Promise((resolve, reject) => {
       this.server.once("error", reject);
-      this.server.on("error", (error) =>
-        this.options.debug("web chat error", error),
-      );
-      this.server.listen(
-        this.options.port,
-        this.options.listenHost ?? "0.0.0.0",
-        () => {
-          this.listeningPort = (this.server.address() as AddressInfo).port;
-          this.options.debug("web chat", {
-            urls: accessUrls(
-              this.listeningPort,
-              this.isSecure(),
-              this.preferredAddress,
-            ),
-          });
-          resolve();
-        },
-      );
+      this.server.on("error", (error) => this.options.debug("web chat error", error));
+      this.server.listen(this.options.port, this.options.listenHost ?? "0.0.0.0", () => {
+        this.listeningPort = (this.server.address() as AddressInfo).port;
+        this.options.debug("web chat", {
+          urls: accessUrls(this.listeningPort, this.isSecure(), this.preferredAddress),
+        });
+        resolve();
+      });
     });
   }
 
@@ -223,11 +200,7 @@ export class ChatWebServer {
       expiresAt,
       deviceName: uniqueName,
     };
-    const urls = accessUrls(
-      this.options.port,
-      this.isSecure(),
-      this.preferredAddress,
-    );
+    const urls = accessUrls(this.options.port, this.isSecure(), this.preferredAddress);
     const pairingUrl = `${urls[0] ?? ""}pair?code=${encodeURIComponent(code)}`;
     return {
       code,
@@ -246,14 +219,12 @@ export class ChatWebServer {
   }
 
   listDevices(): PairingDevice[] {
-    return [...this.devices.values()].map(
-      ({ credentialHash: _, ...device }) => ({
-        ...device,
-        pushRegistered: [...this.subscriptions.values()].some(
-          (subscription) => subscription.deviceId === device.id,
-        ),
-      }),
-    );
+    return [...this.devices.values()].map(({ credentialHash: _, ...device }) => ({
+      ...device,
+      pushRegistered: [...this.subscriptions.values()].some(
+        (subscription) => subscription.deviceId === device.id,
+      ),
+    }));
   }
 
   setDevicePushEnabled(id: string, enabled: boolean): void {
@@ -275,20 +246,14 @@ export class ChatWebServer {
     for (const [endpoint, subscription] of this.subscriptions) {
       if (subscription.deviceId === id) this.subscriptions.delete(endpoint);
     }
-    saveSubscriptions(
-      this.options.webPushSubscriptionsPath,
-      this.subscriptions,
-    );
+    saveSubscriptions(this.options.webPushSubscriptionsPath, this.subscriptions);
   }
 
   private handleConnection(client: WebSocket): void {
     let authenticated = false;
 
     const authenticate = (message: Record<string, unknown>): boolean => {
-      if (
-        message.type !== "authenticate" ||
-        typeof message.credential !== "string"
-      ) {
+      if (message.type !== "authenticate" || typeof message.credential !== "string") {
         client.close(1008, "Authentication required");
         return false;
       }
@@ -335,18 +300,12 @@ export class ChatWebServer {
     this.options.debug("web chat authenticated", {
       clients: this.clients.size,
     });
-    client.send(
-      JSON.stringify({ type: "state", state: this.options.getState() }),
-    );
+    client.send(JSON.stringify({ type: "state", state: this.options.getState() }));
   }
 
-  private authenticatedDevice(
-    request: IncomingMessage,
-  ): StoredDevice | undefined {
+  private authenticatedDevice(request: IncomingMessage): StoredDevice | undefined {
     const header = request.headers.authorization;
-    return header?.startsWith("Bearer ")
-      ? this.authenticateCredential(header.slice(7))
-      : undefined;
+    return header?.startsWith("Bearer ") ? this.authenticateCredential(header.slice(7)) : undefined;
   }
 
   private authenticateCredential(credential: string): StoredDevice | undefined {
@@ -379,11 +338,7 @@ export class ChatWebServer {
         typeof body.code !== "string" ||
         hashSecret(body.code.toUpperCase()) !== this.pairing.codeHash
       ) {
-        this.writeJson(
-          response,
-          { error: "Pairing code expired or invalid" },
-          400,
-        );
+        this.writeJson(response, { error: "Pairing code expired or invalid" }, 400);
         return;
       }
       const id = randomBytes(12).toString("hex");
@@ -460,8 +415,7 @@ export class ChatWebServer {
       return;
     }
     response.writeHead(200, {
-      "Content-Type":
-        MIME_TYPES[path.extname(file)] ?? "application/octet-stream",
+      "Content-Type": MIME_TYPES[path.extname(file)] ?? "application/octet-stream",
       "Cache-Control": "no-store",
     });
     createReadStream(file).pipe(response);
@@ -474,10 +428,7 @@ export class ChatWebServer {
   ): void {
     let manifest: Record<string, unknown>;
     try {
-      manifest = JSON.parse(readFileSync(file, "utf8")) as Record<
-        string,
-        unknown
-      >;
+      manifest = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
     } catch {
       response.writeHead(500).end();
       return;
@@ -537,10 +488,7 @@ export class ChatWebServer {
       const endpoint = requestUrl.searchParams.get("endpoint");
       if (endpoint) {
         this.subscriptions.delete(endpoint);
-        saveSubscriptions(
-          this.options.webPushSubscriptionsPath,
-          this.subscriptions,
-        );
+        saveSubscriptions(this.options.webPushSubscriptionsPath, this.subscriptions);
       }
       this.writeJson(response, { ok: true });
       return;
@@ -550,38 +498,26 @@ export class ChatWebServer {
       return;
     }
     try {
-      const subscription = JSON.parse(
-        await readRequestBody(request),
-      ) as PushSubscription;
+      const subscription = JSON.parse(await readRequestBody(request)) as PushSubscription;
       if (!isPushSubscription(subscription)) {
         this.writeJson(response, { error: "Invalid subscription" }, 400);
         return;
       }
       subscription.deviceId = device.id;
       for (const [endpoint, stored] of this.subscriptions) {
-        if (
-          stored.deviceId === device.id &&
-          endpoint !== subscription.endpoint
-        ) {
+        if (stored.deviceId === device.id && endpoint !== subscription.endpoint) {
           this.subscriptions.delete(endpoint);
         }
       }
       this.subscriptions.set(subscription.endpoint, subscription);
-      saveSubscriptions(
-        this.options.webPushSubscriptionsPath,
-        this.subscriptions,
-      );
+      saveSubscriptions(this.options.webPushSubscriptionsPath, this.subscriptions);
       this.writeJson(response, { ok: true });
     } catch {
       this.writeJson(response, { error: "Invalid subscription" }, 400);
     }
   }
 
-  private sendPush(notification: {
-    kind: string;
-    title: string;
-    body: string;
-  }): void {
+  private sendPush(notification: { kind: string; title: string; body: string }): void {
     if (!this.vapidKeys || !this.subscriptions.size) {
       this.options.debug("web push not dispatched", {
         kind: notification.kind,
@@ -599,9 +535,7 @@ export class ChatWebServer {
       url: "./web-chat.html",
     });
     for (const [endpoint, subscription] of this.subscriptions) {
-      const device = subscription.deviceId
-        ? this.devices.get(subscription.deviceId)
-        : undefined;
+      const device = subscription.deviceId ? this.devices.get(subscription.deviceId) : undefined;
       if (!device || !device.pushEnabled) continue;
       this.options.debug("web push sending", {
         kind: notification.kind,
@@ -617,10 +551,7 @@ export class ChatWebServer {
           });
           if (error.statusCode !== 404 && error.statusCode !== 410) return;
           this.subscriptions.delete(endpoint);
-          saveSubscriptions(
-            this.options.webPushSubscriptionsPath,
-            this.subscriptions,
-          );
+          saveSubscriptions(this.options.webPushSubscriptionsPath, this.subscriptions);
         });
     }
   }
@@ -737,9 +668,7 @@ function loadDevices(file: string): Map<string, StoredDevice> {
 
 function saveDevices(file: string, devices: Map<string, StoredDevice>): void {
   mkdirSync(path.dirname(file), { recursive: true });
-  const persisted = [...devices.values()].map(
-    ({ pushRegistered: _, ...device }) => device,
-  );
+  const persisted = [...devices.values()].map(({ pushRegistered: _, ...device }) => device);
   writeFileSync(file, JSON.stringify(persisted, null, 2), {
     mode: 0o600,
   });
@@ -749,10 +678,7 @@ function hashSecret(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function saveSubscriptions(
-  file: string,
-  subscriptions: Map<string, PushSubscription>,
-): void {
+function saveSubscriptions(file: string, subscriptions: Map<string, PushSubscription>): void {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify([...subscriptions.values()], null, 2), {
     mode: 0o600,
@@ -768,11 +694,7 @@ function lanUrls(port: number, secure: boolean): string[] {
   return addresses.length ? addresses : [`${protocol}://127.0.0.1:${port}/`];
 }
 
-function accessUrls(
-  port: number,
-  secure: boolean,
-  preferredAddress?: string,
-): string[] {
+function accessUrls(port: number, secure: boolean, preferredAddress?: string): string[] {
   const urls = lanUrls(port, secure);
   if (!preferredAddress) return urls;
   return [
@@ -783,8 +705,7 @@ function accessUrls(
 
 function certificateAddress(file: string): string | undefined {
   try {
-    const subjectAltName =
-      new X509Certificate(readFileSync(file)).subjectAltName ?? "";
+    const subjectAltName = new X509Certificate(readFileSync(file)).subjectAltName ?? "";
     return subjectAltName.match(/IP Address:([0-9.]+)/)?.[1];
   } catch {
     return undefined;

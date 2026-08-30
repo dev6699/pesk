@@ -1,7 +1,4 @@
 {
   "extends": "../../tsconfig.renderer.json",
-  "include": [
-    "*.ts",
-    "*.d.ts"
-  ]
+  "include": ["*.ts", "*.d.ts"]
 }

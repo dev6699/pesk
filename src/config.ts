@@ -57,9 +57,7 @@ export function loadRawConfig(): Record<string, any> {
 
 export function getConfigDirectory(): string {
   const userConfigPath = path.join(app.getPath("userData"), "config.json");
-  return fs.existsSync(userConfigPath)
-    ? app.getPath("userData")
-    : app.getAppPath();
+  return fs.existsSync(userConfigPath) ? app.getPath("userData") : app.getAppPath();
 }
 
 const defaultSettings: PeskSettings = {
@@ -106,13 +104,11 @@ export function loadConfig(): AppConfig {
     const config = loadRawConfig();
     return {
       codexAppServerUrl:
-        typeof config.codexAppServerUrl === "string" &&
-        /^wss?:\/\//.test(config.codexAppServerUrl)
+        typeof config.codexAppServerUrl === "string" && /^wss?:\/\//.test(config.codexAppServerUrl)
           ? config.codexAppServerUrl
           : defaultConfig.codexAppServerUrl,
       codexStatusSound:
-        typeof config.codexStatusSound === "string" &&
-        config.codexStatusSound.trim()
+        typeof config.codexStatusSound === "string" && config.codexStatusSound.trim()
           ? path.resolve(getConfigDirectory(), config.codexStatusSound.trim())
           : defaultConfig.codexStatusSound,
       webAccessEnabled: config.webAccessEnabled === true,

@@ -10,8 +10,7 @@ jest.mock(
   "../src/renderer/vendor/marked.js",
   () => ({
     marked: {
-      parse: (value: string) =>
-        `<p>${value.replace("**world**", "<strong>world</strong>")}</p>`,
+      parse: (value: string) => `<p>${value.replace("**world**", "<strong>world</strong>")}</p>`,
     },
   }),
   { virtual: true },
@@ -204,18 +203,12 @@ test("renders session state, history, activities, approvals, and token usage", (
   expect(elements.select.options[0].textContent).toContain("Inspect project");
   expect(elements.copy.disabled).toBe(false);
   expect(elements.history.querySelectorAll(".codex-message")).toHaveLength(6);
-  expect(
-    elements.history.querySelector(".codex-markdown")?.innerHTML,
-  ).toContain("<strong>world</strong>");
-  expect(
-    elements.history.querySelector(".codex-command-details"),
-  ).not.toBeNull();
-  expect(
-    elements.history.querySelector(".codex-file-change-details"),
-  ).not.toBeNull();
-  expect(
-    elements.history.querySelector(".codex-approval-pending"),
-  ).not.toBeNull();
+  expect(elements.history.querySelector(".codex-markdown")?.innerHTML).toContain(
+    "<strong>world</strong>",
+  );
+  expect(elements.history.querySelector(".codex-command-details")).not.toBeNull();
+  expect(elements.history.querySelector(".codex-file-change-details")).not.toBeNull();
+  expect(elements.history.querySelector(".codex-approval-pending")).not.toBeNull();
   expect(elements.tokenUsage.textContent).toContain("12.5k");
   expect(elements.tokenUsage.textContent).toContain("gpt-test");
 });
@@ -238,9 +231,7 @@ test("renders readable keyboard-friendly user questions", () => {
           question,
           isOther: false,
           isSecret: false,
-          options: [
-            { label: "Option A", description: "Use the first approach." },
-          ],
+          options: [{ label: "Option A", description: "Use the first approach." }],
         },
       ],
     },
@@ -251,12 +242,8 @@ test("renders readable keyboard-friendly user questions", () => {
   expect(elements.userInput.hidden).toBe(false);
   expect(elements.form.hidden).toBe(true);
   expect(elements.userInput.textContent).toContain(question);
-  expect(document.activeElement).toBe(
-    elements.userInput.querySelector("input[type='radio']"),
-  );
-  const input = elements.userInput.querySelector<HTMLInputElement>(
-    "input[type='radio']",
-  )!;
+  expect(document.activeElement).toBe(elements.userInput.querySelector("input[type='radio']"));
+  const input = elements.userInput.querySelector<HTMLInputElement>("input[type='radio']")!;
   expect(elements.userInput.textContent).toContain(
     "Use ↑/↓ to select, Tab to add a note, and Enter to submit.",
   );
@@ -268,10 +255,9 @@ test("renders readable keyboard-friendly user questions", () => {
       cancelable: true,
     }),
   );
-  expect(window.peskApi.respondCodexUserInput).toHaveBeenCalledWith(
-    "request-1",
-    { choice: ["Option A"] },
-  );
+  expect(window.peskApi.respondCodexUserInput).toHaveBeenCalledWith("request-1", {
+    choice: ["Option A"],
+  });
   expect(window.peskApi.focusCodexInput).toHaveBeenCalled();
   expect(document.activeElement).toBe(elements.input);
 });
@@ -306,9 +292,7 @@ test("preserves modified arrow shortcuts while a question is focused", () => {
     },
   };
   renderer.updateSettings(settings);
-  const option = elements.userInput.querySelector<HTMLInputElement>(
-    "input[type='radio']",
-  )!;
+  const option = elements.userInput.querySelector<HTMLInputElement>("input[type='radio']")!;
   const dispatchThroughDocument = (event: KeyboardEvent): void => {
     option.dispatchEvent(event);
   };
@@ -321,8 +305,7 @@ test("preserves modified arrow shortcuts while a question is focused", () => {
     bubbles: true,
     cancelable: true,
   });
-  const handleKeydown = (event: KeyboardEvent): void =>
-    renderer.handleKeydown(event);
+  const handleKeydown = (event: KeyboardEvent): void => renderer.handleKeydown(event);
   document.addEventListener("keydown", handleKeydown, true);
   elements.history.dispatchEvent(scrollEvent);
   expect(scrollEvent.defaultPrevented).toBe(true);
@@ -340,9 +323,7 @@ test("preserves modified arrow shortcuts while a question is focused", () => {
   });
   dispatchThroughDocument(selectEvent);
   expect(selectEvent.defaultPrevented).toBe(true);
-  expect(
-    elements.history.querySelector(".codex-message-selected"),
-  ).not.toBeNull();
+  expect(elements.history.querySelector(".codex-message-selected")).not.toBeNull();
 
   const plainArrow = new KeyboardEvent("keydown", {
     key: "ArrowDown",
@@ -352,9 +333,7 @@ test("preserves modified arrow shortcuts while a question is focused", () => {
   option.dispatchEvent(plainArrow);
   expect(plainArrow.defaultPrevented).toBe(true);
   expect(
-    elements.userInput.querySelectorAll<HTMLInputElement>(
-      "input[type='radio']",
-    )[1].checked,
+    elements.userInput.querySelectorAll<HTMLInputElement>("input[type='radio']")[1].checked,
   ).toBe(true);
   document.removeEventListener("keydown", handleKeydown, true);
 });
@@ -406,9 +385,7 @@ test("Ctrl+Up refocuses the question after history navigation", () => {
       ],
     },
   });
-  const option = elements.userInput.querySelector<HTMLInputElement>(
-    "input[type='radio']",
-  )!;
+  const option = elements.userInput.querySelector<HTMLInputElement>("input[type='radio']")!;
 
   elements.history.setAttribute("tabindex", "0");
   elements.history.focus();
@@ -554,9 +531,7 @@ test("scrolls to a new user question without repeating for the same request", ()
           question: "Which implementation should we use?",
           isOther: false,
           isSecret: false,
-          options: [
-            { label: "Option A", description: "Use the first approach." },
-          ],
+          options: [{ label: "Option A", description: "Use the first approach." }],
         },
       ],
     },
@@ -566,9 +541,7 @@ test("scrolls to a new user question without repeating for the same request", ()
   renderer.updateSettings(settings);
 
   expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
-  expect(document.activeElement).toBe(
-    elements.userInput.querySelector("input[type='radio']"),
-  );
+  expect(document.activeElement).toBe(elements.userInput.querySelector("input[type='radio']"));
 
   elements.history.scrollTop = 120;
   renderer.updateSettings({ ...settings });
@@ -594,17 +567,14 @@ test("opens new plan activities by default and preserves manual collapse", () =>
   };
 
   renderer.updateSettings(settings);
-  const details = elements.history.querySelector<HTMLDetailsElement>(
-    ".codex-plan-details",
-  )!;
+  const details = elements.history.querySelector<HTMLDetailsElement>(".codex-plan-details")!;
   expect(details.open).toBe(true);
 
   details.open = false;
   renderer.updateSettings({ ...settings, codexHistory: [plan] });
-  expect(
-    elements.history.querySelector<HTMLDetailsElement>(".codex-plan-details")!
-      .open,
-  ).toBe(false);
+  expect(elements.history.querySelector<HTMLDetailsElement>(".codex-plan-details")!.open).toBe(
+    false,
+  );
 });
 
 test("scrolls when a plan appears, streams, and asks to implement", () => {
@@ -654,9 +624,7 @@ test("scrolls when a plan appears, streams, and asks to implement", () => {
         },
       ],
     });
-    expect(
-      elements.userInput.querySelector(".codex-plan-implementation-prompt"),
-    ).not.toBeNull();
+    expect(elements.userInput.querySelector(".codex-plan-implementation-prompt")).not.toBeNull();
     expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
 
     elements.history.scrollTop = 120;
@@ -703,9 +671,7 @@ test("updates only streamed plan content after the batching window", () => {
     const planDetails = elements.history.querySelector<HTMLDetailsElement>(
       "details[data-activity-key='plan-stream']",
     )!;
-    const planContent = planDetails.querySelector<HTMLElement>(
-      ".codex-plan-content",
-    )!;
+    const planContent = planDetails.querySelector<HTMLElement>(".codex-plan-content")!;
     const otherMessage = elements.history.querySelector<HTMLElement>(
       "[data-message-item-id='message-1']",
     );
@@ -731,11 +697,9 @@ test("updates only streamed plan content after the batching window", () => {
     expect(planContent.textContent).toContain("Initial plan");
     jest.advanceTimersByTime(100);
     expect(planContent.textContent).toContain("Updated plan");
-    expect(
-      elements.history.querySelector<HTMLElement>(
-        "[data-message-item-id='message-1']",
-      ),
-    ).toBe(otherMessage);
+    expect(elements.history.querySelector<HTMLElement>("[data-message-item-id='message-1']")).toBe(
+      otherMessage,
+    );
     expect(planDetails.open).toBe(false);
   } finally {
     jest.useRealTimers();
@@ -761,24 +725,17 @@ test("shows the implementation question after a completed plan", async () => {
   };
 
   renderer.updateSettings(settings);
-  expect(
-    elements.history.querySelector(".codex-plan-implementation-prompt"),
-  ).toBeNull();
+  expect(elements.history.querySelector(".codex-plan-implementation-prompt")).toBeNull();
   const prompt = elements.userInput.querySelector<HTMLElement>(
     ".codex-plan-implementation-prompt",
   )!;
   expect(prompt.textContent).toContain("Implement this plan?");
   const form = prompt.querySelector("form") as HTMLFormElement;
-  const clearContext = form.querySelector<HTMLInputElement>(
-    "input[value='clear-context']",
-  )!;
+  const clearContext = form.querySelector<HTMLInputElement>("input[value='clear-context']")!;
   clearContext.checked = true;
   form.requestSubmit();
 
-  expect(window.peskApi.implementCodexPlan).toHaveBeenCalledWith(
-    "1. Make the change",
-    true,
-  );
+  expect(window.peskApi.implementCodexPlan).toHaveBeenCalledWith("1. Make the change", true);
   await Promise.resolve();
   expect(window.peskApi.focusCodexInput).toHaveBeenCalled();
 });
@@ -806,9 +763,7 @@ test("shows and focuses the chat input after staying in plan mode", () => {
     ".codex-plan-implementation-prompt",
   )!;
   const form = prompt.querySelector("form") as HTMLFormElement;
-  const stayPlan = form.querySelector<HTMLInputElement>(
-    "input[value='stay-plan']",
-  )!;
+  const stayPlan = form.querySelector<HTMLInputElement>("input[value='stay-plan']")!;
   stayPlan.checked = true;
   form.requestSubmit();
 
@@ -839,9 +794,7 @@ test("does not show the implementation question when another message follows the
 
   renderer.updateSettings(settings);
 
-  expect(
-    elements.userInput.querySelector(".codex-plan-implementation-prompt"),
-  ).toBeNull();
+  expect(elements.userInput.querySelector(".codex-plan-implementation-prompt")).toBeNull();
 });
 
 test("navigates options with arrows and submits the selected option with a note", () => {
@@ -871,12 +824,8 @@ test("navigates options with arrows and submits the selected option with a note"
   };
 
   renderer.updateSettings(settings);
-  const options = elements.userInput.querySelectorAll<HTMLInputElement>(
-    "input[type='radio']",
-  );
-  const note = elements.userInput.querySelector<HTMLInputElement>(
-    "input[data-note='true']",
-  )!;
+  const options = elements.userInput.querySelectorAll<HTMLInputElement>("input[type='radio']");
+  const note = elements.userInput.querySelector<HTMLInputElement>("input[data-note='true']")!;
   options[0].dispatchEvent(
     new KeyboardEvent("keydown", {
       key: "ArrowDown",
@@ -891,9 +840,7 @@ test("navigates options with arrows and submits the selected option with a note"
   expect(options[0].tabIndex).toBe(-1);
   expect(options[1].tabIndex).toBe(0);
   expect(options[2].value).toBe("Other");
-  expect(
-    elements.userInput.querySelector("input[data-other='true']"),
-  ).toBeNull();
+  expect(elements.userInput.querySelector("input[data-other='true']")).toBeNull();
   expect(note.hidden).toBe(false);
   note.click();
   note.focus();
@@ -941,10 +888,9 @@ test("navigates options with arrows and submits the selected option with a note"
     }),
   );
 
-  expect(window.peskApi.respondCodexUserInput).toHaveBeenCalledWith(
-    "request-2",
-    { choice: ["Option B", "Keep the implementation simple."] },
-  );
+  expect(window.peskApi.respondCodexUserInput).toHaveBeenCalledWith("request-2", {
+    choice: ["Option B", "Keep the implementation simple."],
+  });
 });
 
 test("shows multiple questions one at a time and submits all answers at the end", () => {
@@ -981,24 +927,20 @@ test("shows multiple questions one at a time and submits all answers at the end"
   renderer.updateSettings(settings);
   expect(elements.userInput.textContent).toContain("First question");
   expect(elements.userInput.textContent).not.toContain("Second question");
-  const firstOption = elements.userInput.querySelector<HTMLInputElement>(
-    "input[type='radio']",
-  )!;
+  const firstOption = elements.userInput.querySelector<HTMLInputElement>("input[type='radio']")!;
   firstOption.checked = true;
   (elements.userInput.querySelector("form") as HTMLFormElement).requestSubmit();
 
   expect(elements.userInput.textContent).toContain("Second question");
   expect(elements.userInput.textContent).not.toContain("First question");
-  const secondOption = elements.userInput.querySelector<HTMLInputElement>(
-    "input[type='radio']",
-  )!;
+  const secondOption = elements.userInput.querySelector<HTMLInputElement>("input[type='radio']")!;
   secondOption.checked = true;
   (elements.userInput.querySelector("form") as HTMLFormElement).requestSubmit();
 
-  expect(window.peskApi.respondCodexUserInput).toHaveBeenCalledWith(
-    "request-3",
-    { first: ["A"], second: ["B"] },
-  );
+  expect(window.peskApi.respondCodexUserInput).toHaveBeenCalledWith("request-3", {
+    first: ["A"],
+    second: ["B"],
+  });
 });
 
 test("searches and selects a file with the @ picker", async () => {
@@ -1014,12 +956,8 @@ test("searches and selects a file with the @ picker", async () => {
   expect(elements.suggestions.hidden).toBe(false);
   expect(elements.suggestions.querySelectorAll("button")).toHaveLength(2);
 
-  elements.input.dispatchEvent(
-    new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
-  );
-  elements.input.dispatchEvent(
-    new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-  );
+  elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 
   expect(elements.input.value).toBe("Inspect src/config.ts ");
   expect(elements.suggestions.hidden).toBe(true);
@@ -1033,9 +971,7 @@ test("shows and selects slash commands", () => {
 
   expect(elements.suggestions.hidden).toBe(false);
   expect(
-    [...elements.suggestions.querySelectorAll("button")].map(
-      (button) => button.textContent,
-    ),
+    [...elements.suggestions.querySelectorAll("button")].map((button) => button.textContent),
   ).toEqual([
     "/planSwitch to Plan mode",
     "/defaultSwitch to Default mode",
@@ -1046,12 +982,8 @@ test("shows and selects slash commands", () => {
     "/execRun a sandboxed command",
   ]);
 
-  elements.input.dispatchEvent(
-    new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
-  );
-  elements.input.dispatchEvent(
-    new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-  );
+  elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 
   expect(elements.input.value).toBe("/default ");
   expect(elements.suggestions.hidden).toBe(true);
@@ -1061,8 +993,8 @@ test("shows the exec indicator immediately after slash suggestion selection", ()
   const { elements } = makeRenderer();
   elements.input.value = "/exec";
   elements.input.dispatchEvent(new Event("input", { bubbles: true }));
-  const execIndex = [...elements.suggestions.querySelectorAll("button")].findIndex(
-    (button) => button.textContent?.startsWith("/exec"),
+  const execIndex = [...elements.suggestions.querySelectorAll("button")].findIndex((button) =>
+    button.textContent?.startsWith("/exec"),
   );
 
   elements.suggestions
@@ -1119,9 +1051,7 @@ test("marks failed command activity in red", () => {
     ],
   });
 
-  expect(
-    elements.history.querySelector(".codex-activity-command-failed"),
-  ).not.toBeNull();
+  expect(elements.history.querySelector(".codex-activity-command-failed")).not.toBeNull();
 });
 
 test("expands user commands but collapses agent commands", () => {
@@ -1221,14 +1151,7 @@ test("uses the documented default expansion for every activity type", () => {
     "codex-plan-details",
     "codex-activity-details-block",
   ]);
-  expect(details.map((item) => item.open)).toEqual([
-    false,
-    true,
-    false,
-    false,
-    true,
-    true,
-  ]);
+  expect(details.map((item) => item.open)).toEqual([false, true, false, false, true, true]);
   expect(elements.history.querySelectorAll(".codex-message-assistant")).toHaveLength(1);
 });
 
@@ -1253,17 +1176,13 @@ test("opens and submits the custom review form", async () => {
   await Promise.resolve();
   await Promise.resolve();
   expect(elements.suggestions.hidden).toBe(false);
-  reviewInput!.dispatchEvent(
-    new KeyboardEvent("keydown", { key: "Enter", cancelable: true }),
-  );
+  reviewInput!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", cancelable: true }));
   expect(reviewInput!.value).toBe("src/codex.ts ");
   reviewInput!.value = "Check the changes for bugs and missing tests.";
   reviewForm!.dispatchEvent(new Event("submit", { cancelable: true }));
   await Promise.resolve();
 
-  expect(startReview).toHaveBeenCalledWith(
-    "Check the changes for bugs and missing tests.",
-  );
+  expect(startReview).toHaveBeenCalledWith("Check the changes for bugs and missing tests.");
   expect(elements.userInput.hidden).toBe(true);
   expect(elements.form.hidden).toBe(false);
 });
@@ -1450,12 +1369,10 @@ test("renders attached images in user message history", () => {
     ],
   });
 
-  expect(elements.history.querySelector(".codex-message-image")).toMatchObject(
-    {
-      src: "data:image/png;base64,abc",
-      alt: "Attached image: screen.png",
-    },
-  );
+  expect(elements.history.querySelector(".codex-message-image")).toMatchObject({
+    src: "data:image/png;base64,abc",
+    alt: "Attached image: screen.png",
+  });
 });
 
 test("keeps web chat input focused before and after an async submission", async () => {
@@ -1465,9 +1382,7 @@ test("keeps web chat input focused before and after an async submission", async 
   elements.history.scrollTop = 0;
   let resolveSubmit!: (settings: Settings) => void;
   const submit = window.peskApi.submitCodexPrompt as jest.Mock;
-  submit.mockImplementation(
-    () => new Promise<Settings>((resolve) => (resolveSubmit = resolve)),
-  );
+  submit.mockImplementation(() => new Promise<Settings>((resolve) => (resolveSubmit = resolve)));
   elements.input.value = "hello";
   elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
   await Promise.resolve();
@@ -1506,8 +1421,7 @@ test("adjusts web chat form visibility on visual viewport resize", () => {
   Object.defineProperty(window, "visualViewport", {
     configurable: true,
     value: {
-      addEventListener: (_type: string, listener: () => void) =>
-        resizeListeners.add(listener),
+      addEventListener: (_type: string, listener: () => void) => resizeListeners.add(listener),
       removeEventListener: (_type: string, listener: () => void) =>
         resizeListeners.delete(listener),
     },
@@ -1545,10 +1459,7 @@ test("renders approval options and completed approval states", () => {
   ) as HTMLInputElement;
   approve.click();
   (elements.userInput.querySelector("form") as HTMLFormElement).requestSubmit();
-  expect(window.peskApi.respondCodexPermission).toHaveBeenCalledWith(
-    7,
-    "accept",
-  );
+  expect(window.peskApi.respondCodexPermission).toHaveBeenCalledWith(7, "accept");
   expect(approve.value).toBe("accept");
   expect(deny.value).toBe("decline");
   expect(approve).toBeTruthy();
@@ -1577,9 +1488,7 @@ test("blurs the input when selecting a message with Alt+Up", () => {
     codexHistory: [{ role: "user", text: "copy this" }],
   });
   elements.input.focus();
-  (
-    elements.history.querySelector(".codex-message") as HTMLElement
-  ).scrollIntoView = jest.fn();
+  (elements.history.querySelector(".codex-message") as HTMLElement).scrollIntoView = jest.fn();
 
   const event = new KeyboardEvent("keydown", {
     key: "ArrowUp",
@@ -1616,12 +1525,6 @@ test("renders working and completed elapsed states", () => {
     codexWorkedElapsed: 1000,
     codexInterrupted: true,
   });
-  expect(elements.workingStatus.textContent).toContain(
-    "Conversation interrupted",
-  );
-  expect(
-    elements.workingStatus.classList.contains(
-      "codex-working-status-interrupted",
-    ),
-  ).toBe(true);
+  expect(elements.workingStatus.textContent).toContain("Conversation interrupted");
+  expect(elements.workingStatus.classList.contains("codex-working-status-interrupted")).toBe(true);
 });

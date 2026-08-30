@@ -18,13 +18,15 @@ npm run build     # Compile main and renderer TypeScript and copy page assets
 npm start         # Build and launch Electron locally
 npm test          # Build, then run Jest serially
 npm run dist      # Build a Windows NSIS installer
+npm run format     # Format supported project files with Prettier
+npm run format:check # Verify formatting without changing files
 ```
 
 Compiled files go to `build/`; installer artifacts go to `dist/`. Distribute the generated `Pesk-Setup-<version>.exe`, not the build directory.
 
 ## Coding Style and Naming
 
-Use TypeScript with strict compiler settings, two-space indentation, semicolons, and double quotes. Run Prettier checks before submitting changes. Use `PascalCase` for classes and interfaces, `camelCase` for functions and variables, and descriptive controller names such as `PetWindowController`. Keep renderer-specific code under `src/renderer/` and communicate with the main process through the typed preload API.
+Use TypeScript with strict compiler settings. After making changes, run `npm run format`, then run `npm run format:check` before submitting. Use `PascalCase` for classes and interfaces, `camelCase` for functions and variables, and descriptive controller names such as `PetWindowController`. Keep renderer-specific code under `src/renderer/` and communicate with the main process through the typed preload API.
 
 ## Testing Guidelines
 

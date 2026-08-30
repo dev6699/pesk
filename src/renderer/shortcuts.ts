@@ -54,10 +54,7 @@ export const SHORTCUTS = {
 } as const satisfies Record<string, ShortcutDefinition>;
 
 export function matchesShortcut(
-  event: Pick<
-    KeyboardEvent,
-    "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey"
-  >,
+  event: Pick<KeyboardEvent, "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
   id: ShortcutId,
 ): boolean {
   const shortcut: ShortcutDefinition = SHORTCUTS[id];
@@ -65,9 +62,7 @@ export function matchesShortcut(
   if (shortcut.ignoreModifiers) return true;
   const ctrlOrMeta = event.ctrlKey || event.metaKey;
   return (
-    (shortcut.ctrlOrMeta
-      ? ctrlOrMeta
-      : event.ctrlKey === Boolean(shortcut.ctrl)) &&
+    (shortcut.ctrlOrMeta ? ctrlOrMeta : event.ctrlKey === Boolean(shortcut.ctrl)) &&
     event.altKey === Boolean(shortcut.alt) &&
     event.shiftKey === Boolean(shortcut.shift) &&
     (shortcut.ctrlOrMeta || event.metaKey === Boolean(shortcut.meta))

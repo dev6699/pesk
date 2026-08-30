@@ -17,27 +17,43 @@ test("generates and displays a pairing QR when Enter is pressed in the device na
         <div id="pairing-devices"></div>
       </section>
     </main>`;
-  const createPairing = jest.fn(() => Promise.resolve({
-    expiresAt: Date.now() + 300000,
-    qrDataUrl: "data:image/png;base64,qr",
-    deviceName: "Phone",
-  }));
+  const createPairing = jest.fn(() =>
+    Promise.resolve({
+      expiresAt: Date.now() + 300000,
+      qrDataUrl: "data:image/png;base64,qr",
+      deviceName: "Phone",
+    }),
+  );
   window.peskApi = {
-    getSettings: jest.fn(() => Promise.resolve({ animation: "idle", animationMode: "selected", paused: false, locked: false, visible: true, codexStatusSound: true } as never)),
+    getSettings: jest.fn(() =>
+      Promise.resolve({
+        animation: "idle",
+        animationMode: "selected",
+        paused: false,
+        locked: false,
+        visible: true,
+        codexStatusSound: true,
+      } as never),
+    ),
     getAnimations: jest.fn(() => Promise.resolve([])),
     getPresets: jest.fn(() => Promise.resolve([])),
     getPairingDevices: jest.fn(() => Promise.resolve([])),
     createPairing,
     getPairingStatus: jest.fn(() => Promise.resolve({ active: false })),
-    onMenuUpdated: jest.fn(), onMenuFocusChanged: jest.fn(),
+    onMenuUpdated: jest.fn(),
+    onMenuFocusChanged: jest.fn(),
   } as never;
-  jest.isolateModules(() => { jest.requireActual("../src/renderer/menu.ts"); });
+  jest.isolateModules(() => {
+    jest.requireActual("../src/renderer/menu.ts");
+  });
   const input = document.getElementById("pairing-device-name") as HTMLInputElement;
   input.value = "Phone";
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
   await Promise.resolve();
   await Promise.resolve();
   expect(createPairing).toHaveBeenCalledWith("Phone");
-  expect((document.getElementById("pairing-qr") as HTMLImageElement).src).toBe("data:image/png;base64,qr");
+  expect((document.getElementById("pairing-qr") as HTMLImageElement).src).toBe(
+    "data:image/png;base64,qr",
+  );
   jest.useRealTimers();
 });

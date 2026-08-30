@@ -22,13 +22,11 @@ export class MenuController {
   private menuWindow: BrowserWindow | null = null;
   private tray: Tray | null = null;
 
-  constructor(private readonly options: MenuOptions) { }
+  constructor(private readonly options: MenuOptions) {}
 
   /** Creates the tray icon and installs its initial context menu. */
   create(): void {
-    this.tray = new Tray(
-      path.join(app.getAppPath(), "assets", "pesk-tray.png"),
-    );
+    this.tray = new Tray(path.join(app.getAppPath(), "assets", "pesk-tray.png"));
     this.tray.setToolTip("Pesk");
     this.tray.on("click", () => this.options.showPet());
     this.refreshTrayMenu();

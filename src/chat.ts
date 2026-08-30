@@ -71,10 +71,7 @@ export class ChatWindowController {
       chatX = anchorBounds.x - chatWidth;
     }
     chatX = Math.max(area.x, Math.min(chatX, area.x + area.width - chatWidth));
-    const chatY = Math.max(
-      area.y,
-      Math.min(anchorBounds.y, area.y + area.height - chatHeight),
-    );
+    const chatY = Math.max(area.y, Math.min(anchorBounds.y, area.y + area.height - chatHeight));
     const [currentX, currentY] = this.chatWindow.getPosition();
     if (currentX !== chatX || currentY !== chatY) {
       this.chatWindow.setPosition(chatX, chatY, false);
@@ -131,7 +128,5 @@ export class ChatWindowController {
 }
 
 function positiveNumber(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
-    : fallback;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }

@@ -18,8 +18,7 @@ export interface CodexMessage {
   itemId?: string;
   activity?: {
     kind: "command" | "fileChange" | "webSearch" | "tool" | "plan" | "other";
-    source?:
-      "agent" | "userShell" | "unifiedExecStartup" | "unifiedExecInteraction";
+    source?: "agent" | "userShell" | "unifiedExecStartup" | "unifiedExecInteraction";
     userInitiated?: boolean;
     label?: string;
     status?: string;
@@ -116,8 +115,7 @@ export interface CodexState {
   queuedSubmissions: CodexQueuedSubmission[];
 }
 
-export type ApprovalDecision =
-  CommandExecutionApprovalDecision | FileChangeApprovalDecision;
+export type ApprovalDecision = CommandExecutionApprovalDecision | FileChangeApprovalDecision;
 
 export interface PendingApproval {
   requestId: RequestId;

@@ -21,11 +21,7 @@ function createController() {
     focusForUserInput: jest.fn(),
   };
   const webServer = { notifyCodexAttention: jest.fn() };
-  const controller = new NotificationController(
-    pet as never,
-    chat as never,
-    webServer as never,
-  );
+  const controller = new NotificationController(pet as never, chat as never, webServer as never);
   return { controller, pet, chat, webServer };
 }
 

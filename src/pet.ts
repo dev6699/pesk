@@ -248,13 +248,7 @@ export class PetWindowController {
   /** Moves the pet by renderer-provided deltas within its work area. */
   move(dx: number, dy: number): void {
     const settings = this.options.getSettings();
-    if (
-      !this.petWindow ||
-      settings.locked ||
-      !Number.isFinite(dx) ||
-      !Number.isFinite(dy)
-    )
-      return;
+    if (!this.petWindow || settings.locked || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
 
     const [x, y] = this.petWindow.getPosition();
     const area = screen.getDisplayMatching(this.petWindow.getBounds()).workArea;
@@ -367,10 +361,7 @@ export class PetWindowController {
 
   private maxScale(display = screen.getPrimaryDisplay()): number {
     const area = display.workArea;
-    return Math.max(
-      0.25,
-      Math.min(area.width / this.getSize(), area.height / this.getSize()),
-    );
+    return Math.max(0.25, Math.min(area.width / this.getSize(), area.height / this.getSize()));
   }
 
   private initialPosition(): { x: number; y: number } {
@@ -389,10 +380,7 @@ export class PetWindowController {
           ))) ??
       screen.getPrimaryDisplay();
     const area = display.workArea;
-    const scale = Math.min(
-      this.maxScale(display),
-      Math.max(0.25, settings.scale || 1),
-    );
+    const scale = Math.min(this.maxScale(display), Math.max(0.25, settings.scale || 1));
     settings.scale = scale;
     const size = Math.round(this.getSize() * scale);
     const maxX = area.x + Math.max(0, area.width - size);
@@ -417,9 +405,7 @@ function loadAnimations(): AnimationFrames[] {
           : path.resolve(getConfigDirectory(), configuredAnimationsDir),
       ]
     : [path.join(app.getPath("userData"), "animations")];
-  const existingAnimationPaths = animationPaths.filter((directory) =>
-    fs.existsSync(directory),
-  );
+  const existingAnimationPaths = animationPaths.filter((directory) => fs.existsSync(directory));
   if (!existingAnimationPaths.length) return [];
 
   let defaultFps = 6;
@@ -428,10 +414,8 @@ function loadAnimations(): AnimationFrames[] {
   const animationFps: Record<string, number> = {};
   try {
     if (Number.isFinite(config.fps) && config.fps > 0) defaultFps = config.fps;
-    if (Number.isFinite(config.speed) && config.speed > 0)
-      movementSpeed = config.speed;
-    if (Number.isFinite(config.petSize) && config.petSize > 0)
-      configuredSize = config.petSize;
+    if (Number.isFinite(config.speed) && config.speed > 0) movementSpeed = config.speed;
+    if (Number.isFinite(config.petSize) && config.petSize > 0) configuredSize = config.petSize;
     if (config.animations && typeof config.animations === "object") {
       for (const [name, value] of Object.entries(config.animations)) {
         const fps = (value as { fps?: unknown }).fps;
