@@ -29,6 +29,7 @@ const startedThreadMessage: Extract<ServerMessage, { method: "thread/started" }>
       section: null,
       sectionEnteredAt: null,
       projectId: null,
+      historyMode: "legacy",
       modelProvider: "openai",
       createdAt: 0,
       updatedAt: 0,

@@ -2,8 +2,8 @@ import { app, BrowserWindow, screen } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { getConfigDirectory, loadRawConfig } from "./config.js";
-import type { PeskSettings } from "./config.js";
+import { getConfigDirectory, loadRawConfig } from "../config/config.js";
+import type { PeskSettings } from "../config/config.js";
 
 export interface AnimationFrames {
   name: string;
@@ -119,14 +119,14 @@ export class PetWindowController {
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
-        preload: path.join(__dirname, "preload.js"),
+        preload: path.join(__dirname, "..", "preload.js"),
       },
     });
 
     this.petWindow.setMenu(null);
     this.petWindow.setSkipTaskbar(true);
     this.petWindow.setAlwaysOnTop(true, "floating");
-    this.petWindow.loadFile(path.join(__dirname, "renderer", "pet.html"));
+    this.petWindow.loadFile(path.join(__dirname, "..", "renderer", "pet.html"));
     this.petWindow.once("ready-to-show", () => {
       if (settings.visible) this.petWindow?.showInactive();
       if (process.env.DESKTOP_PET_DEVTOOLS === "1") {

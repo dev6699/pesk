@@ -1,13 +1,13 @@
 /** @jest-environment jsdom */
 
 /// <reference types="jest" />
-/// <reference path="../src/renderer/shared/types.d.ts" />
+/// <reference path="../../../../src/renderer/shared/types.d.ts" />
 
-import { CodexRenderer } from "../src/renderer/features/chat/codex-renderer";
-import { defaultSettings } from "../src/renderer/shared/default-settings";
+import { CodexRenderer } from "../../../../src/renderer/features/chat/codex-renderer";
+import { defaultSettings } from "../../../../src/renderer/shared/default-settings";
 
 jest.mock(
-  "../src/renderer/vendor/marked.js",
+  "../../../../src/renderer/vendor/marked.js",
   () => ({
     marked: {
       parse: (value: string) =>

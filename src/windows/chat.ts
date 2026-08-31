@@ -1,8 +1,8 @@
 import { BrowserWindow, screen } from "electron";
 import * as path from "node:path";
-import { loadRawConfig } from "./config.js";
+import { loadRawConfig } from "../config/config.js";
 
-interface ChatSize {
+export interface ChatSize {
   width: number;
   height: number;
 }
@@ -98,13 +98,13 @@ export class ChatWindowController {
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
-        preload: path.join(__dirname, "preload.js"),
+        preload: path.join(__dirname, "..", "preload.js"),
       },
     });
 
     this.chatWindow.setMenu(null);
     this.chatWindow.setSkipTaskbar(true);
-    this.chatWindow.loadFile(path.join(__dirname, "renderer", "chat.html"));
+    this.chatWindow.loadFile(path.join(__dirname, "..", "renderer", "chat.html"));
     this.chatWindow.once("ready-to-show", () => {
       this.chatWindow?.setSize(this.size.width, this.size.height, false);
       if (process.env.DESKTOP_PET_DEVTOOLS === "1") {

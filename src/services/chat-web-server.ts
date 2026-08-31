@@ -53,6 +53,11 @@ export interface PairingInfo {
   deviceName: string;
 }
 
+export interface PairingStatus {
+  active: boolean;
+  pairedDeviceName?: string;
+}
+
 interface StoredDevice extends PairingDevice {
   credentialHash: string;
 }

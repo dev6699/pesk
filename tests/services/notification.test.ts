@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /// <reference types="jest" />
 
-import { NotificationController } from "../src/notification";
+import { NotificationController } from "../../src/services/notification";
 
 function createController() {
   const pet = {

@@ -18,7 +18,7 @@ import {
   shouldResumeOnActiveStatus,
 } from "./protocol";
 
-import type { NotificationRequest } from "../notification";
+import type { NotificationRequest } from "../services/notification";
 import type {
   IncomingMessage,
   JsonRpcResponse,

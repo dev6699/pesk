@@ -1,76 +1,89 @@
-import { contextBridge, ipcRenderer } from "electron";
+/// <reference path="./renderer/shared/types.d.ts" />
 
-contextBridge.exposeInMainWorld("peskApi", {
-  getSettings: () => ipcRenderer.invoke("get-settings"),
-  refreshCodexRateLimits: () => ipcRenderer.invoke("refresh-codex-rate-limits"),
-  getAnimations: () => ipcRenderer.invoke("get-animations"),
-  getChatSize: () => ipcRenderer.invoke("get-chat-size"),
-  movePet: (dx: number, dy: number) => ipcRenderer.send("move-pet", dx, dy),
-  startDrag: () => ipcRenderer.send("drag-start"),
-  endDrag: () => ipcRenderer.send("drag-end"),
-  focusPet: () => ipcRenderer.send("focus-pet"),
-  unfocusPesk: () => ipcRenderer.send("unfocus-pesk"),
-  zoomPet: (scale: number) => ipcRenderer.send("zoom-pet", scale),
-  showPetMenu: () => ipcRenderer.send("show-pet-menu"),
-  togglePaused: () => ipcRenderer.send("toggle-paused"),
-  toggleLocked: () => ipcRenderer.send("toggle-locked"),
-  togglePetVisibility: () => ipcRenderer.send("toggle-pet-visibility"),
-  createPairing: (name: string) => ipcRenderer.invoke("create-pairing", name),
-  getPairingStatus: () => ipcRenderer.invoke("get-pairing-status"),
-  getPairingDevices: () => ipcRenderer.invoke("get-pairing-devices"),
-  revokePairingDevice: (id: string) => ipcRenderer.invoke("revoke-pairing-device", id),
-  setPairingDevicePush: (id: string, enabled: boolean) =>
-    ipcRenderer.invoke("set-pairing-device-push", id, enabled),
-  toggleCodexStatusSound: () => ipcRenderer.send("toggle-codex-status-sound"),
-  openConfigFolder: () => ipcRenderer.send("open-config-folder"),
-  selectCodexThread: (threadId: string) => ipcRenderer.send("select-codex-thread", threadId),
-  loadOlderCodexHistory: () => ipcRenderer.invoke("load-older-codex-history"),
-  setCodexCollaborationMode: (mode: "default" | "plan") =>
-    ipcRenderer.send("set-codex-collaboration-mode", mode),
-  focusCodexInput: () => ipcRenderer.send("focus-codex-input"),
-  setChatFileDialogOpen: (open: boolean) => ipcRenderer.send("chat-file-dialog", open),
-  implementCodexPlan: (planText: string, clearContext: boolean) =>
-    ipcRenderer.invoke("implement-codex-plan", planText, clearContext),
-  respondCodexUserInput: (requestId: string | number, answers: Record<string, string[]>) =>
-    ipcRenderer.send("respond-codex-user-input", requestId, answers),
-  interruptCodexTurn: () => ipcRenderer.invoke("interrupt-codex-turn"),
-  steerCodexTurn: (prompt: string) => ipcRenderer.invoke("steer-codex-turn", prompt),
-  selectAnimation: (name: string) => ipcRenderer.send("select-animation", name),
-  setAnimationMode: (mode: "selected" | "shuffle") => ipcRenderer.send("set-animation-mode", mode),
-  quitPesk: () => ipcRenderer.send("quit-pesk"),
-  respondCodexPermission: (requestId: string | number, optionId: string) =>
-    ipcRenderer.send("respond-codex-permission", requestId, optionId),
-  submitCodexPrompt: (prompt: string, images?: Array<{ url: string; name: string }>) =>
-    ipcRenderer.invoke("submit-codex-prompt", prompt, images),
-  startCodexReview: (instructions: string) =>
-    ipcRenderer.invoke("start-codex-review", instructions),
-  fuzzyFileSearch: (query: string, roots: string[]) =>
-    ipcRenderer.invoke("fuzzy-file-search", query, roots),
-  getPresets: () => ipcRenderer.invoke("get-presets"),
-  runPreset: (name: string) => ipcRenderer.send("run-preset", name),
-  closeMenuWindow: () => ipcRenderer.send("close-menu-window"),
-  onMenuUpdated: (callback: () => void) => {
-    ipcRenderer.on("menu-updated", () => callback());
-  },
-  onMenuFocusChanged: (callback: (focused: boolean) => void) => {
-    ipcRenderer.on("menu-focus-changed", (_event, focused: boolean) => callback(focused));
-  },
-  onPetFocusChanged: (callback: (focused: boolean) => void) => {
-    ipcRenderer.on("pet-focus-changed", (_event, focused: boolean) => callback(focused));
-  },
-  onPetCodexUpdateChanged: (callback: (active: boolean) => void) => {
-    ipcRenderer.on("pet-codex-update-changed", (_event, active: boolean) => callback(active));
-  },
-  onPetCodexStatusSound: (callback: () => void) => {
-    ipcRenderer.on("pet-codex-status-sound", () => callback());
-  },
-  onCodexInputFocus: (callback: () => void) => {
-    ipcRenderer.on("codex-input-focus", () => callback());
-  },
-  onCodexUserInputFocus: (callback: () => void) => {
-    ipcRenderer.on("codex-user-input-focus", () => callback());
-  },
-  onSettingsChanged: (callback: (settings: unknown) => void) => {
-    ipcRenderer.on("settings-changed", (_event, settings) => callback(settings));
-  },
-});
+import { contextBridge, ipcRenderer } from "electron";
+import type { IpcEventContract, IpcInvokeContract, RendererEventContract } from "./app/ipc-contract";
+import type { PeskApi } from "./renderer/shared/api-types";
+
+function invoke<K extends keyof IpcInvokeContract>(
+  channel: K,
+  ...args: IpcInvokeContract[K]["args"]
+): Promise<IpcInvokeContract[K]["result"]> {
+  return ipcRenderer.invoke(channel, ...args) as Promise<IpcInvokeContract[K]["result"]>;
+}
+
+function send<K extends keyof IpcEventContract>(channel: K, ...args: IpcEventContract[K]): void {
+  ipcRenderer.send(channel, ...args);
+}
+
+function sendChannel<K extends keyof IpcEventContract>(
+  channel: K,
+): (...args: IpcEventContract[K]) => void {
+  return (...args) => send(channel, ...args);
+}
+
+function invokeChannel<K extends keyof IpcInvokeContract>(
+  channel: K,
+): (...args: IpcInvokeContract[K]["args"]) => Promise<IpcInvokeContract[K]["result"]> {
+  return (...args) => invoke(channel, ...args);
+}
+
+function listenChannel<K extends keyof RendererEventContract>(
+  channel: K,
+): (callback: (...args: RendererEventContract[K]) => void) => void {
+  return (callback) => {
+    ipcRenderer.on(channel, (_event, ...args) => callback(...(args as RendererEventContract[K])));
+  };
+}
+
+const api: PeskApi = {
+  getSettings: invokeChannel("get-settings"),
+  refreshCodexRateLimits: sendChannel("refresh-codex-rate-limits"),
+  getAnimations: invokeChannel("get-animations"),
+  getChatSize: invokeChannel("get-chat-size"),
+  movePet: sendChannel("move-pet"),
+  startDrag: sendChannel("drag-start"),
+  endDrag: sendChannel("drag-end"),
+  focusPet: sendChannel("focus-pet"),
+  unfocusPesk: sendChannel("unfocus-pesk"),
+  zoomPet: sendChannel("zoom-pet"),
+  showPetMenu: sendChannel("show-pet-menu"),
+  togglePaused: sendChannel("toggle-paused"),
+  toggleLocked: sendChannel("toggle-locked"),
+  togglePetVisibility: sendChannel("toggle-pet-visibility"),
+  createPairing: invokeChannel("create-pairing"),
+  getPairingStatus: invokeChannel("get-pairing-status"),
+  getPairingDevices: invokeChannel("get-pairing-devices"),
+  revokePairingDevice: invokeChannel("revoke-pairing-device"),
+  setPairingDevicePush: invokeChannel("set-pairing-device-push"),
+  toggleCodexStatusSound: sendChannel("toggle-codex-status-sound"),
+  openConfigFolder: sendChannel("open-config-folder"),
+  selectCodexThread: sendChannel("select-codex-thread"),
+  loadOlderCodexHistory: invokeChannel("load-older-codex-history"),
+  setCodexCollaborationMode: sendChannel("set-codex-collaboration-mode"),
+  focusCodexInput: sendChannel("focus-codex-input"),
+  setChatFileDialogOpen: sendChannel("chat-file-dialog"),
+  implementCodexPlan: invokeChannel("implement-codex-plan"),
+  respondCodexUserInput: sendChannel("respond-codex-user-input"),
+  interruptCodexTurn: invokeChannel("interrupt-codex-turn"),
+  steerCodexTurn: invokeChannel("steer-codex-turn"),
+  selectAnimation: sendChannel("select-animation"),
+  setAnimationMode: sendChannel("set-animation-mode"),
+  quitPesk: sendChannel("quit-pesk"),
+  respondCodexPermission: sendChannel("respond-codex-permission"),
+  submitCodexPrompt: invokeChannel("submit-codex-prompt"),
+  startCodexReview: invokeChannel("start-codex-review"),
+  fuzzyFileSearch: invokeChannel("fuzzy-file-search"),
+  getPresets: invokeChannel("get-presets"),
+  runPreset: sendChannel("run-preset"),
+  closeMenuWindow: sendChannel("close-menu-window"),
+  onMenuUpdated: listenChannel("menu-updated"),
+  onMenuFocusChanged: listenChannel("menu-focus-changed"),
+  onPetFocusChanged: listenChannel("pet-focus-changed"),
+  onPetCodexUpdateChanged: listenChannel("pet-codex-update-changed"),
+  onPetCodexStatusSound: listenChannel("pet-codex-status-sound"),
+  onCodexInputFocus: listenChannel("codex-input-focus"),
+  onCodexUserInputFocus: listenChannel("codex-user-input-focus"),
+  onSettingsChanged: listenChannel("settings-changed"),
+} satisfies Window["peskApi"];
+
+contextBridge.exposeInMainWorld("peskApi", api);

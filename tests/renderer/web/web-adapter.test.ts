@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 /// <reference types="jest" />
-/// <reference path="../src/renderer/shared/types.d.ts" />
+/// <reference path="../../../src/renderer/shared/types.d.ts" />
 
 type FakeWebSocketEvent = {
   data?: unknown;
@@ -50,6 +50,8 @@ function state(): PeskSettings {
     codexThreads: [],
     codexThreadActivities: [],
     codexHistory: [],
+    codexHasOlderHistory: false,
+    codexHistoryLoading: false,
     codexQueuedSubmissions: [],
     codexCollaborationMode: "default",
   };
@@ -60,7 +62,7 @@ function loadAdapter(): Window["peskApi"] {
   (globalThis as unknown as { WebSocket: typeof WebSocket }).WebSocket =
     FakeWebSocket as unknown as typeof WebSocket;
   jest.isolateModules(() => {
-    jest.requireActual("../src/renderer/web/web-adapter.ts");
+    jest.requireActual("../../../src/renderer/web/web-adapter.ts");
   });
   return window.peskApi;
 }

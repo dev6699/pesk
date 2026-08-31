@@ -1,7 +1,7 @@
 import { screen } from "electron";
 import { spawn } from "node:child_process";
 import * as path from "node:path";
-import { loadRawConfig } from "./config.js";
+import { loadRawConfig } from "../config/config.js";
 
 export interface PresetAction {
   command: string;

@@ -1,6 +1,6 @@
-import type { ChatWindowController } from "./chat";
+import type { ChatWindowController } from "../windows/chat";
 import type { ChatWebServer } from "./chat-web-server";
-import type { PetWindowController } from "./pet";
+import type { PetWindowController } from "../windows/pet";
 
 export type NotificationEvent = "turnCompleted" | "approvalRequested" | "userInputRequested";
 

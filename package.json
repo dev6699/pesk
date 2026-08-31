@@ -7,7 +7,8 @@
   "license": "MIT",
   "scripts": {
     "build": "node scripts/clean-build.js && tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-renderer-assets.js",
-    "test": "npm run build && jest --runInBand",
+    "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "test": "npm run build && npm run typecheck:tests && jest --runInBand",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win",

@@ -103,12 +103,12 @@ export class MenuController {
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
-        preload: path.join(__dirname, "preload.js"),
+        preload: path.join(__dirname, "..", "preload.js"),
       },
     });
     this.menuWindow.setMenu(null);
     this.menuWindow.setSkipTaskbar(true);
-    this.menuWindow.loadFile(path.join(__dirname, "renderer", "menu.html"));
+    this.menuWindow.loadFile(path.join(__dirname, "..", "renderer", "menu.html"));
     this.menuWindow.once("ready-to-show", () => {
       this.menuWindow?.show();
       this.menuWindow?.focus();

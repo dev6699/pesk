@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /// <reference types="jest" />
 /// <reference types="node" />
-/// <reference path="../src/renderer/shared/types.d.ts" />
+/// <reference path="../../src/renderer/shared/types.d.ts" />
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { request } from "node:http";
@@ -9,7 +9,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import webpush from "web-push";
 import { WebSocket as ClientWebSocket } from "ws";
-import { ChatWebServer, type ChatWebServerOptions } from "../src/chat-web-server";
+import { ChatWebServer, type ChatWebServerOptions } from "../../src/services/chat-web-server";
 
 jest.mock("web-push", () => ({
   __esModule: true,
@@ -84,8 +84,8 @@ function httpRequest(
   });
 }
 
-function json(response: Response): any {
-  return JSON.parse(response.body);
+function json<T>(response: Response): T {
+  return JSON.parse(response.body) as T;
 }
 
 function subscription(endpoint: string): Record<string, unknown> {
@@ -145,7 +145,7 @@ describe("ChatWebServer", () => {
       code: pairing?.code,
     });
     expect(exchange.status).toBe(200);
-    return json(exchange);
+    return json<{ credential: string; deviceId: string }>(exchange);
   }
 
   test("creates a pairing code and exchanges it only once", async () => {
@@ -157,7 +157,7 @@ describe("ChatWebServer", () => {
       code: pairing?.code?.toLowerCase(),
     });
     expect(first.status).toBe(200);
-    expect(json(first).credential).toEqual(expect.any(String));
+    expect(json<{ credential: string }>(first).credential).toEqual(expect.any(String));
     expect(server.getPairingStatus()).toEqual({
       active: false,
       pairedDeviceName: "Phone",

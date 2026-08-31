@@ -100,9 +100,7 @@ export class PetRenderer {
     const animations = await window.peskApi.getAnimations();
     this.availableAnimations = animations;
     const selected =
-      animations.find((animation) => animation.name === this.settings.animation) ??
-      animations.find((animation) => animation.name.toLowerCase() === "idle") ??
-      animations[0];
+      animations.find((animation) => animation.name === this.settings.animation) ?? animations[0];
     if (selected?.frames.length) this.applyAnimation(selected);
   }
 
