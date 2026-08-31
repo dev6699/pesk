@@ -299,6 +299,31 @@ test("removes empty-history placeholders when the first message arrives", () => 
   expect(elements.history.textContent).toContain("hello");
 });
 
+test("shows loading while session history is being fetched", () => {
+  const { renderer, elements } = makeRenderer();
+  const loadingState = defaultRendererState();
+  loadingState.codex.threadId = "thread-1";
+  loadingState.codex.connected = true;
+  loadingState.codex.historyLoading = true;
+
+  renderer.updateState(loadingState);
+
+  expect(elements.history.querySelector(".codex-loading-history")?.textContent).toBe(
+    "Loading messages…",
+  );
+  expect(elements.history.querySelector(".codex-empty-history")).toBeNull();
+  expect(elements.history.querySelector(".codex-session-connected")).toBeNull();
+
+  renderer.updateState({
+    ...loadingState,
+    codex: { ...loadingState.codex, historyLoading: false },
+  });
+
+  expect(elements.history.querySelector(".codex-loading-history")).toBeNull();
+  expect(elements.history.querySelector(".codex-empty-history")).not.toBeNull();
+  expect(elements.history.querySelector(".codex-session-connected")).not.toBeNull();
+});
+
 test("prepends older history without recreating newer message nodes", () => {
   const { renderer, elements } = makeRenderer();
   const currentHistory = [

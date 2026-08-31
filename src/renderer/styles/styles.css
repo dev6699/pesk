@@ -721,6 +721,12 @@ body.chat-only #codex-chat {
   font-style: italic;
 }
 
+.codex-loading-history {
+  padding: 12px 4px;
+  color: #ffffffaa;
+  text-align: center;
+}
+
 .codex-session-connected {
   color: #b9f6c5;
   text-align: center;

@@ -2234,6 +2234,7 @@ describe("CodexController", () => {
     controller.selectThread("other-thread");
     expect(controller.getState().collaborationMode).toBe("plan");
     expect(controller.getState().history).toEqual([]);
+    expect(controller.getState().historyLoading).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/resume",
       params: { threadId: "other-thread", excludeTurns: true },

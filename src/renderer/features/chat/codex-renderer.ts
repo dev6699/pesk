@@ -314,6 +314,7 @@ export class CodexRenderer {
     this.renderHistory(
       next.codex.history,
       Boolean(next.codex.threadId),
+      next.codex.historyLoading,
       next.codex.queuedSubmissions,
     );
     this.renderWorkingStatus();
@@ -1498,12 +1499,13 @@ export class CodexRenderer {
   private renderHistory(
     history: RendererState["codex"]["history"],
     sessionConnected = false,
+    historyLoading = false,
     queuedSubmissions: RendererState["codex"]["queuedSubmissions"] = [],
   ): void {
     this.updateActivePlanConfirmation(history);
     const structureKey = `${historyStructureKey(history)}|queue:${queuedSubmissions
       .map((submission) => `${submission.id}:${submission.text}`)
-      .join("|")}`;
+      .join("|")}|loading:${historyLoading}|connected:${sessionConnected}`;
     const planContentChanged = (history ?? []).some((message, index) => {
       if (message.activity?.kind !== "plan") return false;
       const activityKey = historyMessageKeyForRenderer(message, index);
@@ -1519,7 +1521,7 @@ export class CodexRenderer {
       const wasAtBottom =
         this.history.scrollTop + this.history.clientHeight >= this.history.scrollHeight - 24;
       this.history
-        .querySelectorAll(".codex-empty-history, .codex-session-connected")
+        .querySelectorAll(".codex-empty-history, .codex-loading-history, .codex-session-connected")
         .forEach((placeholder) => placeholder.remove());
       const openActivityKeys = new Set(
         Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
@@ -1612,7 +1614,12 @@ export class CodexRenderer {
     this.renderedMessageContents.clear();
     this.renderedMessageTexts.clear();
     this.renderedPlanDetails.clear();
-    if (!history?.length) {
+    if (!history?.length && historyLoading) {
+      const loading = document.createElement("div");
+      loading.className = "codex-loading-history";
+      loading.textContent = "Loading messages…";
+      this.history.append(loading);
+    } else if (!history?.length) {
       const empty = document.createElement("div");
       empty.className = "codex-empty-history";
       empty.textContent = "No messages yet.";

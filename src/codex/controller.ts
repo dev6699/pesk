@@ -158,6 +158,7 @@ export class CodexController {
   /** Pending background requests, retained in first-arrival order. */
   private readonly attentionQueue = new Map<string, "approval" | "userInput">();
   private readonly historyPagination = new Map<string, HistoryPaginationState>();
+  private readonly pendingHistoryLoads = new Set<string>();
 
   /** Creates a controller with callbacks for renderer and window updates. */
   constructor(options: Options) {
@@ -242,7 +243,9 @@ export class CodexController {
       queuedSubmissions: thread.queuedSubmissions,
       goal: thread.goal,
       hasOlderHistory: pagination?.hasOlderHistory ?? false,
-      historyLoading: pagination?.loading ?? false,
+      historyLoading: Boolean(
+        pagination?.loading || (this.threadId && this.pendingHistoryLoads.has(this.threadId)),
+      ),
     };
   }
 
@@ -1188,6 +1191,7 @@ export class CodexController {
     this.locallyStartedThreads.clear();
     this.threadControllers.clear();
     this.historyPagination.clear();
+    this.pendingHistoryLoads.clear();
     this.standaloneThread.resetTransportState();
     selectedRuntime.setStatus("idle");
     this.options.publishRendererState();
@@ -1241,6 +1245,7 @@ export class CodexController {
     }
     if (this.threadId === id) {
       if (resume && !this.threadRuntime().state.connected) {
+        this.pendingHistoryLoads.add(id);
         this.resume(id);
       }
       this.options.publishRendererState();
@@ -1258,9 +1263,14 @@ export class CodexController {
       this.runtime(id).clearHistory();
     }
     if (!preserveHistory) this.historyPagination.delete(id);
+    if (resume || existing) this.pendingHistoryLoads.add(id);
     this.options.publishRendererState();
     if (resume) {
-      this.resume(id);
+      if (existing && this.threadRuntime().state.connected) {
+        this.read(id);
+      } else {
+        this.resume(id);
+      }
     } else if (existing) {
       this.read(id);
     }
@@ -1375,6 +1385,7 @@ export class CodexController {
           const result = message.result;
           if (!result) {
             state.loading = false;
+            this.pendingHistoryLoads.delete(threadId);
             state.hasOlderHistory = false;
             if (this.threadId === threadId) this.options.publishRendererState();
             resolve(false);
@@ -1384,6 +1395,7 @@ export class CodexController {
           state.nextCursor = result.nextCursor;
           state.hasOlderHistory = result.nextCursor !== null;
           state.loading = false;
+          this.pendingHistoryLoads.delete(threadId);
           if (this.threadId === threadId) this.options.publishRendererState();
           resolve(true);
         });
