@@ -72,7 +72,7 @@ flowchart LR
   class Storage storage
 ```
 
-`main.ts` is the composition root. It loads configuration and settings, creates the controllers, registers IPC handlers and global shortcuts, starts the Codex controller and optional web server, and performs shutdown cleanup. Business ownership stays in the focused controller modules rather than in renderer code or `main.ts`.
+`src/main.ts` is the Electron entrypoint. `PeskApplication` in `src/app/application.ts` loads configuration and settings, creates the controllers, registers IPC handlers and global shortcuts, starts the Codex controller and optional web server, and performs shutdown cleanup. Business ownership stays in the focused controller modules rather than in renderer code or the entrypoint.
 
 ### Component ownership
 
@@ -135,14 +135,6 @@ flowchart LR
 
 `npm run build` compiles the main/preload and renderer TypeScript, then copies renderer HTML, CSS, web assets, and required vendor files into `build/renderer`. Electron executes `build/main.js`, so source changes affecting runtime behavior require a rebuild. Electron Builder packages `build/**/*`, `assets/**/*`, and `package.json`; installer artifacts belong in `dist/`. User configuration and mutable animations are intentionally external to the packaged executable.
 
-### Extension and maintenance rules
-
-- Keep `main.ts` focused on composition, lifecycle, IPC registration, and cross-controller wiring.
-- Put new window behavior in the owning controller and expose only the smallest preload method or event needed by a renderer.
-- Treat generated app-server schemas as the protocol authority; do not hand-invent wire fields when a generated type exists.
-- Preserve separate pet, desktop chat, menu, and browser entrypoints when changing UI behavior.
-- Validate source with the relevant TypeScript/Jest checks, then distinguish those results from Windows GUI, installer, browser, LAN, and live app-server verification.
-
 ## Requirements
 
 - Windows for the packaged application and monitor-placement presets
@@ -189,8 +181,8 @@ Example application configuration:
 {
   "fps": 24,
   "petSize": 180,
-  "chatWidth": 350,
-  "chatHeight": 500,
+  "chatWidth": 600,
+  "chatHeight": 700,
   "animationsDir": "animations",
   "codexAppServerUrl": "ws://127.0.0.1:4500",
   "codexStatusSound": "audio.mp3",
@@ -347,4 +339,4 @@ Replace `192.168.1.23` with the computer’s actual LAN IP. The script prints th
 - `src/renderer/` — separate pet, chat, and menu pages
 - `assets/` — application icon and tray artwork
 - `tests/` — Jest tests
-- `scripts/` — renderer asset-copy helpers
+- `scripts/` — build cleanup, renderer asset-copy, and TLS certificate helpers
