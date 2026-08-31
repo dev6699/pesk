@@ -2,6 +2,8 @@
 /// <reference types="jest" />
 /// <reference path="../../../../src/renderer/shared/types.d.ts" />
 
+import { defaultRendererState } from "../../../../src/renderer/shared/default-settings";
+
 const windowEventListeners: Array<{
   type: string;
   listener: EventListenerOrEventListenerObject;
@@ -46,16 +48,7 @@ test("generates and displays a pairing QR when Enter is pressed in the device na
     }),
   );
   window.peskApi = {
-    getSettings: jest.fn(() =>
-      Promise.resolve({
-        animation: "idle",
-        animationMode: "selected",
-        paused: false,
-        locked: false,
-        visible: true,
-        codexStatusSound: true,
-      } as never),
-    ),
+    getSettings: jest.fn(() => Promise.resolve(defaultRendererState() as never)),
     getAnimations: jest.fn(() => Promise.resolve([])),
     getPresets: jest.fn(() => Promise.resolve([])),
     getPairingDevices: jest.fn(() => Promise.resolve([])),
@@ -93,16 +86,7 @@ test("moves from preset search through preset items with Up and Down", async () 
       </section>
     </main>`;
   window.peskApi = {
-    getSettings: jest.fn(() =>
-      Promise.resolve({
-        animation: "idle",
-        animationMode: "selected",
-        paused: false,
-        locked: false,
-        visible: true,
-        codexStatusSound: true,
-      } as never),
-    ),
+    getSettings: jest.fn(() => Promise.resolve(defaultRendererState() as never)),
     getAnimations: jest.fn(() => Promise.resolve([])),
     getPresets: jest.fn(() => Promise.resolve([{ name: "First" }, { name: "Second" }])),
     getPairingDevices: jest.fn(() => Promise.resolve([])),

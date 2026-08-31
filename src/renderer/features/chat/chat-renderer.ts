@@ -1,5 +1,5 @@
 import { CodexRenderer } from "./codex-renderer.js";
-import { defaultSettings } from "../../shared/default-settings.js";
+import { defaultRendererState } from "../../shared/default-settings.js";
 import { matchesShortcut } from "../../shared/shortcuts.js";
 
 const codex = new CodexRenderer(
@@ -13,7 +13,7 @@ const codex = new CodexRenderer(
   document.getElementById("codex-token-usage") as HTMLElement,
   document.getElementById("codex-chat-form") as HTMLFormElement,
   document.getElementById("codex-chat-input") as HTMLTextAreaElement,
-  defaultSettings(),
+  defaultRendererState(),
   document.getElementById("codex-rate-limit") as HTMLElement,
   document.getElementById("codex-file-suggestions") as HTMLElement,
   document.getElementById("codex-mode-toggle") as HTMLElement,
@@ -34,9 +34,9 @@ if (document.body.classList.contains("web-chat")) {
 }
 
 const interruptButton = document.getElementById("codex-chat-interrupt") as HTMLButtonElement | null;
-function updateInterruptButton(settings: PeskSettings): void {
+function updateInterruptButton(state: RendererState): void {
   if (!interruptButton) return;
-  const active = settings.codexStatus === "working" || settings.codexStatus === "waiting";
+  const active = state.codex.status === "working" || state.codex.status === "waiting";
   interruptButton.hidden = !active;
   interruptButton.disabled = !active;
 }
@@ -53,9 +53,9 @@ document.addEventListener("keydown", (event) => {
   }
 });
 window.peskApi.onSettingsChanged((next) => {
-  codex.updateSettings(next);
+  codex.updateState(next);
   updateInterruptButton(next);
-  if (next.codexConnected && !next.codexRateLimits) {
+  if (next.codex.connected && !next.codex.rateLimits) {
     void window.peskApi.refreshCodexRateLimits();
   }
 });
@@ -68,9 +68,9 @@ void window.peskApi.getChatSize().then(({ width, height }) => {
 });
 
 void window.peskApi.getSettings().then((next) => {
-  codex.updateSettings(next);
+  codex.updateState(next);
   updateInterruptButton(next);
-  if (next.codexConnected && !next.codexRateLimits) {
+  if (next.codex.connected && !next.codex.rateLimits) {
     void window.peskApi.refreshCodexRateLimits();
   }
 });

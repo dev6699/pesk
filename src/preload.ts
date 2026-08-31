@@ -1,7 +1,11 @@
 /// <reference path="./renderer/shared/types.d.ts" />
 
 import { contextBridge, ipcRenderer } from "electron";
-import type { IpcEventContract, IpcInvokeContract, RendererEventContract } from "./app/ipc-contract";
+import type {
+  IpcEventContract,
+  IpcInvokeContract,
+  RendererEventContract,
+} from "./app/ipc-contract";
 import type { PeskApi } from "./renderer/shared/api-types";
 
 function invoke<K extends keyof IpcInvokeContract>(

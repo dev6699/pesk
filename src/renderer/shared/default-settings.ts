@@ -12,24 +12,26 @@ export function defaultPeskSettings(): SavedPeskSettings {
 
 export function defaultCodexRuntimeState(): CodexRuntimeState {
   return {
-    codexStatusSoundUrl: "",
-    codexStatus: "idle",
-    codexAggregateStatus: "idle",
-    codexConnected: false,
-    codexReadOnly: false,
-    codexHistory: [],
-    codexThreads: [],
-    codexThreadActivities: [],
-    codexQueuedSubmissions: [],
-    codexCollaborationMode: "default",
-    codexHasOlderHistory: false,
-    codexHistoryLoading: false,
+    status: "idle",
+    aggregateStatus: "idle",
+    connected: false,
+    readOnly: false,
+    history: [],
+    threads: [],
+    threadActivities: [],
+    queuedSubmissions: [],
+    collaborationMode: "default",
+    hasOlderHistory: false,
+    historyLoading: false,
+    cwd: undefined,
+    interrupted: false,
   };
 }
 
-export function defaultSettings(): PeskSettings {
+export function defaultRendererState(): RendererState {
   return {
-    ...defaultPeskSettings(),
-    ...defaultCodexRuntimeState(),
+    settings: defaultPeskSettings(),
+    codex: defaultCodexRuntimeState(),
+    assets: { codexStatusSoundUrl: "" },
   };
 }

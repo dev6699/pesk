@@ -1,4 +1,4 @@
-import { defaultSettings } from "../../shared/default-settings.js";
+import { defaultRendererState } from "../../shared/default-settings.js";
 import { PetRenderer } from "./pet-renderer.js";
 
 const image = document.getElementById("pet-image") as HTMLImageElement;
@@ -15,16 +15,16 @@ const pet = new PetRenderer({
   aggregateStatusLabel,
   statusSound,
   chatOnly: false,
-  settings: defaultSettings(),
+  state: defaultRendererState(),
 });
 
-window.peskApi.onSettingsChanged((next) => pet.updateSettings(next));
+window.peskApi.onSettingsChanged((state) => pet.updateState(state));
 window.peskApi.onPetFocusChanged((focused) => pet.updateFocus(focused));
 window.peskApi.onPetCodexUpdateChanged((active) => pet.updateCodexUpdate(active));
 window.peskApi.onPetCodexStatusSound(() => pet.playAttentionSound());
 
-void window.peskApi.getSettings().then(async (next) => {
-  pet.updateSettings(next);
+void window.peskApi.getSettings().then(async (state) => {
+  pet.updateState(state);
   await pet.loadAnimations();
 });
 

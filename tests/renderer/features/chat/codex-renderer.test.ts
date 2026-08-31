@@ -4,7 +4,7 @@
 /// <reference path="../../../../src/renderer/shared/types.d.ts" />
 
 import { CodexRenderer } from "../../../../src/renderer/features/chat/codex-renderer";
-import { defaultSettings } from "../../../../src/renderer/shared/default-settings";
+import { defaultRendererState } from "../../../../src/renderer/shared/default-settings";
 
 jest.mock(
   "../../../../src/renderer/vendor/marked.js",
@@ -23,13 +23,15 @@ jest.mock(
   { virtual: true },
 );
 
-type Settings = ReturnType<typeof defaultSettings>;
+type Settings = RendererState;
 
 function makeRenderer(
-  settings: Settings = defaultSettings(),
+  settings: Settings = defaultRendererState(),
   webChat = false,
 ): {
-  renderer: CodexRenderer;
+  renderer: CodexRenderer & {
+    updateState: (state: RendererState) => void;
+  };
   elements: {
     chat: HTMLElement;
     select: HTMLSelectElement;
@@ -158,61 +160,64 @@ afterEach(() => {
 test("renders session state, history, activities, approvals, and token usage", () => {
   const { renderer, elements } = makeRenderer();
   const settings: Settings = {
-    ...defaultSettings(),
-    codexThreadId: "thread-1",
-    codexError: "socket failed",
-    codexThreads: [{ id: "thread-1", preview: "Inspect project" }],
-    codexModelInfo: {
-      model: "gpt-test",
-      provider: "openai",
-      reasoningEffort: "high",
-    },
-    codexTokenUsage: {
-      total: { totalTokens: 12500, inputTokens: 1200, outputTokens: 3400 },
-      last: { totalTokens: 4000, inputTokens: 500 },
-      modelContextWindow: 1000,
-    },
-    codexHistory: [
-      { role: "user", text: "hello" },
-      {
-        role: "assistant",
-        text: "**world**\n\n![Cat](https://petsplanet.pk/wp-content/uploads/2024/06/cat-breed.jpg)",
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threadId: "thread-1",
+      error: "socket failed",
+      threads: [{ id: "thread-1", preview: "Inspect project" }],
+      modelInfo: {
+        model: "gpt-test",
+        provider: "openai",
+        reasoningEffort: "high",
       },
-      {
-        role: "system",
-        text: "npm test",
-        itemId: "command-1",
-        activity: {
-          kind: "command",
-          command: "npm   test",
-          cwd: "/tmp/project",
-          status: "completed",
-          output: "passed",
+      tokenUsage: {
+        total: { totalTokens: 12500, inputTokens: 1200, outputTokens: 3400 },
+        last: { totalTokens: 4000, inputTokens: 500 },
+        modelContextWindow: 1000,
+      },
+      history: [
+        { role: "user", text: "hello" },
+        {
+          role: "assistant",
+          text: "**world**\n\n![Cat](https://petsplanet.pk/wp-content/uploads/2024/06/cat-breed.jpg)",
         },
-      },
-      {
-        role: "system",
-        text: "changed files",
-        activity: {
-          kind: "fileChange",
-          status: "completed",
-          changes: ["src/a.ts\n  +added\n  -removed\n  @@ hunk"],
+        {
+          role: "system",
+          text: "npm test",
+          itemId: "command-1",
+          activity: {
+            kind: "command",
+            command: "npm   test",
+            cwd: "/tmp/project",
+            status: "completed",
+            output: "passed",
+          },
         },
-      },
-      {
-        role: "system",
-        text: "searching",
-        activity: { kind: "webSearch", summary: "docs", status: "done" },
-      },
-      {
-        role: "system",
-        text: "approve command",
-        approval: { requestId: "approval-1", state: "pending" },
-      },
-    ],
+        {
+          role: "system",
+          text: "changed files",
+          activity: {
+            kind: "fileChange",
+            status: "completed",
+            changes: ["src/a.ts\n  +added\n  -removed\n  @@ hunk"],
+          },
+        },
+        {
+          role: "system",
+          text: "searching",
+          activity: { kind: "webSearch", summary: "docs", status: "done" },
+        },
+        {
+          role: "system",
+          text: "approve command",
+          approval: { requestId: "approval-1", state: "pending" },
+        },
+      ],
+    },
   };
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
 
   expect(elements.error.hidden).toBe(false);
   expect(elements.error.textContent).toBe("Codex connection error.");
@@ -241,7 +246,10 @@ test("updates streamed assistant text without rebuilding a long history", () => 
     itemId: `message-${index}`,
   }));
 
-  renderer.updateSettings({ ...defaultSettings(), codexHistory: history });
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, history: history },
+  });
   const unchangedMessage = elements.history.querySelector<HTMLElement>(
     "[data-message-item-id='message-0']",
   );
@@ -249,9 +257,12 @@ test("updates streamed assistant text without rebuilding a long history", () => 
     "[data-message-item-id='message-79']",
   );
 
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexHistory: [...history.slice(0, -1), { ...history.at(-1)!, text: "streaming update" }],
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [...history.slice(0, -1), { ...history.at(-1)!, text: "streaming update" }],
+    },
   });
 
   expect(elements.history.querySelector<HTMLElement>("[data-message-item-id='message-0']")).toBe(
@@ -267,27 +278,30 @@ test("renders readable keyboard-friendly user questions", () => {
   const { renderer, elements } = makeRenderer();
   const question = "Which implementation should we use? ".repeat(8);
   const settings: Settings = {
-    ...defaultSettings(),
-    codexPendingUserInput: {
-      requestId: "request-1",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      isBlocking: true,
-      questions: [
-        {
-          id: "choice",
-          header: "Implementation choice",
-          question,
-          isOther: false,
-          isSecret: false,
-          options: [{ label: "Option A", description: "Use the first approach." }],
-        },
-      ],
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      pendingUserInput: {
+        requestId: "request-1",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        isBlocking: true,
+        questions: [
+          {
+            id: "choice",
+            header: "Implementation choice",
+            question,
+            isOther: false,
+            isSecret: false,
+            options: [{ label: "Option A", description: "Use the first approach." }],
+          },
+        ],
+      },
     },
   };
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
 
   expect(elements.userInput.hidden).toBe(false);
   expect(elements.form.hidden).toBe(true);
@@ -316,50 +330,59 @@ test("can show the same command notice again after it is cleared", () => {
   const { renderer } = makeRenderer();
   const notice = document.querySelector("#codex-command-notice") as HTMLElement;
   const settings: Settings = {
-    ...defaultSettings(),
-    codexCommandNotice: "Usage: /goal [<objective>|clear|edit|pause|resume]",
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      commandNotice: "Usage: /goal [<objective>|clear|edit|pause|resume]",
+    },
   };
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
   expect(notice.hidden).toBe(false);
 
-  renderer.updateSettings({ ...defaultSettings(), codexCommandNotice: undefined });
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, commandNotice: undefined },
+  });
   expect(notice.hidden).toBe(true);
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
   expect(notice.hidden).toBe(false);
 });
 
 test("preserves modified arrow shortcuts while a question is focused", () => {
   const { renderer, elements } = makeRenderer();
   const settings: Settings = {
-    ...defaultSettings(),
-    codexHistory: [
-      { role: "user", text: "first" },
-      { role: "assistant", text: "second" },
-    ],
-    codexPendingUserInput: {
-      requestId: "request-arrows",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      isBlocking: true,
-      questions: [
-        {
-          id: "choice",
-          header: "Choice",
-          question: "Choose one",
-          isOther: false,
-          isSecret: false,
-          options: [
-            { label: "A", description: "First" },
-            { label: "B", description: "Second" },
-          ],
-        },
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        { role: "user", text: "first" },
+        { role: "assistant", text: "second" },
       ],
+      pendingUserInput: {
+        requestId: "request-arrows",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        isBlocking: true,
+        questions: [
+          {
+            id: "choice",
+            header: "Choice",
+            question: "Choose one",
+            isOther: false,
+            isSecret: false,
+            options: [
+              { label: "A", description: "First" },
+              { label: "B", description: "Second" },
+            ],
+          },
+        ],
+      },
     },
   };
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
   const option = elements.userInput.querySelector<HTMLInputElement>("input[type='radio']")!;
   const dispatchThroughDocument = (event: KeyboardEvent): void => {
     option.dispatchEvent(event);
@@ -408,49 +431,55 @@ test("preserves modified arrow shortcuts while a question is focused", () => {
 
 test("Ctrl+Up refocuses the question after history navigation", () => {
   const { renderer, elements } = makeRenderer({
-    ...defaultSettings(),
-    codexPendingUserInput: {
-      requestId: "request-focus",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      isBlocking: true,
-      questions: [
-        {
-          id: "choice",
-          header: "Choice",
-          question: "Choose one",
-          isOther: false,
-          isSecret: false,
-          options: [
-            { label: "A", description: "First" },
-            { label: "B", description: "Second" },
-          ],
-        },
-      ],
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      pendingUserInput: {
+        requestId: "request-focus",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        isBlocking: true,
+        questions: [
+          {
+            id: "choice",
+            header: "Choice",
+            question: "Choose one",
+            isOther: false,
+            isSecret: false,
+            options: [
+              { label: "A", description: "First" },
+              { label: "B", description: "Second" },
+            ],
+          },
+        ],
+      },
     },
   });
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexPendingUserInput: {
-      requestId: "request-focus",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      isBlocking: true,
-      questions: [
-        {
-          id: "choice",
-          header: "Choice",
-          question: "Choose one",
-          isOther: false,
-          isSecret: false,
-          options: [
-            { label: "A", description: "First" },
-            { label: "B", description: "Second" },
-          ],
-        },
-      ],
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      pendingUserInput: {
+        requestId: "request-focus",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        isBlocking: true,
+        questions: [
+          {
+            id: "choice",
+            header: "Choice",
+            question: "Choose one",
+            isOther: false,
+            isSecret: false,
+            options: [
+              { label: "A", description: "First" },
+              { label: "B", description: "Second" },
+            ],
+          },
+        ],
+      },
     },
   });
   const option = elements.userInput.querySelector<HTMLInputElement>("input[type='radio']")!;
@@ -481,16 +510,19 @@ test("Ctrl+Up refocuses the question after history navigation", () => {
 
 test("Ctrl+Left and Ctrl+Right switch between threads", () => {
   const settings = {
-    ...defaultSettings(),
-    codexThreadId: "thread-2",
-    codexThreads: [
-      { id: "thread-1", preview: "Previous" },
-      { id: "thread-2", preview: "Current" },
-      { id: "thread-3", preview: "Next" },
-    ],
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threadId: "thread-2",
+      threads: [
+        { id: "thread-1", preview: "Previous" },
+        { id: "thread-2", preview: "Current" },
+        { id: "thread-3", preview: "Next" },
+      ],
+    },
   };
   const { renderer } = makeRenderer(settings);
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
   const selectThread = window.peskApi.selectCodexThread as jest.Mock;
 
   const previous = new KeyboardEvent("keydown", {
@@ -511,14 +543,17 @@ test("Ctrl+Left and Ctrl+Right switch between threads", () => {
   expect(next.defaultPrevented).toBe(true);
   expect(selectThread).toHaveBeenLastCalledWith("thread-2");
 
-  renderer.updateSettings({
+  renderer.updateState({
     ...settings,
-    codexThreadId: "thread-2",
-    codexThreads: [
-      { id: "thread-1", preview: "Previous" },
-      { id: "thread-2", preview: "Current" },
-      { id: "thread-3", preview: "Next" },
-    ],
+    codex: {
+      ...settings.codex,
+      threadId: "thread-2",
+      threads: [
+        { id: "thread-1", preview: "Previous" },
+        { id: "thread-2", preview: "Current" },
+        { id: "thread-3", preview: "Next" },
+      ],
+    },
   });
   const forward = new KeyboardEvent("keydown", {
     key: "ArrowRight",
@@ -529,14 +564,17 @@ test("Ctrl+Left and Ctrl+Right switch between threads", () => {
   expect(forward.defaultPrevented).toBe(true);
   expect(selectThread).toHaveBeenLastCalledWith("thread-3");
 
-  renderer.updateSettings({
+  renderer.updateState({
     ...settings,
-    codexThreadId: "thread-3",
-    codexThreads: [
-      { id: "thread-3", preview: "Next" },
-      { id: "thread-1", preview: "Previous" },
-      { id: "thread-2", preview: "Current" },
-    ],
+    codex: {
+      ...settings.codex,
+      threadId: "thread-3",
+      threads: [
+        { id: "thread-3", preview: "Next" },
+        { id: "thread-1", preview: "Previous" },
+        { id: "thread-2", preview: "Current" },
+      ],
+    },
   });
   const back = new KeyboardEvent("keydown", {
     key: "ArrowLeft",
@@ -550,11 +588,11 @@ test("Ctrl+Left and Ctrl+Right switch between threads", () => {
 
 test("does not jump to the first thread when no current thread is selected", () => {
   const settings = {
-    ...defaultSettings(),
-    codexThreads: [{ id: "thread-1", preview: "First" }],
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threads: [{ id: "thread-1", preview: "First" }] },
   };
   const { renderer } = makeRenderer(settings);
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
   const selectThread = window.peskApi.selectCodexThread as jest.Mock;
   const next = new KeyboardEvent("keydown", {
     key: "ArrowRight",
@@ -570,13 +608,12 @@ test("does not jump to the first thread when no current thread is selected", () 
 
 test("keeps the selected thread visible when the thread list is temporarily stale", () => {
   const settings = {
-    ...defaultSettings(),
-    codexThreadId: "selected-thread",
-    codexThreads: [],
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "selected-thread", threads: [] },
   };
   const { renderer, elements } = makeRenderer(settings);
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
 
   expect(elements.select.value).toBe("selected-thread");
   expect(elements.select.options[0].value).toBe("selected-thread");
@@ -584,16 +621,14 @@ test("keeps the selected thread visible when the thread list is temporarily stal
 
 test("requests older history when scrolled to the top", () => {
   const { renderer, elements } = makeRenderer({
-    ...defaultSettings(),
-    codexThreadId: "thread-1",
-    codexHasOlderHistory: true,
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-1", hasOlderHistory: true },
   });
   const loadOlder = window.peskApi.loadOlderCodexHistory as jest.Mock;
 
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexThreadId: "thread-1",
-    codexHasOlderHistory: true,
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-1", hasOlderHistory: true },
   });
   elements.history.scrollTop = 0;
   elements.history.dispatchEvent(new Event("scroll"));
@@ -604,34 +639,37 @@ test("requests older history when scrolled to the top", () => {
 test("scrolls to a new user question without repeating for the same request", () => {
   const { renderer, elements } = makeRenderer();
   const settings: Settings = {
-    ...defaultSettings(),
-    codexPendingUserInput: {
-      requestId: "request-scroll",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      isBlocking: true,
-      questions: [
-        {
-          id: "choice",
-          header: "Implementation choice",
-          question: "Which implementation should we use?",
-          isOther: false,
-          isSecret: false,
-          options: [{ label: "Option A", description: "Use the first approach." }],
-        },
-      ],
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      pendingUserInput: {
+        requestId: "request-scroll",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        isBlocking: true,
+        questions: [
+          {
+            id: "choice",
+            header: "Implementation choice",
+            question: "Which implementation should we use?",
+            isOther: false,
+            isSecret: false,
+            options: [{ label: "Option A", description: "Use the first approach." }],
+          },
+        ],
+      },
     },
   };
 
   elements.history.scrollTop = 120;
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
 
   expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
   expect(document.activeElement).toBe(elements.userInput.querySelector("input[type='radio']"));
 
   elements.history.scrollTop = 120;
-  renderer.updateSettings({ ...settings });
+  renderer.updateState({ ...settings });
 
   expect(elements.history.scrollTop).toBe(120);
 });
@@ -649,16 +687,16 @@ test("opens new plan activities by default and preserves manual collapse", () =>
     },
   };
   const settings: Settings = {
-    ...defaultSettings(),
-    codexHistory: [plan],
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, history: [plan] },
   };
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
   const details = elements.history.querySelector<HTMLDetailsElement>(".codex-plan-details")!;
   expect(details.open).toBe(true);
 
   details.open = false;
-  renderer.updateSettings({ ...settings, codexHistory: [plan] });
+  renderer.updateState({ ...settings, codex: { ...settings.codex, history: [plan] } });
   expect(elements.history.querySelector<HTMLDetailsElement>(".codex-plan-details")!.open).toBe(
     false,
   );
@@ -680,53 +718,65 @@ test("scrolls when a plan appears, streams, and asks to implement", () => {
     };
 
     elements.history.scrollTop = 120;
-    renderer.updateSettings({ ...defaultSettings(), codexHistory: [plan] });
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: { ...defaultRendererState().codex, history: [plan] },
+    });
     expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
 
     elements.history.scrollTop = 120;
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexHistory: [
-        {
-          ...plan,
-          activity: { ...plan.activity, details: "Updated plan" },
-        },
-      ],
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: {
+        ...defaultRendererState().codex,
+        history: [
+          {
+            ...plan,
+            activity: { ...plan.activity, details: "Updated plan" },
+          },
+        ],
+      },
     });
     expect(elements.history.scrollTop).toBe(120);
     jest.advanceTimersByTime(100);
     expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
 
     elements.history.scrollTop = 120;
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexHistory: [
-        {
-          ...plan,
-          activity: {
-            ...plan.activity,
-            status: "completed",
-            details: "Updated plan",
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: {
+        ...defaultRendererState().codex,
+        history: [
+          {
+            ...plan,
+            activity: {
+              ...plan.activity,
+              status: "completed",
+              details: "Updated plan",
+            },
           },
-        },
-      ],
+        ],
+      },
     });
     expect(elements.userInput.querySelector(".codex-plan-implementation-prompt")).not.toBeNull();
     expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
 
     elements.history.scrollTop = 120;
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexHistory: [
-        {
-          ...plan,
-          activity: {
-            ...plan.activity,
-            status: "completed",
-            details: "Updated plan",
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: {
+        ...defaultRendererState().codex,
+        history: [
+          {
+            ...plan,
+            activity: {
+              ...plan.activity,
+              status: "completed",
+              details: "Updated plan",
+            },
           },
-        },
-      ],
+        ],
+      },
     });
     expect(elements.history.scrollTop).toBe(120);
   } finally {
@@ -739,22 +789,25 @@ test("updates only streamed plan content after the batching window", () => {
   try {
     const { renderer, elements } = makeRenderer();
     const initialSettings: Settings = {
-      ...defaultSettings(),
-      codexHistory: [
-        {
-          role: "system",
-          text: "plan details",
-          itemId: "plan-stream",
-          activity: {
-            kind: "plan",
-            status: "inProgress",
-            details: "Initial plan",
+      ...defaultRendererState(),
+      codex: {
+        ...defaultRendererState().codex,
+        history: [
+          {
+            role: "system",
+            text: "plan details",
+            itemId: "plan-stream",
+            activity: {
+              kind: "plan",
+              status: "inProgress",
+              details: "Initial plan",
+            },
           },
-        },
-        { role: "assistant", text: "Unchanged message", itemId: "message-1" },
-      ],
+          { role: "assistant", text: "Unchanged message", itemId: "message-1" },
+        ],
+      },
     };
-    renderer.updateSettings(initialSettings);
+    renderer.updateState(initialSettings);
     const planDetails = elements.history.querySelector<HTMLDetailsElement>(
       "details[data-activity-key='plan-stream']",
     )!;
@@ -764,21 +817,24 @@ test("updates only streamed plan content after the batching window", () => {
     );
     planDetails.open = false;
 
-    renderer.updateSettings({
+    renderer.updateState({
       ...initialSettings,
-      codexHistory: [
-        {
-          ...initialSettings.codexHistory[0],
-          text: "updated plan details",
-          activity: {
-            ...initialSettings.codexHistory[0].activity!,
-            kind: "plan",
-            status: "inProgress",
-            details: "Updated plan",
+      codex: {
+        ...initialSettings.codex,
+        history: [
+          {
+            ...initialSettings.codex.history[0],
+            text: "updated plan details",
+            activity: {
+              ...initialSettings.codex.history[0].activity!,
+              kind: "plan",
+              status: "inProgress",
+              details: "Updated plan",
+            },
           },
-        },
-        initialSettings.codexHistory[1],
-      ],
+          initialSettings.codex.history[1],
+        ],
+      },
     });
 
     expect(planContent.textContent).toContain("Initial plan");
@@ -796,22 +852,25 @@ test("updates only streamed plan content after the batching window", () => {
 test("shows the implementation question after a completed plan", async () => {
   const { renderer, elements } = makeRenderer();
   const settings: Settings = {
-    ...defaultSettings(),
-    codexHistory: [
-      {
-        role: "system",
-        text: "plan details",
-        itemId: "plan-2",
-        activity: {
-          kind: "plan",
-          status: "completed",
-          details: "1. Make the change",
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        {
+          role: "system",
+          text: "plan details",
+          itemId: "plan-2",
+          activity: {
+            kind: "plan",
+            status: "completed",
+            details: "1. Make the change",
+          },
         },
-      },
-    ],
+      ],
+    },
   };
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
   expect(elements.history.querySelector(".codex-plan-implementation-prompt")).toBeNull();
   const prompt = elements.userInput.querySelector<HTMLElement>(
     ".codex-plan-implementation-prompt",
@@ -830,22 +889,25 @@ test("shows the implementation question after a completed plan", async () => {
 test("shows and focuses the chat input after staying in plan mode", () => {
   const { renderer, elements } = makeRenderer();
   const settings: Settings = {
-    ...defaultSettings(),
-    codexHistory: [
-      {
-        role: "system",
-        text: "plan details",
-        itemId: "plan-stay",
-        activity: {
-          kind: "plan",
-          status: "completed",
-          details: "1. Make the change",
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        {
+          role: "system",
+          text: "plan details",
+          itemId: "plan-stay",
+          activity: {
+            kind: "plan",
+            status: "completed",
+            details: "1. Make the change",
+          },
         },
-      },
-    ],
+      ],
+    },
   };
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
   const prompt = elements.userInput.querySelector<HTMLElement>(
     ".codex-plan-implementation-prompt",
   )!;
@@ -863,23 +925,26 @@ test("shows and focuses the chat input after staying in plan mode", () => {
 test("does not show the implementation question when another message follows the plan", () => {
   const { renderer, elements } = makeRenderer();
   const settings: Settings = {
-    ...defaultSettings(),
-    codexHistory: [
-      {
-        role: "system",
-        text: "plan details",
-        itemId: "plan-3",
-        activity: {
-          kind: "plan",
-          status: "completed",
-          details: "1. Make the change",
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        {
+          role: "system",
+          text: "plan details",
+          itemId: "plan-3",
+          activity: {
+            kind: "plan",
+            status: "completed",
+            details: "1. Make the change",
+          },
         },
-      },
-      { role: "assistant", text: "A later message" },
-    ],
+        { role: "assistant", text: "A later message" },
+      ],
+    },
   };
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
 
   expect(elements.userInput.querySelector(".codex-plan-implementation-prompt")).toBeNull();
 });
@@ -887,30 +952,33 @@ test("does not show the implementation question when another message follows the
 test("navigates options with arrows and submits the selected option with a note", () => {
   const { renderer, elements } = makeRenderer();
   const settings: Settings = {
-    ...defaultSettings(),
-    codexPendingUserInput: {
-      requestId: "request-2",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      isBlocking: true,
-      questions: [
-        {
-          id: "choice",
-          header: "Implementation choice",
-          question: "Which implementation should we use?",
-          isOther: true,
-          isSecret: false,
-          options: [
-            { label: "Option A", description: "Use the first approach." },
-            { label: "Option B", description: "Use the second approach." },
-          ],
-        },
-      ],
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      pendingUserInput: {
+        requestId: "request-2",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        isBlocking: true,
+        questions: [
+          {
+            id: "choice",
+            header: "Implementation choice",
+            question: "Which implementation should we use?",
+            isOther: true,
+            isSecret: false,
+            options: [
+              { label: "Option A", description: "Use the first approach." },
+              { label: "Option B", description: "Use the second approach." },
+            ],
+          },
+        ],
+      },
     },
   };
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
   const options = elements.userInput.querySelectorAll<HTMLInputElement>("input[type='radio']");
   const note = elements.userInput.querySelector<HTMLInputElement>("input[data-note='true']")!;
   options[0].dispatchEvent(
@@ -983,35 +1051,38 @@ test("navigates options with arrows and submits the selected option with a note"
 test("shows multiple questions one at a time and submits all answers at the end", () => {
   const { renderer, elements } = makeRenderer();
   const settings: Settings = {
-    ...defaultSettings(),
-    codexPendingUserInput: {
-      requestId: "request-3",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      isBlocking: true,
-      questions: [
-        {
-          id: "first",
-          header: "First question",
-          question: "Choose the first value.",
-          isOther: false,
-          isSecret: false,
-          options: [{ label: "A", description: "First" }],
-        },
-        {
-          id: "second",
-          header: "Second question",
-          question: "Choose the second value.",
-          isOther: false,
-          isSecret: false,
-          options: [{ label: "B", description: "Second" }],
-        },
-      ],
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      pendingUserInput: {
+        requestId: "request-3",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        isBlocking: true,
+        questions: [
+          {
+            id: "first",
+            header: "First question",
+            question: "Choose the first value.",
+            isOther: false,
+            isSecret: false,
+            options: [{ label: "A", description: "First" }],
+          },
+          {
+            id: "second",
+            header: "Second question",
+            question: "Choose the second value.",
+            isOther: false,
+            isSecret: false,
+            options: [{ label: "B", description: "Second" }],
+          },
+        ],
+      },
     },
   };
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
   expect(elements.userInput.textContent).toContain("First question");
   expect(elements.userInput.textContent).not.toContain("Second question");
   const firstOption = elements.userInput.querySelector<HTMLInputElement>("input[type='radio']")!;
@@ -1032,8 +1103,8 @@ test("shows multiple questions one at a time and submits all answers at the end"
 
 test("searches and selects a file with the @ picker", async () => {
   const settings = {
-    ...defaultSettings(),
-    codexCwd: "/tmp/project",
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, cwd: "/tmp/project" },
   };
   const { elements } = makeRenderer(settings);
   elements.input.value = "Inspect @cod";
@@ -1124,20 +1195,23 @@ test("shows the execution mode above the composer", () => {
 
 test("marks failed command activity in red", () => {
   const { renderer, elements } = makeRenderer();
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexHistory: [
-      {
-        role: "system",
-        text: "Command failed",
-        itemId: "failed-command",
-        activity: {
-          kind: "command",
-          command: "ejc",
-          status: "failed",
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        {
+          role: "system",
+          text: "Command failed",
+          itemId: "failed-command",
+          activity: {
+            kind: "command",
+            command: "ejc",
+            status: "failed",
+          },
         },
-      },
-    ],
+      ],
+    },
   });
 
   expect(elements.history.querySelector(".codex-activity-command-failed")).not.toBeNull();
@@ -1145,33 +1219,36 @@ test("marks failed command activity in red", () => {
 
 test("expands user commands but collapses agent commands", () => {
   const { renderer, elements } = makeRenderer();
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexHistory: [
-      {
-        role: "system",
-        text: "User shell command",
-        itemId: "user-command",
-        activity: {
-          kind: "command",
-          source: "userShell",
-          userInitiated: true,
-          command: "echo hi",
-          status: "completed",
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        {
+          role: "system",
+          text: "User shell command",
+          itemId: "user-command",
+          activity: {
+            kind: "command",
+            source: "userShell",
+            userInitiated: true,
+            command: "echo hi",
+            status: "completed",
+          },
         },
-      },
-      {
-        role: "system",
-        text: "Agent command",
-        itemId: "agent-command",
-        activity: {
-          kind: "command",
-          source: "agent",
-          command: "npm test",
-          status: "completed",
+        {
+          role: "system",
+          text: "Agent command",
+          itemId: "agent-command",
+          activity: {
+            kind: "command",
+            source: "agent",
+            command: "npm test",
+            status: "completed",
+          },
         },
-      },
-    ],
+      ],
+    },
   });
 
   const details = [...elements.history.querySelectorAll("details")];
@@ -1181,64 +1258,67 @@ test("expands user commands but collapses agent commands", () => {
 
 test("uses the documented default expansion for every activity type", () => {
   const { renderer, elements } = makeRenderer();
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexHistory: [
-      {
-        role: "system",
-        text: "agent command",
-        itemId: "command",
-        activity: { kind: "command", source: "agent", command: "npm test" },
-      },
-      {
-        role: "system",
-        text: "file change",
-        itemId: "file",
-        activity: {
-          kind: "fileChange",
-          changes: ["src/app.ts\n+change"],
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        {
+          role: "system",
+          text: "agent command",
+          itemId: "command",
+          activity: { kind: "command", source: "agent", command: "npm test" },
         },
-      },
-      {
-        role: "system",
-        text: "search",
-        itemId: "search",
-        activity: { kind: "webSearch", summary: "query" },
-      },
-      {
-        role: "system",
-        text: "tool",
-        itemId: "tool",
-        activity: { kind: "tool", label: "mcpToolCall" },
-      },
-      {
-        role: "system",
-        text: "plan",
-        itemId: "plan",
-        activity: { kind: "plan", details: "plan details" },
-      },
-      {
-        role: "system",
-        text: "review started",
-        itemId: "review",
-        activity: {
-          kind: "other",
-          label: "enteredReviewMode",
-          status: "completed",
+        {
+          role: "system",
+          text: "file change",
+          itemId: "file",
+          activity: {
+            kind: "fileChange",
+            changes: ["src/app.ts\n+change"],
+          },
         },
-      },
-      {
-        role: "system",
-        text: "context compacted",
-        itemId: "context-compaction",
-        activity: {
-          kind: "other",
-          label: "contextCompaction",
-          status: "completed",
+        {
+          role: "system",
+          text: "search",
+          itemId: "search",
+          activity: { kind: "webSearch", summary: "query" },
         },
-      },
-      { role: "assistant", text: "ordinary response", itemId: "message" },
-    ],
+        {
+          role: "system",
+          text: "tool",
+          itemId: "tool",
+          activity: { kind: "tool", label: "mcpToolCall" },
+        },
+        {
+          role: "system",
+          text: "plan",
+          itemId: "plan",
+          activity: { kind: "plan", details: "plan details" },
+        },
+        {
+          role: "system",
+          text: "review started",
+          itemId: "review",
+          activity: {
+            kind: "other",
+            label: "enteredReviewMode",
+            status: "completed",
+          },
+        },
+        {
+          role: "system",
+          text: "context compacted",
+          itemId: "context-compaction",
+          activity: {
+            kind: "other",
+            label: "contextCompaction",
+            status: "completed",
+          },
+        },
+        { role: "assistant", text: "ordinary response", itemId: "message" },
+      ],
+    },
   });
 
   const details = [...elements.history.querySelectorAll("details")];
@@ -1256,7 +1336,10 @@ test("uses the documented default expansion for every activity type", () => {
 });
 
 test("opens and submits the custom review form", async () => {
-  const next = { ...defaultSettings(), codexThreadId: "thread-review" };
+  const next = {
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-review" },
+  };
   const { elements } = makeRenderer(next);
   const startReview = window.peskApi.startCodexReview as jest.Mock;
 
@@ -1288,8 +1371,8 @@ test("opens and submits the custom review form", async () => {
 });
 
 test("does not open the review form without a selected thread", () => {
-  const { renderer, elements } = makeRenderer(defaultSettings());
-  renderer.updateSettings(defaultSettings());
+  const { renderer, elements } = makeRenderer(defaultRendererState());
+  renderer.updateState(defaultRendererState());
 
   elements.input.value = "/review";
   elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
@@ -1301,8 +1384,8 @@ test("does not open the review form without a selected thread", () => {
 
 test("cancels the custom review form and restores chat input", () => {
   const { elements } = makeRenderer({
-    ...defaultSettings(),
-    codexThreadId: "thread-review",
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-review" },
   });
 
   elements.input.value = "/review";
@@ -1315,7 +1398,10 @@ test("cancels the custom review form and restores chat input", () => {
 });
 
 test("supports keyboard controls in the custom review form", async () => {
-  const next = { ...defaultSettings(), codexThreadId: "thread-review" };
+  const next = {
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-review" },
+  };
   const { elements } = makeRenderer(next);
   const startReview = window.peskApi.startCodexReview as jest.Mock;
 
@@ -1358,7 +1444,10 @@ test("supports keyboard controls in the custom review form", async () => {
 });
 
 test("keeps Enter as a newline in the web review textarea", () => {
-  const next = { ...defaultSettings(), codexThreadId: "thread-review" };
+  const next = {
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-review" },
+  };
   const { elements } = makeRenderer(next, true);
   const startReview = window.peskApi.startCodexReview as jest.Mock;
 
@@ -1378,24 +1467,27 @@ test("keeps Enter as a newline in the web review textarea", () => {
 
 test("styles and expands review activities by default", () => {
   const settings = {
-    ...defaultSettings(),
-    codexThreadId: "thread-review",
-    codexHistory: [
-      {
-        role: "system" as const,
-        text: "Activity",
-        itemId: "review-enter",
-        activity: {
-          kind: "other" as const,
-          label: "enteredReviewMode",
-          summary: "review changes in codex.ts",
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threadId: "thread-review",
+      history: [
+        {
+          role: "system" as const,
+          text: "Activity",
+          itemId: "review-enter",
+          activity: {
+            kind: "other" as const,
+            label: "enteredReviewMode",
+            summary: "review changes in codex.ts",
+          },
         },
-      },
-    ],
+      ],
+    },
   };
   const { renderer, elements } = makeRenderer(settings);
 
-  renderer.updateSettings(settings);
+  renderer.updateState(settings);
 
   const bubble = elements.history.querySelector(".codex-message");
   expect(bubble?.classList.contains("codex-activity-review")).toBe(true);
@@ -1403,7 +1495,10 @@ test("styles and expands review activities by default", () => {
 });
 
 test("submits a prompt, queues while working, and handles input shortcuts", async () => {
-  const next = { ...defaultSettings(), codexThreadId: "thread-2" };
+  const next = {
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-2" },
+  };
   const { renderer, elements } = makeRenderer(next);
   const submit = window.peskApi.submitCodexPrompt as jest.Mock;
 
@@ -1428,7 +1523,7 @@ test("submits a prompt, queues while working, and handles input shortcuts", asyn
   elements.input.dispatchEvent(shiftEnter);
   expect(shiftEnter.defaultPrevented).toBe(true);
 
-  renderer.updateSettings({ ...next, codexStatus: "working" });
+  renderer.updateState({ ...next, codex: { ...next.codex, status: "working" } });
   const interrupt = window.peskApi.interruptCodexTurn as jest.Mock;
   const interruptEvent = new KeyboardEvent("keydown", {
     key: "c",
@@ -1448,25 +1543,31 @@ test("submits a prompt, queues while working, and handles input shortcuts", asyn
 
 test("renders attached images in user message history", () => {
   const { renderer, elements } = makeRenderer({
-    ...defaultSettings(),
-    codexHistory: [
-      {
-        role: "user",
-        text: "inspect this",
-        images: [{ url: "data:image/png;base64,abc", name: "screen.png" }],
-      },
-    ],
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        {
+          role: "user",
+          text: "inspect this",
+          images: [{ url: "data:image/png;base64,abc", name: "screen.png" }],
+        },
+      ],
+    },
   });
 
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexHistory: [
-      {
-        role: "user",
-        text: "inspect this",
-        images: [{ url: "data:image/png;base64,abc", name: "screen.png" }],
-      },
-    ],
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        {
+          role: "user",
+          text: "inspect this",
+          images: [{ url: "data:image/png;base64,abc", name: "screen.png" }],
+        },
+      ],
+    },
   });
 
   expect(elements.history.querySelector(".codex-message-image")).toMatchObject({
@@ -1476,9 +1577,12 @@ test("renders attached images in user message history", () => {
 });
 
 test("keeps web chat input focused before and after an async submission", async () => {
-  const next = { ...defaultSettings(), codexThreadId: "thread-web" };
+  const next = {
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-web" },
+  };
   const { renderer, elements } = makeRenderer(next, true);
-  renderer.updateSettings(next);
+  renderer.updateState(next);
   elements.history.scrollTop = 0;
   let resolveSubmit!: (settings: Settings) => void;
   const submit = window.peskApi.submitCodexPrompt as jest.Mock;
@@ -1497,7 +1601,10 @@ test("keeps web chat input focused before and after an async submission", async 
 });
 
 test("keeps Enter as a newline in the web chat input", async () => {
-  const next = { ...defaultSettings(), codexThreadId: "thread-web" };
+  const next = {
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-web" },
+  };
   const { elements } = makeRenderer(next, true);
   const submit = window.peskApi.submitCodexPrompt as jest.Mock;
 
@@ -1526,7 +1633,7 @@ test("adjusts web chat form visibility on visual viewport resize", () => {
         resizeListeners.delete(listener),
     },
   });
-  const { elements } = makeRenderer(defaultSettings(), true);
+  const { elements } = makeRenderer(defaultRendererState(), true);
 
   for (const listener of resizeListeners) listener();
 
@@ -1538,17 +1645,20 @@ test("adjusts web chat form visibility on visual viewport resize", () => {
 
 test("renders approval options and completed approval states", () => {
   const { renderer, elements } = makeRenderer();
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexThreadId: "thread-1",
-    codexPendingApproval: {
-      requestId: 7,
-      command: "permission",
-      reason: "Needs approval",
-      options: [
-        { id: "accept", label: "Approve once", description: "" },
-        { id: "decline", label: "Decline", description: "" },
-      ],
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threadId: "thread-1",
+      pendingApproval: {
+        requestId: 7,
+        command: "permission",
+        reason: "Needs approval",
+        options: [
+          { id: "accept", label: "Approve once", description: "" },
+          { id: "decline", label: "Decline", description: "" },
+        ],
+      },
     },
   });
   const approve = elements.userInput.querySelector(
@@ -1565,27 +1675,30 @@ test("renders approval options and completed approval states", () => {
   expect(approve).toBeTruthy();
   expect(deny).toBeTruthy();
 
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexHistory: [
-      {
-        role: "system",
-        text: "permission",
-        approval: { requestId: 7, state: "approved" },
-      },
-    ],
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        {
+          role: "system",
+          text: "permission",
+          approval: { requestId: 7, state: "approved" },
+        },
+      ],
+    },
   });
   expect(elements.history.textContent).toContain("Approved");
 });
 
 test("blurs the input when selecting a message with Alt+Up", () => {
   const { renderer, elements } = makeRenderer({
-    ...defaultSettings(),
-    codexHistory: [{ role: "user", text: "copy this" }],
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, history: [{ role: "user", text: "copy this" }] },
   });
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexHistory: [{ role: "user", text: "copy this" }],
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, history: [{ role: "user", text: "copy this" }] },
   });
   elements.input.focus();
   (elements.history.querySelector(".codex-message") as HTMLElement).scrollIntoView = jest.fn();
@@ -1606,25 +1719,24 @@ test("renders working and completed elapsed states", () => {
   const { renderer, elements } = makeRenderer();
   const now = Date.now();
   jest.setSystemTime(now);
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexWorkingSince: now - 65000,
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, workingSince: now - 65000 },
   });
   expect(elements.workingStatus.hidden).toBe(false);
   expect(elements.workingElapsed.textContent).toBe("1m 5s");
 
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexWorkedElapsed: 3661000,
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, workedElapsed: 3661000 },
   });
   expect(elements.workingStatus.hidden).toBe(false);
   expect(elements.workingStatus.textContent).toContain("Worked for");
   expect(elements.workingElapsed.textContent).toBe("1h 1m 1s");
 
-  renderer.updateSettings({
-    ...defaultSettings(),
-    codexWorkedElapsed: 1000,
-    codexInterrupted: true,
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, workedElapsed: 1000, interrupted: true },
   });
   expect(elements.workingStatus.hidden).toBe(false);
   expect(elements.workingStatus.textContent).toContain("Conversation interrupted");

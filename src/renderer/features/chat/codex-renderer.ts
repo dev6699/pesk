@@ -15,7 +15,7 @@ const slashCommands = [
 
 export class CodexRenderer {
   private readonly webChat = document.body.classList.contains("web-chat");
-  private settings: PeskSettings;
+  private state: RendererState;
   private historyInitialized = false;
   private workingTimer: number | undefined;
   private workingLabelTimer: number | undefined;
@@ -51,7 +51,7 @@ export class CodexRenderer {
   private readonly renderedMessageTexts = new Map<string, string>();
   private renderedPlanDetails = new Map<string, string>();
   private planRenderTimer: number | undefined;
-  private pendingPlanHistory: PeskSettings["codexHistory"] | undefined;
+  private pendingPlanHistory: RendererState["codex"]["history"] | undefined;
   private readonly readOnlyStatus =
     document.getElementById("codex-read-only") ?? document.createElement("div");
 
@@ -72,7 +72,7 @@ export class CodexRenderer {
     private readonly tokenUsage: HTMLElement,
     private readonly form: HTMLFormElement,
     private readonly input: HTMLTextAreaElement,
-    settings: PeskSettings,
+    state: RendererState,
     rateLimit?: HTMLElement,
     fileSuggestions?: HTMLElement,
     private readonly modeToggle?: HTMLElement,
@@ -80,7 +80,7 @@ export class CodexRenderer {
     private readonly steerButton?: HTMLButtonElement,
     private readonly commandMode?: HTMLElement,
   ) {
-    this.settings = settings;
+    this.state = state;
     this.rateLimit = rateLimit ?? document.createElement("div");
     this.goal = document.getElementById("codex-goal") ?? document.createElement("div");
     this.commandNotice =
@@ -97,8 +97,8 @@ export class CodexRenderer {
     sessionCopy.addEventListener("click", () => void this.copySessionId());
     this.history.addEventListener("scroll", () => {
       if (
-        this.settings.codexHasOlderHistory &&
-        !this.settings.codexHistoryLoading &&
+        this.state.codex.hasOlderHistory &&
+        !this.state.codex.historyLoading &&
         this.history.scrollTop <= 48
       ) {
         void this.loadOlderHistory();
@@ -110,7 +110,7 @@ export class CodexRenderer {
       void window.peskApi.steerCodexTurn(prompt).then((next) => {
         this.input.value = "";
         this.resizeInput();
-        this.updateSettings(next);
+        this.updateState(next);
         this.input.focus();
       });
     });
@@ -171,7 +171,7 @@ export class CodexRenderer {
       matchesShortcut(event, "copyMessage") &&
       !(
         event.target === this.input &&
-        (this.settings.codexStatus === "working" || this.settings.codexStatus === "waiting")
+        (this.state.codex.status === "working" || this.state.codex.status === "waiting")
       ) &&
       this.selectedMessageIndex >= 0 &&
       !this.hasHighlightedText()
@@ -248,7 +248,7 @@ export class CodexRenderer {
   }
 
   private switchSession(direction: -1 | 1): boolean {
-    const currentId = this.pendingSessionId ?? this.settings.codexThreadId;
+    const currentId = this.pendingSessionId ?? this.state.codex.threadId;
     const currentIndex = this.sessionNavigationIds.indexOf(currentId ?? "");
     if (currentIndex < 0) return false;
     const nextId = this.sessionNavigationIds[currentIndex + direction];
@@ -258,14 +258,14 @@ export class CodexRenderer {
     return true;
   }
 
-  updateSettings(next: PeskSettings): void {
-    this.settings = next;
-    const displayedThreads = [...next.codexThreads];
+  updateState(next: RendererState): void {
+    this.state = next;
+    const displayedThreads = [...next.codex.threads];
     if (
-      next.codexThreadId &&
-      !displayedThreads.some((thread) => thread.id === next.codexThreadId)
+      next.codex.threadId &&
+      !displayedThreads.some((thread) => thread.id === next.codex.threadId)
     ) {
-      displayedThreads.unshift({ id: next.codexThreadId });
+      displayedThreads.unshift({ id: next.codex.threadId });
     }
     const threadIds = new Set(displayedThreads.map((thread) => thread.id));
     const existingNavigationIds = new Set(this.sessionNavigationIds);
@@ -276,12 +276,12 @@ export class CodexRenderer {
       ...newThreadIds,
       ...this.sessionNavigationIds.filter((id) => threadIds.has(id)),
     ];
-    if (next.codexThreadId === this.pendingSessionId) {
+    if (next.codex.threadId === this.pendingSessionId) {
       this.pendingSessionId = undefined;
     }
-    this.error.hidden = !next.codexError;
-    this.error.textContent = next.codexError ? "Codex connection error." : "";
-    this.renderCommandNotice(next.codexCommandNotice);
+    this.error.hidden = !next.codex.error;
+    this.error.textContent = next.codex.error ? "Codex connection error." : "";
+    this.renderCommandNotice(next.codex.commandNotice);
     this.sessionSelect.replaceChildren();
     if (!displayedThreads.length) {
       const option = document.createElement("option");
@@ -296,11 +296,15 @@ export class CodexRenderer {
         option.title = thread.id;
         this.sessionSelect.append(option);
       }
-      this.sessionSelect.value = next.codexThreadId ?? "";
+      this.sessionSelect.value = next.codex.threadId ?? "";
     }
     this.sessionSelect.disabled = !displayedThreads.length;
-    this.sessionCopy.disabled = !next.codexThreadId;
-    this.renderHistory(next.codexHistory, Boolean(next.codexThreadId), next.codexQueuedSubmissions);
+    this.sessionCopy.disabled = !next.codex.threadId;
+    this.renderHistory(
+      next.codex.history,
+      Boolean(next.codex.threadId),
+      next.codex.queuedSubmissions,
+    );
     this.renderWorkingStatus();
     this.renderStatusDock();
     this.renderCommandMode();
@@ -309,24 +313,24 @@ export class CodexRenderer {
     this.renderGoal();
     this.renderUserInput();
     const steerable =
-      !next.codexReadOnly && (next.codexStatus === "working" || next.codexStatus === "waiting");
+      !next.codex.readOnly && (next.codex.status === "working" || next.codex.status === "waiting");
     if (this.steerButton) {
       this.steerButton.hidden = !steerable;
       this.steerButton.disabled = !steerable;
     }
-    this.readOnlyStatus.hidden = !next.codexReadOnly;
-    this.readOnlyStatus.textContent = next.codexReadOnly ? "Read-only · active elsewhere" : "";
-    this.input.disabled = next.codexReadOnly;
+    this.readOnlyStatus.hidden = !next.codex.readOnly;
+    this.readOnlyStatus.textContent = next.codex.readOnly ? "Read-only · active elsewhere" : "";
+    this.input.disabled = next.codex.readOnly;
     const sendButton = this.form.querySelector<HTMLButtonElement>("button[type='submit']");
-    if (sendButton) sendButton.disabled = next.codexReadOnly;
+    if (sendButton) sendButton.disabled = next.codex.readOnly;
     this.form.hidden = Boolean(
-      next.codexPendingUserInput ||
-      next.codexPendingApproval ||
+      next.codex.pendingUserInput ||
+      next.codex.pendingApproval ||
       this.activePlanConfirmation ||
       this.reviewPromptOpen,
     );
     if (this.modeToggle) {
-      const plan = next.codexCollaborationMode === "plan";
+      const plan = next.codex.collaborationMode === "plan";
       this.modeToggle.hidden = !plan;
       this.modeToggle.textContent = plan ? "Plan" : "Default";
       this.modeToggle.classList.toggle("codex-mode-plan", plan);
@@ -336,7 +340,7 @@ export class CodexRenderer {
 
   /** Requests one older history page while preserving the current scroll anchor. */
   private async loadOlderHistory(): Promise<void> {
-    if (!this.settings.codexHasOlderHistory || this.settings.codexHistoryLoading) return;
+    if (!this.state.codex.hasOlderHistory || this.state.codex.historyLoading) return;
     const previousHeight = this.history.scrollHeight;
     const previousTop = this.history.scrollTop;
     await window.peskApi.loadOlderCodexHistory();
@@ -370,9 +374,9 @@ export class CodexRenderer {
     }
     const prompt = this.input.value.trim();
     if (!prompt && !this.pendingImages.length) return;
-    if (this.settings.codexReadOnly) return;
+    if (this.state.codex.readOnly) return;
     if (/^\/review$/i.test(prompt)) {
-      if (this.settings.codexStatus !== "idle" || !this.settings.codexThreadId) {
+      if (this.state.codex.status !== "idle" || !this.state.codex.threadId) {
         return;
       }
       this.input.value = "";
@@ -394,7 +398,7 @@ export class CodexRenderer {
     this.renderImageAttachments();
     this.resizeInput();
     this.renderCommandMode();
-    this.updateSettings(next);
+    this.updateState(next);
     this.history.scrollTop = this.history.scrollHeight;
     if (keepInputFocused) {
       this.input.focus();
@@ -508,8 +512,8 @@ export class CodexRenderer {
 
   private renderUserInput(force = false): void {
     const container = this.userInput;
-    const pending = this.settings.codexPendingUserInput;
-    const pendingApproval = this.settings.codexPendingApproval;
+    const pending = this.state.codex.pendingUserInput;
+    const pendingApproval = this.state.codex.pendingApproval;
     const planConfirmation = this.activePlanConfirmation;
     if (!container) return;
     if (!pending && !pendingApproval && !planConfirmation && !this.reviewPromptOpen) {
@@ -833,7 +837,7 @@ export class CodexRenderer {
       this.form.hidden = false;
       this.form.append(this.fileSuggestions);
       const next = await window.peskApi.startCodexReview(value);
-      this.updateSettings(next);
+      this.updateState(next);
       this.input.focus();
     });
     container.append(form);
@@ -847,7 +851,7 @@ export class CodexRenderer {
   }
 
   private renderApprovalInput(
-    pending: NonNullable<PeskSettings["codexPendingApproval"]>,
+    pending: NonNullable<RendererState["codex"]["pendingApproval"]>,
     force: boolean,
   ): void {
     const container = this.userInput;
@@ -969,7 +973,7 @@ export class CodexRenderer {
   }
 
   private renderGoal(): void {
-    const goal = this.settings.codexGoal;
+    const goal = this.state.codex.goal;
     if (!goal) {
       this.goal.hidden = true;
       this.goal.textContent = "";
@@ -984,14 +988,14 @@ export class CodexRenderer {
   }
 
   private renderTokenUsage(): void {
-    if (!this.settings.codexThreadId) {
+    if (!this.state.codex.threadId) {
       this.tokenUsage.hidden = true;
       this.tokenUsage.textContent = "";
       this.tokenUsage.removeAttribute("title");
       return;
     }
-    const usage = this.settings.codexTokenUsage;
-    const modelInfo = this.settings.codexModelInfo;
+    const usage = this.state.codex.tokenUsage;
+    const modelInfo = this.state.codex.modelInfo;
     if (!usage && !modelInfo) {
       this.tokenUsage.hidden = true;
       this.tokenUsage.textContent = "";
@@ -1030,7 +1034,7 @@ export class CodexRenderer {
         : "",
     ].filter(Boolean);
     const modelLine = modelParts.join(" · ");
-    const cwd = this.settings.codexCwd;
+    const cwd = this.state.codex.cwd;
     const lines = [modelLine, contextLabel, cwd, usageParts.join(" · ")].filter(Boolean);
     this.tokenUsage.replaceChildren();
     if (modelLine || contextLabel || cwd) {
@@ -1073,7 +1077,7 @@ export class CodexRenderer {
   }
 
   private renderRateLimit(): void {
-    const limits = this.settings.codexRateLimits;
+    const limits = this.state.codex.rateLimits;
     const primary = limits?.primary;
     if (!primary) {
       this.rateLimit.hidden = true;
@@ -1095,7 +1099,7 @@ export class CodexRenderer {
 
   private selectMessage(
     direction: -1 | 1,
-    role?: PeskSettings["codexHistory"][number]["role"],
+    role?: RendererState["codex"]["history"][number]["role"],
   ): void {
     const messages = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message"));
     if (!messages.length) return;
@@ -1240,7 +1244,7 @@ export class CodexRenderer {
     }
     if (
       matchesShortcut(event, "interrupt") &&
-      (this.settings.codexStatus === "working" || this.settings.codexStatus === "waiting")
+      (this.state.codex.status === "working" || this.state.codex.status === "waiting")
     ) {
       event.preventDefault();
       void window.peskApi.interruptCodexTurn();
@@ -1275,13 +1279,13 @@ export class CodexRenderer {
       const prompt = this.input.value.trim();
       if (
         prompt &&
-        (this.settings.codexStatus === "working" || this.settings.codexStatus === "waiting") &&
-        this.settings.codexThreadId
+        (this.state.codex.status === "working" || this.state.codex.status === "waiting") &&
+        this.state.codex.threadId
       ) {
         void window.peskApi.steerCodexTurn(prompt).then((next) => {
           this.input.value = "";
           this.resizeInput();
-          this.updateSettings(next);
+          this.updateState(next);
         });
       } else {
         this.form.requestSubmit();
@@ -1321,7 +1325,7 @@ export class CodexRenderer {
     const serial = ++this.fileSearchSerial;
     const results = await window.peskApi.fuzzyFileSearch(
       query,
-      this.settings.codexCwd ? [this.settings.codexCwd] : [],
+      this.state.codex.cwd ? [this.state.codex.cwd] : [],
     );
     if (serial !== this.fileSearchSerial) return;
     this.suggestionKind = "file";
@@ -1443,9 +1447,9 @@ export class CodexRenderer {
   }
 
   private renderHistory(
-    history: PeskSettings["codexHistory"],
+    history: RendererState["codex"]["history"],
     sessionConnected = false,
-    queuedSubmissions: PeskSettings["codexQueuedSubmissions"] = [],
+    queuedSubmissions: RendererState["codex"]["queuedSubmissions"] = [],
   ): void {
     this.updateActivePlanConfirmation(history);
     const structureKey = `${historyStructureKey(history)}|queue:${queuedSubmissions
@@ -1572,7 +1576,7 @@ export class CodexRenderer {
   }
 
   /** Updates streamed plain messages without rebuilding the rest of the history DOM. */
-  private updateRenderedMessageContent(history: PeskSettings["codexHistory"]): void {
+  private updateRenderedMessageContent(history: RendererState["codex"]["history"]): void {
     for (const [index, message] of (history ?? []).entries()) {
       if (message.activity || (message.images?.length ?? 0) > 0) continue;
       const activityKey = message.itemId ?? `history-${index}`;
@@ -1588,7 +1592,7 @@ export class CodexRenderer {
     }
   }
 
-  private updateActivePlanConfirmation(history: PeskSettings["codexHistory"]): void {
+  private updateActivePlanConfirmation(history: RendererState["codex"]["history"]): void {
     this.activePlanConfirmation = undefined;
     const lastMessage = history?.[history.length - 1];
     let planActivityIndex = -1;
@@ -1617,7 +1621,7 @@ export class CodexRenderer {
     };
   }
 
-  private schedulePlanUpdates(history: PeskSettings["codexHistory"]): boolean {
+  private schedulePlanUpdates(history: RendererState["codex"]["history"]): boolean {
     const planUpdates = (history ?? []).filter((message, index) => {
       if (message.activity?.kind !== "plan") return false;
       const activityKey = message.itemId ?? `history-${index}`;
@@ -1666,7 +1670,7 @@ export class CodexRenderer {
   }
 
   private renderMessageContent(
-    message: PeskSettings["codexHistory"][number],
+    message: RendererState["codex"]["history"][number],
     activityKey: string,
     openActivityKeys: Set<string>,
     renderedActivityKeys: Set<string>,
@@ -1799,7 +1803,7 @@ export class CodexRenderer {
       if (!selected) return;
       this.dismissedPlanConfirmations.add(activityKey);
       if (selected === "stay-plan") {
-        this.renderHistory(this.settings.codexHistory, Boolean(this.settings.codexThreadId));
+        this.renderHistory(this.state.codex.history, Boolean(this.state.codex.threadId));
         this.renderUserInput();
         this.form.hidden = false;
         this.focusChatInput();
@@ -1811,9 +1815,9 @@ export class CodexRenderer {
         selected === "clear-context",
       );
       void implementation.then((next) => {
-        this.updateSettings(next);
+        this.updateState(next);
         this.focusChatInput();
-        this.renderHistory(this.settings.codexHistory, Boolean(this.settings.codexThreadId));
+        this.renderHistory(this.state.codex.history, Boolean(this.state.codex.threadId));
       });
     });
     prompt.append(form);
@@ -1824,7 +1828,7 @@ export class CodexRenderer {
   }
 
   private renderFileChangeActivity(
-    activity: NonNullable<PeskSettings["codexHistory"][number]["activity"]>,
+    activity: NonNullable<RendererState["codex"]["history"][number]["activity"]>,
     activityKey: string,
     openActivityKeys: Set<string>,
     renderedActivityKeys: Set<string>,
@@ -1863,10 +1867,10 @@ export class CodexRenderer {
   private renderWorkingStatus(): void {
     if (this.workingTimer !== undefined) window.clearInterval(this.workingTimer);
     this.workingTimer = undefined;
-    const since = this.settings.codexWorkingSince;
-    const worked = this.settings.codexWorkedElapsed;
+    const since = this.state.codex.workingSince;
+    const worked = this.state.codex.workedElapsed;
     this.workingStatus.hidden =
-      since === undefined && worked === undefined && !this.settings.codexInterrupted;
+      since === undefined && worked === undefined && !this.state.codex.interrupted;
     if (since === undefined) {
       this.workingStatus.classList.add("codex-working-status-complete");
       if (this.workingLabelTimer !== undefined) window.clearInterval(this.workingLabelTimer);
@@ -1874,9 +1878,9 @@ export class CodexRenderer {
       this.workingLabelSince = undefined;
       this.workingStatus.classList.toggle(
         "codex-working-status-interrupted",
-        Boolean(this.settings.codexInterrupted),
+        Boolean(this.state.codex.interrupted),
       );
-      this.workingStatus.firstElementChild!.textContent = this.settings.codexInterrupted
+      this.workingStatus.firstElementChild!.textContent = this.state.codex.interrupted
         ? "Conversation interrupted"
         : "Worked for";
       this.workingElapsed.textContent = formatElapsed(worked ?? 0);
@@ -1936,7 +1940,10 @@ export class CodexRenderer {
     }
   }
 
-  private renderApproval(bubble: HTMLElement, message: PeskSettings["codexHistory"][number]): void {
+  private renderApproval(
+    bubble: HTMLElement,
+    message: RendererState["codex"]["history"][number],
+  ): void {
     const approval = message.approval;
     if (!approval) return;
     bubble.classList.add(`codex-approval-${approval.state}`);
@@ -1978,7 +1985,7 @@ export class CodexRenderer {
 }
 
 function activityLabel(
-  kind: NonNullable<PeskSettings["codexHistory"][number]["activity"]>["kind"],
+  kind: NonNullable<RendererState["codex"]["history"][number]["activity"]>["kind"],
 ): string {
   switch (kind) {
     case "webSearch":
@@ -1995,7 +2002,7 @@ function activityLabel(
 }
 
 function isReviewActivity(
-  activity: NonNullable<PeskSettings["codexHistory"][number]["activity"]>,
+  activity: NonNullable<RendererState["codex"]["history"][number]["activity"]>,
 ): boolean {
   return activity.label === "enteredReviewMode" || activity.label === "exitedReviewMode";
 }
@@ -2013,7 +2020,7 @@ function formatElapsed(milliseconds: number): string {
   return `${hours}h ${remainderMinutes}m ${remainderSeconds}s`;
 }
 
-function historyStructureKey(history: PeskSettings["codexHistory"]): string {
+function historyStructureKey(history: RendererState["codex"]["history"]): string {
   return JSON.stringify(
     (history ?? []).map((message) => ({
       role: message.role,
@@ -2114,7 +2121,7 @@ function sanitizeMarkdownHtml(html: string): string {
 }
 
 function formatCommandActivity(
-  activity: NonNullable<PeskSettings["codexHistory"][number]["activity"]>,
+  activity: NonNullable<RendererState["codex"]["history"][number]["activity"]>,
 ): string {
   return [
     activity.command ? `$ ${activity.command}` : "",
@@ -2163,7 +2170,9 @@ function formatPlan(plan: string): string {
   return plan.replaceAll("_", " ").replace(/(^| )\S/g, (letter) => letter.toUpperCase());
 }
 
-function formatRateLimitDetails(limits: NonNullable<PeskSettings["codexRateLimits"]>): string[] {
+function formatRateLimitDetails(
+  limits: NonNullable<RendererState["codex"]["rateLimits"]>,
+): string[] {
   const formatWindow = (label: string, window: typeof limits.primary): string => {
     if (!window) return `${label}: unavailable`;
     const reset = window.resetsAt ? ` · resets ${formatReset(window.resetsAt)}` : "";

@@ -3,7 +3,7 @@
 /// <reference path="../../../../src/renderer/shared/types.d.ts" />
 
 import { PetRenderer } from "../../../../src/renderer/features/pet/pet-renderer";
-import { defaultSettings } from "../../../../src/renderer/shared/default-settings";
+import { defaultRendererState } from "../../../../src/renderer/shared/default-settings";
 
 class FakeClassList {
   private readonly values = new Set<string>();
@@ -45,7 +45,7 @@ function createRenderer(sound = createStatusSound()) {
     statusLabel: { textContent: "" } as unknown as HTMLElement,
     statusSound: sound,
     chatOnly: false,
-    settings: defaultSettings(),
+    state: defaultRendererState(),
   });
 }
 
@@ -57,21 +57,21 @@ describe("PetRenderer", () => {
   test("does not play automatically when working becomes idle or waiting", () => {
     const sound = createStatusSound();
     const renderer = createRenderer(sound);
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexStatus: "working",
-      codexStatusSoundUrl: "file:///tmp/status.mp3",
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: { ...defaultRendererState().codex, status: "working" },
+      assets: { codexStatusSoundUrl: "file:///tmp/status.mp3" },
     });
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexStatus: "idle",
-      codexStatusSoundUrl: "file:///tmp/status.mp3",
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: { ...defaultRendererState().codex, status: "idle" },
+      assets: { codexStatusSoundUrl: "file:///tmp/status.mp3" },
     });
     renderer.updateCodexUpdate(true);
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexStatus: "waiting",
-      codexStatusSoundUrl: "file:///tmp/status.mp3",
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: { ...defaultRendererState().codex, status: "waiting" },
+      assets: { codexStatusSoundUrl: "file:///tmp/status.mp3" },
     });
 
     expect(sound.load).toHaveBeenCalledTimes(1);
@@ -82,15 +82,15 @@ describe("PetRenderer", () => {
     const sound = createStatusSound();
     const renderer = createRenderer(sound);
     renderer.updateFocus(true);
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexStatus: "working",
-      codexStatusSoundUrl: "file:///tmp/status.mp3",
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: { ...defaultRendererState().codex, status: "working" },
+      assets: { codexStatusSoundUrl: "file:///tmp/status.mp3" },
     });
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexStatus: "idle",
-      codexStatusSoundUrl: "file:///tmp/status.mp3",
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: { ...defaultRendererState().codex, status: "idle" },
+      assets: { codexStatusSoundUrl: "file:///tmp/status.mp3" },
     });
     renderer.updateCodexUpdate(true);
 
@@ -109,13 +109,16 @@ describe("PetRenderer", () => {
     const sound = createStatusSound();
     const renderer = createRenderer(sound);
     renderer.updateCodexUpdate(true);
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexPendingApproval: {
-        requestId: 1,
-        command: "echo hi",
-        reason: "Needs approval",
-        options: [],
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: {
+        ...defaultRendererState().codex,
+        pendingApproval: {
+          requestId: 1,
+          command: "echo hi",
+          reason: "Needs approval",
+          options: [],
+        },
       },
     });
 
@@ -131,14 +134,21 @@ describe("PetRenderer", () => {
       statusLabel: { textContent: "" } as unknown as HTMLElement,
       statusSound: sound,
       chatOnly: false,
-      settings: { ...defaultSettings(), codexStatusSound: false },
+      state: {
+        ...defaultRendererState(),
+        settings: { ...defaultRendererState().settings, codexStatusSound: false },
+      },
     });
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexStatusSound: false,
-      codexStatus: "working",
+    renderer.updateState({
+      ...defaultRendererState(),
+      settings: { ...defaultRendererState().settings, codexStatusSound: false },
+      codex: { ...defaultRendererState().codex, status: "working" },
     });
-    renderer.updateSettings({ ...defaultSettings(), codexStatusSound: false, codexStatus: "idle" });
+    renderer.updateState({
+      ...defaultRendererState(),
+      settings: { ...defaultRendererState().settings, codexStatusSound: false },
+      codex: { ...defaultRendererState().codex, status: "idle" },
+    });
 
     expect(sound.play).not.toHaveBeenCalled();
   });
@@ -155,18 +165,17 @@ describe("PetRenderer", () => {
       statusLabel,
       statusSound: createStatusSound(),
       chatOnly: false,
-      settings: defaultSettings(),
+      state: defaultRendererState(),
     });
-    renderer.updateSettings({
-      ...defaultSettings(),
-      codexStatus: "working",
-      codexWorkingSince: now - 65000,
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: { ...defaultRendererState().codex, status: "working", workingSince: now - 65000 },
     });
 
     expect(statusLabel.textContent).toBe("Working · 1m 5s");
     jest.advanceTimersByTime(5000);
     expect(statusLabel.textContent).toBe("Working · 1m 10s");
-    renderer.updateSettings(defaultSettings());
+    renderer.updateState(defaultRendererState());
     expect(statusLabel.textContent).toBe("Idle");
     jest.useRealTimers();
   });
@@ -180,7 +189,7 @@ describe("PetRenderer", () => {
       statusLabel: { textContent: "" } as never,
       statusSound: createStatusSound(),
       chatOnly: false,
-      settings: defaultSettings(),
+      state: defaultRendererState(),
     });
     renderer.updateFocus(true);
     expect(pet.classList.contains("focused")).toBe(true);
@@ -199,7 +208,7 @@ describe("PetRenderer", () => {
       statusLabel: { textContent: "" } as never,
       statusSound: createStatusSound(),
       chatOnly: false,
-      settings: defaultSettings(),
+      state: defaultRendererState(),
     });
     renderer.updateCodexUpdate(true);
     renderer.updateFocus(true);

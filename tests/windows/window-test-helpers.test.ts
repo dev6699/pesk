@@ -2,7 +2,7 @@
 
 import { EventEmitter } from "node:events";
 import { BrowserWindow, screen } from "electron";
-import { defaultSettings } from "../../src/renderer/shared/default-settings";
+import { defaultPeskSettings } from "../../src/renderer/shared/default-settings";
 
 export class FakeWindow extends EventEmitter {
   visible = false;
@@ -41,7 +41,7 @@ export function createWindowFactory(): { windows: FakeWindow[] } {
 
 export function petOptions() {
   return {
-    getSettings: () => ({ ...defaultSettings(), visible: true }),
+    getSettings: () => ({ ...defaultPeskSettings(), visible: true }),
     saveSettings: jest.fn(),
     publishRendererState: jest.fn(),
     refreshTrayMenu: jest.fn(),

@@ -33,27 +33,31 @@ class FakeWebSocket {
   }
 }
 
-function state(): PeskSettings {
+function state(): RendererState {
   return {
-    animation: "idle",
-    animationMode: "selected",
-    scale: 1,
-    paused: false,
-    locked: false,
-    visible: true,
-    codexStatusSound: true,
-    codexStatusSoundUrl: "",
-    codexStatus: "idle",
-    codexAggregateStatus: "idle",
-    codexConnected: true,
-    codexReadOnly: false,
-    codexThreads: [],
-    codexThreadActivities: [],
-    codexHistory: [],
-    codexHasOlderHistory: false,
-    codexHistoryLoading: false,
-    codexQueuedSubmissions: [],
-    codexCollaborationMode: "default",
+    settings: {
+      animation: "idle",
+      animationMode: "selected",
+      scale: 1,
+      paused: false,
+      locked: false,
+      visible: true,
+      codexStatusSound: true,
+    },
+    codex: {
+      status: "idle",
+      aggregateStatus: "idle",
+      connected: true,
+      readOnly: false,
+      threads: [],
+      threadActivities: [],
+      history: [],
+      hasOlderHistory: false,
+      historyLoading: false,
+      queuedSubmissions: [],
+      collaborationMode: "default",
+    },
+    assets: { codexStatusSoundUrl: "" },
   };
 }
 
@@ -148,7 +152,7 @@ test("round-trips web commands and returns the server result", async () => {
   const socket = FakeWebSocket.instances[0];
   socket.emit("open");
 
-  const next = { ...state(), codexStatus: "working" as const };
+  const next = { ...state(), codex: { ...state().codex, status: "working" as const } };
   const interrupt = api.interruptCodexTurn();
   const request = JSON.parse(socket.sent.at(-1) as string);
   expect(request).toMatchObject({ type: "interruptTurn", requestId: 1 });

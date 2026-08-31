@@ -1,11 +1,11 @@
 import { matchesShortcut } from "../shared/shortcuts.js";
 
-const listeners = new Set<(settings: PeskSettings) => void>();
+const listeners = new Set<(state: RendererState) => void>();
 const pendingFileSearches = new Map<number, (results: FuzzyFileSearchResult[]) => void>();
-const pendingCommands = new Map<number, (result: { ok: boolean; state?: PeskSettings }) => void>();
+const pendingCommands = new Map<number, (result: { ok: boolean; state?: RendererState }) => void>();
 let nextFileSearchId = 0;
 let nextCommandId = 0;
-let state: PeskSettings | undefined;
+let state: RendererState | undefined;
 let socket: WebSocket;
 function readCredential(): string {
   try {
@@ -36,9 +36,9 @@ let credential = readCredential();
 let retryTimer: number | undefined;
 let retryDelay = 1000;
 let authenticated = false;
-let resolveInitialState: ((settings: PeskSettings) => void) | undefined;
+let resolveInitialState: ((state: RendererState) => void) | undefined;
 let serviceWorkerRegistration: Promise<ServiceWorkerRegistration | undefined>;
-const initialState = new Promise<PeskSettings>((resolve) => {
+const initialState = new Promise<RendererState>((resolve) => {
   resolveInitialState = resolve;
 });
 
@@ -64,7 +64,7 @@ function showConnectionError(message: string): void {
 
 function clearConnectionError(): void {
   const error = document.getElementById("codex-error");
-  if (error && !state?.codexError) {
+  if (error && !state?.codex?.error) {
     error.hidden = true;
     error.textContent = "";
   }
@@ -260,7 +260,7 @@ function connect(): void {
       const result = message as {
         requestId?: unknown;
         ok?: unknown;
-        state?: PeskSettings;
+        state?: RendererState;
       };
       if (typeof result.requestId !== "number") return;
       const resolve = pendingCommands.get(result.requestId);
@@ -276,7 +276,7 @@ function connect(): void {
     authenticated = true;
     setConnectionStatus("connected");
     clearConnectionError();
-    state = (message as { state: PeskSettings }).state;
+    state = (message as { state: RendererState }).state;
     resolveInitialState?.(state);
     resolveInitialState = undefined;
     for (const listener of listeners) listener(state);
@@ -365,7 +365,7 @@ function send(type: string, data: Record<string, unknown> = {}): void {
 function sendCommand(
   type: string,
   data: Record<string, unknown> = {},
-): Promise<{ ok: boolean; state?: PeskSettings }> {
+): Promise<{ ok: boolean; state?: RendererState }> {
   const requestId = ++nextCommandId;
   if (socket.readyState !== WebSocket.OPEN) {
     return Promise.resolve({ ok: false, state });
@@ -378,7 +378,7 @@ function sendCommand(
 
 const webApi = {
   getSettings: () => (state ? Promise.resolve(state) : initialState),
-  onSettingsChanged: (callback: (settings: PeskSettings) => void) => listeners.add(callback),
+  onSettingsChanged: (callback: (state: RendererState) => void) => listeners.add(callback),
   refreshCodexRateLimits: async () => send("refreshRateLimits"),
   getChatSize: async () => ({ width: innerWidth, height: innerHeight }),
   selectCodexThread: (threadId: string) => send("selectThread", { threadId }),

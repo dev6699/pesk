@@ -1,13 +1,6 @@
 import { matchesShortcut } from "../../shared/shortcuts.js";
 
-interface MenuSettings {
-  animation: string;
-  animationMode: "selected" | "shuffle";
-  paused: boolean;
-  locked: boolean;
-  visible: boolean;
-  codexStatusSound: boolean;
-}
+type MenuSettings = SavedPeskSettings;
 
 interface Preset {
   name: string;
@@ -338,13 +331,13 @@ function renderPresets(items: Preset[] = allPresets, focusFirst = false): void {
 presetSearch.addEventListener("input", () => renderPresets(allPresets, true));
 
 async function loadMenu(): Promise<void> {
-  const [settings, animations, presets] = await Promise.all([
+  const [state, animations, presets] = await Promise.all([
     window.peskApi.getSettings(),
     window.peskApi.getAnimations(),
     window.peskApi.getPresets(),
   ]);
-  renderControls(settings);
-  renderAnimations(animations, settings.animation, settings.animationMode);
+  renderControls(state.settings);
+  renderAnimations(animations, state.settings.animation, state.settings.animationMode);
   await renderPairing();
   allPresets = presets;
   renderPresets();

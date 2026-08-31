@@ -6,11 +6,11 @@ interface PetRendererOptions {
   aggregateStatusLabel?: HTMLElement;
   statusSound: HTMLAudioElement;
   chatOnly: boolean;
-  settings: PeskSettings;
+  state: RendererState;
 }
 
 export class PetRenderer {
-  private settings: PeskSettings;
+  private state: RendererState;
   private frame = 0;
   private lastFrame = performance.now();
   private animationFrames = [
@@ -29,18 +29,18 @@ export class PetRenderer {
   private statusSoundUrl = "";
 
   constructor(private readonly options: PetRendererOptions) {
-    this.settings = options.settings;
-    this.updateStatus(this.settings);
+    this.state = options.state;
+    this.updateStatus(this.state);
     options.pet.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       if (event.target !== options.pet && event.target !== options.image) return;
-      if (this.settings.locked) return;
+      if (this.state.settings.locked) return;
       window.peskApi.startDrag();
       window.getSelection()?.removeAllRanges();
     });
     options.pet.addEventListener("wheel", (event) => {
       event.preventDefault();
-      const currentScale = this.settings.scale || 1;
+      const currentScale = this.state.settings.scale || 1;
       const nextScale = currentScale + (event.deltaY < 0 ? 0.1 : -0.1);
       window.peskApi.zoomPet(nextScale);
     });
@@ -60,15 +60,15 @@ export class PetRenderer {
     return this.focused;
   }
 
-  updateSettings(next: PeskSettings): void {
-    const animationChanged = next.animation !== this.settings.animation;
-    const modeChanged = next.animationMode !== this.settings.animationMode;
-    this.settings = next;
-    this.updateStatusSound(next.codexStatusSoundUrl);
+  updateState(next: RendererState): void {
+    const animationChanged = next.settings.animation !== this.state.settings.animation;
+    const modeChanged = next.settings.animationMode !== this.state.settings.animationMode;
+    this.state = next;
+    this.updateStatusSound(next.assets.codexStatusSoundUrl);
     this.updateStatus(next);
     this.updateAggregateStatus(next);
-    if (animationChanged || (modeChanged && next.animationMode === "selected")) {
-      void this.selectAnimation(next.animation);
+    if (animationChanged || (modeChanged && next.settings.animationMode === "selected")) {
+      void this.selectAnimation(next.settings.animation);
     }
     this.resizeElement();
   }
@@ -100,18 +100,19 @@ export class PetRenderer {
     const animations = await window.peskApi.getAnimations();
     this.availableAnimations = animations;
     const selected =
-      animations.find((animation) => animation.name === this.settings.animation) ?? animations[0];
+      animations.find((animation) => animation.name === this.state.settings.animation) ??
+      animations[0];
     if (selected?.frames.length) this.applyAnimation(selected);
   }
 
   animate(now: number): void {
-    if (!this.settings.paused && now - this.lastFrame > 1000 / this.animationFps) {
+    if (!this.state.settings.paused && now - this.lastFrame > 1000 / this.animationFps) {
       this.frame = (this.frame + 1) % this.animationFrames.length;
       this.options.image.src = this.animationFrames[this.frame];
       this.lastFrame = now;
       if (
         this.frame === 0 &&
-        this.settings.animationMode === "shuffle" &&
+        this.state.settings.animationMode === "shuffle" &&
         this.availableAnimations.length > 1
       ) {
         const candidates = this.availableAnimations.filter(
@@ -143,39 +144,39 @@ export class PetRenderer {
 
   private resizeElement(): void {
     if (this.options.chatOnly) return;
-    this.options.pet.style.width = `${this.configuredPetSize * this.settings.scale}px`;
-    this.options.pet.style.height = `${this.configuredPetSize * this.settings.scale}px`;
+    this.options.pet.style.width = `${this.configuredPetSize * this.state.settings.scale}px`;
+    this.options.pet.style.height = `${this.configuredPetSize * this.state.settings.scale}px`;
   }
 
-  private updateStatus(next: PeskSettings): void {
+  private updateStatus(next: RendererState): void {
     if (this.statusTimer !== undefined) {
       window.clearInterval(this.statusTimer);
       this.statusTimer = undefined;
     }
     const render = (): void => {
-      const label = next.codexStatus[0].toUpperCase() + next.codexStatus.slice(1);
+      const label = next.codex.status[0].toUpperCase() + next.codex.status.slice(1);
       const elapsed =
-        next.codexWorkingSince !== undefined
-          ? ` · ${formatElapsed(Date.now() - next.codexWorkingSince)}`
+        next.codex.workingSince !== undefined
+          ? ` · ${formatElapsed(Date.now() - next.codex.workingSince)}`
           : "";
       this.options.statusLabel.textContent = `${label}${elapsed}`;
       this.options.status.setAttribute("aria-label", this.options.statusLabel.textContent);
-      this.options.status.title = next.codexThreadId
-        ? `Selected thread: ${next.codexThreadId}`
+      this.options.status.title = next.codex.threadId
+        ? `Selected thread: ${next.codex.threadId}`
         : "Selected thread";
     };
     render();
-    if (next.codexStatus === "working" && next.codexWorkingSince !== undefined) {
+    if (next.codex.status === "working" && next.codex.workingSince !== undefined) {
       this.statusTimer = window.setInterval(render, 1000);
     }
-    this.options.status.className = `status-${next.codexStatus}`;
+    this.options.status.className = `status-${next.codex.status}`;
   }
 
-  private updateAggregateStatus(next: PeskSettings): void {
+  private updateAggregateStatus(next: RendererState): void {
     const label = this.options.aggregateStatusLabel;
     if (!label) return;
-    const otherThreads = next.codexThreadActivities.filter(
-      (activity) => activity.threadId !== next.codexThreadId && activity.status !== "idle",
+    const otherThreads = next.codex.threadActivities.filter(
+      (activity) => activity.threadId !== next.codex.threadId && activity.status !== "idle",
     );
     const waitingCount = otherThreads.filter((activity) => activity.status === "waiting").length;
     const workingCount = otherThreads.filter((activity) => activity.status === "working").length;
@@ -206,7 +207,7 @@ export class PetRenderer {
   }
 
   private playStatusChangeSound(): void {
-    if (this.focused || !this.settings.codexStatusSound) return;
+    if (this.focused || !this.state.settings.codexStatusSound) return;
 
     const sound = this.options.statusSound;
     sound.currentTime = 0;
