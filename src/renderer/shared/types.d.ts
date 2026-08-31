@@ -129,7 +129,6 @@ interface AnimationFrames {
   name: string;
   frames: string[];
   fps: number;
-  speed: number;
   size: number;
 }
 

@@ -188,7 +188,6 @@ Example application configuration:
 ```json
 {
   "fps": 24,
-  "speed": 10,
   "petSize": 180,
   "chatWidth": 350,
   "chatHeight": 500,
@@ -204,7 +203,7 @@ Example application configuration:
 
 Configuration fields:
 
-- `fps`, `speed`, and `petSize` control default animation playback and rendering.
+- `fps` and `petSize` control default animation playback and rendering.
 - `chatWidth` and `chatHeight` control the desktop chat window dimensions.
 - `animationsDir` selects the external animation directory. Relative paths are resolved beside the active configuration file.
 - `codexAppServerUrl` specifies the Codex app-server WebSocket endpoint.

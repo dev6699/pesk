@@ -9,7 +9,6 @@ export interface AnimationFrames {
   name: string;
   frames: string[];
   fps: number;
-  speed: number;
   size: number;
 }
 
@@ -409,12 +408,10 @@ function loadAnimations(): AnimationFrames[] {
   if (!existingAnimationPaths.length) return [];
 
   let defaultFps = 6;
-  let movementSpeed = 1.2;
   let configuredSize = 180;
   const animationFps: Record<string, number> = {};
   try {
     if (Number.isFinite(config.fps) && config.fps > 0) defaultFps = config.fps;
-    if (Number.isFinite(config.speed) && config.speed > 0) movementSpeed = config.speed;
     if (Number.isFinite(config.petSize) && config.petSize > 0) configuredSize = config.petSize;
     if (config.animations && typeof config.animations === "object") {
       for (const [name, value] of Object.entries(config.animations)) {
@@ -449,7 +446,6 @@ function loadAnimations(): AnimationFrames[] {
           name: entry.name,
           frames,
           fps: animationFps[entry.name.toLowerCase()] ?? defaultFps,
-          speed: movementSpeed,
           size: configuredSize,
         });
       }
