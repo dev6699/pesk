@@ -610,6 +610,91 @@ describe("CodexController", () => {
     expect(socket.sent.map((entry) => JSON.parse(entry).method)).not.toContain("turn/start");
   });
 
+  test("handles goal edit and lifecycle request failures", () => {
+    const { controller, socket, options: callbacks } = connectedController();
+    const runtime = threadRuntime(controller);
+    runtime.setGoal({
+      threadId: "thread-1",
+      objective: "old objective",
+      status: "active",
+      tokenBudget: null,
+      tokensUsed: 0,
+      timeUsedSeconds: 0,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    expect(controller.submitPrompt("/goal edit")).toBe(true);
+    expect(controller.getState().commandNotice).toContain("Usage: /goal edit");
+    runtime.setGoal(undefined);
+    expect(controller.submitPrompt("/goal edit")).toBe(true);
+    expect(controller.getState().commandNotice).toContain("No goal is currently set");
+
+    expect(controller.submitPrompt("/goal replacement")).toBe(true);
+    const failedSetId = lastMessage(socket).id;
+    socket.emit("message", JSON.stringify({ id: failedSetId, error: { message: "denied" } }));
+    expect(controller.getState().error).toContain("Unable to create the goal");
+    expect(callbacks.publishRendererState).toHaveBeenCalled();
+
+    expect(controller.submitPrompt("/goal clear")).toBe(true);
+    const clearId = lastMessage(socket).id;
+    socket.emit("message", JSON.stringify({ id: clearId, result: { cleared: false } }));
+    expect(controller.getState().goal).toBeUndefined();
+
+    const internal = controller as unknown as { restoreGoal: (threadId: string) => void };
+    internal.restoreGoal("thread-1");
+    const restoreId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: restoreId,
+        result: { goal: { threadId: "thread-1", objective: "restored", status: "active" } },
+      }),
+    );
+    expect(controller.getState().goal?.objective).toBe("restored");
+  });
+
+  test("rejects thread lifecycle commands without a selected thread", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as { threadId?: string; threads: unknown[] };
+    internal.threadId = undefined;
+    internal.threads = [];
+
+    expect(controller.submitPrompt("/archive")).toBe(false);
+    expect(controller.submitPrompt("/delete")).toBe(false);
+    expect(controller.submitPrompt("/fork")).toBe(false);
+
+    expect(controller.submitPrompt("!echo hello")).toBe(true);
+    const startId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: startId,
+        result: { thread: { id: "shell-thread", status: { type: "idle" } } },
+      }),
+    );
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/shellCommand",
+      params: { threadId: "shell-thread", command: "echo hello" },
+    });
+  });
+
+  test("sends archive and delete requests for the selected thread", () => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.submitPrompt("/archive")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/archive",
+      params: { threadId: "thread-1" },
+    });
+
+    expect(controller.submitPrompt("/delete")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/delete",
+      params: { threadId: "thread-1" },
+    });
+  });
+
   test("does not synthesize a visible continuation prompt after an idle turn", () => {
     const { controller, socket } = connectedController();
     const runtime = threadRuntime(controller);
@@ -2109,7 +2194,7 @@ describe("CodexController", () => {
     expect(controller.getState().collaborationMode).toBe("default");
   });
 
-  test("retains background thread updates without changing the selected thread", () => {
+  test("clears cached history when selecting another thread", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
       threads: Array<{ id: string; status: { type: string } }>;
@@ -2148,9 +2233,11 @@ describe("CodexController", () => {
 
     controller.selectThread("other-thread");
     expect(controller.getState().collaborationMode).toBe("plan");
-    expect(controller.getState().history).toEqual(
-      expect.arrayContaining([expect.objectContaining({ text: "background output" })]),
-    );
+    expect(controller.getState().history).toEqual([]);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/resume",
+      params: { threadId: "other-thread", excludeTurns: true },
+    });
   });
 
   test("does not select a thread started by another client", () => {
@@ -2194,6 +2281,25 @@ describe("CodexController", () => {
       method: "thread/queue/list",
       params: { threadId: "other-thread" },
     });
+    const firstPageId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: firstPageId,
+        result: { data: [], nextCursor: "queue-next" },
+      }),
+    );
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/queue/list",
+      params: { threadId: "other-thread", cursor: "queue-next" },
+    });
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: lastMessage(socket).id,
+        result: { data: [], nextCursor: null },
+      }),
+    );
     expect(controller.getState().threadId).toBe("thread-1");
   });
 

@@ -49,18 +49,21 @@ export class CodexRenderer {
   private renderedHistoryStructureKey = "";
   private readonly renderedMessageContents = new Map<string, HTMLElement>();
   private readonly renderedMessageTexts = new Map<string, string>();
+  private renderedHistoryKeys: string[] = [];
   private renderedPlanDetails = new Map<string, string>();
   private planRenderTimer: number | undefined;
   private pendingPlanHistory: RendererState["codex"]["history"] | undefined;
   private readonly readOnlyStatus =
     document.getElementById("codex-read-only") ?? document.createElement("div");
 
+  /** Returns the number of active file or slash-command suggestions. */
   private suggestionCount(): number {
     return this.suggestionKind === "command"
       ? this.slashCommandResults.length
       : this.fileSuggestionResults.length;
   }
 
+  /** Creates the renderer and wires chat, history, and composer events. */
   constructor(
     private readonly chat: HTMLElement,
     private readonly sessionSelect: HTMLSelectElement,
@@ -149,6 +152,7 @@ export class CodexRenderer {
     this.resizeInput();
   }
 
+  /** Handles global chat shortcuts and keyboard navigation. */
   handleKeydown(event: KeyboardEvent): void {
     if (
       !this.chat.hidden &&
@@ -247,6 +251,7 @@ export class CodexRenderer {
     if (this.userInput?.contains(event.target as Node)) return;
   }
 
+  /** Selects the adjacent session in the current navigation order. */
   private switchSession(direction: -1 | 1): boolean {
     const currentId = this.pendingSessionId ?? this.state.codex.threadId;
     const currentIndex = this.sessionNavigationIds.indexOf(currentId ?? "");
@@ -258,7 +263,13 @@ export class CodexRenderer {
     return true;
   }
 
+  /** Applies renderer state and refreshes all visible chat controls. */
   updateState(next: RendererState): void {
+    if (next.codex.threadId !== this.state.codex.threadId) {
+      this.historyInitialized = false;
+      this.renderedHistoryStructureKey = "";
+      this.renderedHistoryKeys = [];
+    }
     this.state = next;
     const displayedThreads = [...next.codex.threads];
     if (
@@ -338,7 +349,7 @@ export class CodexRenderer {
     }
   }
 
-  /** Requests one older history page while preserving the current scroll anchor. */
+  /** Loads and anchors the next page of older history messages. */
   private async loadOlderHistory(): Promise<void> {
     if (!this.state.codex.hasOlderHistory || this.state.codex.historyLoading) return;
     const previousHeight = this.history.scrollHeight;
@@ -350,10 +361,12 @@ export class CodexRenderer {
     });
   }
 
+  /** Focuses the main prompt input on the next animation frame. */
   focusInput(): void {
     requestAnimationFrame(() => this.input.focus());
   }
 
+  /** Keeps the web composer visible when the mobile viewport changes. */
   private keepWebChatFormVisible(): void {
     if (!this.webChat) return;
     requestAnimationFrame(() => {
@@ -361,11 +374,13 @@ export class CodexRenderer {
     });
   }
 
+  /** Requests native focus and focuses the chat input. */
   private focusChatInput(): void {
     window.peskApi.focusCodexInput();
     this.focusInput();
   }
 
+  /** Validates and submits the current prompt or review request. */
   private async submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     if (this.suggestionCount()) {
@@ -408,6 +423,7 @@ export class CodexRenderer {
     }
   }
 
+  /** Installs image paste, drop, and file-picker handlers. */
   private setupImageAttachments(): void {
     const dropTarget = this.form;
     this.imageInput?.addEventListener("change", () => {
@@ -445,6 +461,7 @@ export class CodexRenderer {
     });
   }
 
+  /** Reports whether a data transfer contains image files. */
   private hasImageFiles(dataTransfer: DataTransfer | null): boolean {
     return Boolean(
       Array.from(dataTransfer?.items ?? []).some(
@@ -453,6 +470,7 @@ export class CodexRenderer {
     );
   }
 
+  /** Converts accepted image files to data URLs for pending attachments. */
   private async addImageFiles(files: Iterable<File> | null | undefined): Promise<void> {
     for (const file of Array.from(files ?? [])) {
       if (!file.type.startsWith("image/")) continue;
@@ -467,6 +485,7 @@ export class CodexRenderer {
     this.renderImageAttachments();
   }
 
+  /** Renders the current pending image attachments. */
   private renderImageAttachments(): void {
     if (!this.imageAttachments) return;
     this.imageAttachments.replaceChildren();
@@ -492,6 +511,7 @@ export class CodexRenderer {
     });
   }
 
+  /** Updates the composer indicator for shell and exec command modes. */
   private renderCommandMode(): void {
     if (!this.commandMode) return;
     const value = this.input.value.trimStart();
@@ -510,6 +530,7 @@ export class CodexRenderer {
     }
   }
 
+  /** Renders pending user-input, approval, plan, and review prompts. */
   private renderUserInput(force = false): void {
     const container = this.userInput;
     const pending = this.state.codex.pendingUserInput;
@@ -743,6 +764,7 @@ export class CodexRenderer {
     }
   }
 
+  /** Renders the review confirmation prompt when a review is active. */
   private renderReviewPrompt(force: boolean): void {
     const container = this.userInput;
     if (!container) return;
@@ -850,6 +872,7 @@ export class CodexRenderer {
     }
   }
 
+  /** Renders the approval controls for a pending tool request. */
   private renderApprovalInput(
     pending: NonNullable<RendererState["codex"]["pendingApproval"]>,
     force: boolean,
@@ -912,6 +935,7 @@ export class CodexRenderer {
     });
   }
 
+  /** Focuses the currently selected pending-question option. */
   focusUserInputOption(): void {
     const container = this.userInput;
     if (!container || container.hidden) return;
@@ -925,6 +949,7 @@ export class CodexRenderer {
     option?.focus();
   }
 
+  /** Copies the active session identifier to the clipboard. */
   private async copySessionId(): Promise<void> {
     const sessionId = this.sessionSelect.value;
     if (!sessionId) return;
@@ -947,6 +972,7 @@ export class CodexRenderer {
     }, 1200);
   }
 
+  /** Resizes the prompt input while preserving bottom anchoring. */
   private resizeInput(): void {
     const maxHeight = 220;
     const wasAtBottom =
@@ -962,6 +988,7 @@ export class CodexRenderer {
     }
   }
 
+  /** Scrolls history to the bottom after the next layout pass. */
   private scrollHistoryToBottom(): void {
     const scroll = (): void => {
       this.history.scrollTop = this.history.scrollHeight;
@@ -972,6 +999,7 @@ export class CodexRenderer {
     requestAnimationFrame(scroll);
   }
 
+  /** Renders the current goal summary and controls. */
   private renderGoal(): void {
     const goal = this.state.codex.goal;
     if (!goal) {
@@ -987,6 +1015,7 @@ export class CodexRenderer {
     this.goal.hidden = false;
   }
 
+  /** Renders the current token usage summary. */
   private renderTokenUsage(): void {
     if (!this.state.codex.threadId) {
       this.tokenUsage.hidden = true;
@@ -1076,6 +1105,7 @@ export class CodexRenderer {
     this.tokenUsage.hidden = lines.length === 0 && !cwd;
   }
 
+  /** Renders the current rate-limit information. */
   private renderRateLimit(): void {
     const limits = this.state.codex.rateLimits;
     const primary = limits?.primary;
@@ -1097,6 +1127,7 @@ export class CodexRenderer {
     this.rateLimit.hidden = false;
   }
 
+  /** Moves message selection in the requested direction and scope. */
   private selectMessage(
     direction: -1 | 1,
     role?: RendererState["codex"]["history"][number]["role"],
@@ -1127,6 +1158,7 @@ export class CodexRenderer {
     });
   }
 
+  /** Applies the selected-message styling and accessibility state. */
   private applySelectedMessage(): void {
     const messages = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message"));
     messages.forEach((message, index) => {
@@ -1136,6 +1168,7 @@ export class CodexRenderer {
     });
   }
 
+  /** Returns selectable history indices matching the requested scope. */
   private visibleMessageIndices(
     messages: HTMLElement[],
     candidateIndices = messages.map((_message, index) => index),
@@ -1152,6 +1185,7 @@ export class CodexRenderer {
       .map(({ index }) => index);
   }
 
+  /** Toggles the selected activity or message details. */
   private toggleSelectedMessage(): boolean {
     if (this.selectedMessageIndex < 0) return false;
     const message =
@@ -1162,6 +1196,7 @@ export class CodexRenderer {
     return true;
   }
 
+  /** Copies the selected user message into the composer. */
   private copySelectedMessageToInput(): boolean {
     const text = this.selectedMessageText();
     if (!text) return false;
@@ -1171,6 +1206,7 @@ export class CodexRenderer {
     return true;
   }
 
+  /** Copies the selected message text to the clipboard. */
   private async copySelectedMessageToClipboard(): Promise<void> {
     const text = this.selectedMessageText();
     if (!text) return;
@@ -1188,6 +1224,7 @@ export class CodexRenderer {
     }
   }
 
+  /** Returns the text represented by the current message selection. */
   private selectedMessageText(): string | undefined {
     if (this.selectedMessageIndex < 0) return undefined;
     const message =
@@ -1200,6 +1237,7 @@ export class CodexRenderer {
     return content.textContent?.trim() || undefined;
   }
 
+  /** Reports whether the document currently contains selected text. */
   private hasHighlightedText(): boolean {
     if (
       (document.activeElement === this.input ||
@@ -1214,6 +1252,7 @@ export class CodexRenderer {
     return Boolean(selection && !selection.isCollapsed && selection.toString());
   }
 
+  /** Handles keyboard navigation within the suggestion list. */
   private handleSuggestionKeydown(event: KeyboardEvent): boolean {
     if (!this.suggestionCount()) return false;
     if (matchesShortcut(event, "suggestionNext") || matchesShortcut(event, "suggestionPrevious")) {
@@ -1238,6 +1277,7 @@ export class CodexRenderer {
     return false;
   }
 
+  /** Handles prompt editing, submission, and suggestion shortcuts. */
   private handleInputKeydown(event: KeyboardEvent): void {
     if (this.handleSuggestionKeydown(event)) {
       return;
@@ -1293,6 +1333,7 @@ export class CodexRenderer {
     }
   }
 
+  /** Updates file and slash-command suggestions for the prompt input. */
   private async updateSuggestions(
     input: HTMLTextAreaElement = this.suggestionInput,
     allowCommands = true,
@@ -1334,6 +1375,7 @@ export class CodexRenderer {
     this.renderFileSuggestions();
   }
 
+  /** Renders the currently available prompt suggestions. */
   private renderFileSuggestions(): void {
     this.fileSuggestions.replaceChildren();
     const results =
@@ -1390,6 +1432,7 @@ export class CodexRenderer {
     });
   }
 
+  /** Scrolls the active suggestion into the visible list area. */
   private scrollSuggestionIntoView(button: HTMLElement): void {
     button.scrollIntoView?.({ block: "nearest" });
     const top = button.offsetTop;
@@ -1401,6 +1444,7 @@ export class CodexRenderer {
     }
   }
 
+  /** Inserts the selected suggestion into the prompt input. */
   private selectSuggestion(index: number): void {
     const input = this.suggestionInput;
     if (this.suggestionKind === "command") {
@@ -1436,6 +1480,7 @@ export class CodexRenderer {
     input.focus();
   }
 
+  /** Clears and hides all prompt suggestions. */
   private hideFileSuggestions(): void {
     this.fileSearchSerial += 1;
     this.fileSuggestionResults = [];
@@ -1446,6 +1491,10 @@ export class CodexRenderer {
     this.fileSuggestions.replaceChildren();
   }
 
+  /**
+   * Renders chat history incrementally when possible, preserving message nodes,
+   * expanded activities, and the user's scroll position while reading history.
+   */
   private renderHistory(
     history: RendererState["codex"]["history"],
     sessionConnected = false,
@@ -1457,9 +1506,79 @@ export class CodexRenderer {
       .join("|")}`;
     const planContentChanged = (history ?? []).some((message, index) => {
       if (message.activity?.kind !== "plan") return false;
-      const activityKey = message.itemId ?? `history-${index}`;
+      const activityKey = historyMessageKeyForRenderer(message, index);
       return this.renderedPlanDetails.get(activityKey) !== (message.activity.details ?? "");
     });
+    const historyKeys = (history ?? []).map(historyMessageKeyForRenderer);
+    const canIncrementallyAppend =
+      this.historyInitialized &&
+      !queuedSubmissions.length &&
+      !planContentChanged &&
+      isPrefix(this.renderedHistoryKeys, historyKeys);
+    if (canIncrementallyAppend && historyKeys.length > this.renderedHistoryKeys.length) {
+      const wasAtBottom =
+        this.history.scrollTop + this.history.clientHeight >= this.history.scrollHeight - 24;
+      this.history
+        .querySelectorAll(".codex-empty-history, .codex-session-connected")
+        .forEach((placeholder) => placeholder.remove());
+      const openActivityKeys = new Set(
+        Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
+          .filter((details) => details.open)
+          .map((details) => details.dataset.activityKey)
+          .filter((key): key is string => Boolean(key)),
+      );
+      const renderedActivityKeys = new Set(
+        Array.from(this.history.querySelectorAll<HTMLElement>("details[data-activity-key]"))
+          .map((details) => details.dataset.activityKey)
+          .filter((key): key is string => Boolean(key)),
+      );
+      for (let index = this.renderedHistoryKeys.length; index < historyKeys.length; index += 1) {
+        this.history.append(
+          this.createMessageBubble(history[index], index, openActivityKeys, renderedActivityKeys),
+        );
+      }
+      this.renderedHistoryKeys = historyKeys;
+      this.renderedHistoryStructureKey = structureKey;
+      this.applySelectedMessage();
+      if (wasAtBottom) this.scrollHistoryToBottom();
+      return;
+    }
+    const canIncrementallyPrepend =
+      this.historyInitialized &&
+      !queuedSubmissions.length &&
+      !planContentChanged &&
+      isSuffix(this.renderedHistoryKeys, historyKeys);
+    if (canIncrementallyPrepend && historyKeys.length > this.renderedHistoryKeys.length) {
+      const previousHeight = this.history.scrollHeight;
+      const previousTop = this.history.scrollTop;
+      const openActivityKeys = new Set(
+        Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
+          .filter((details) => details.open)
+          .map((details) => details.dataset.activityKey)
+          .filter((key): key is string => Boolean(key)),
+      );
+      const renderedActivityKeys = new Set(
+        Array.from(this.history.querySelectorAll<HTMLElement>("details[data-activity-key]"))
+          .map((details) => details.dataset.activityKey)
+          .filter((key): key is string => Boolean(key)),
+      );
+      const fragment = document.createDocumentFragment();
+      for (
+        let index = 0;
+        index < historyKeys.length - this.renderedHistoryKeys.length;
+        index += 1
+      ) {
+        fragment.append(
+          this.createMessageBubble(history[index], index, openActivityKeys, renderedActivityKeys),
+        );
+      }
+      this.history.prepend(fragment);
+      this.renderedHistoryKeys = historyKeys;
+      this.renderedHistoryStructureKey = structureKey;
+      this.applySelectedMessage();
+      this.history.scrollTop = previousTop + (this.history.scrollHeight - previousHeight);
+      return;
+    }
     if (
       this.renderedHistoryStructureKey &&
       structureKey === this.renderedHistoryStructureKey &&
@@ -1489,6 +1608,7 @@ export class CodexRenderer {
     );
     this.history.replaceChildren();
     this.renderedHistoryStructureKey = structureKey;
+    this.renderedHistoryKeys = historyKeys;
     this.renderedMessageContents.clear();
     this.renderedMessageTexts.clear();
     this.renderedPlanDetails.clear();
@@ -1505,44 +1625,9 @@ export class CodexRenderer {
       }
     }
     for (const [index, message] of (history ?? []).entries()) {
-      const bubble = document.createElement("div");
-      bubble.className = `codex-message codex-message-${message.role}`;
-      if (message.activity) {
-        bubble.classList.add(`codex-activity-${message.activity.kind}`);
-        if (
-          message.activity.kind === "command" &&
-          (message.activity.status === "failed" || message.activity.status === "declined")
-        ) {
-          bubble.classList.add("codex-activity-command-failed");
-        }
-        if (isReviewActivity(message.activity)) {
-          bubble.classList.add("codex-activity-review");
-        }
-        if (message.activity.output) bubble.classList.add("codex-activity-output");
-      }
-      if (message.temporary) bubble.classList.add("codex-message-working");
-      const activityKey = message.itemId ?? `history-${index}`;
-      if (message.itemId) bubble.dataset.messageItemId = message.itemId;
-      if (message.activity?.kind === "plan") {
-        this.renderedPlanDetails.set(activityKey, message.activity.details ?? "");
-      }
-      bubble.append(
-        this.renderMessageContent(message, activityKey, openActivityKeys, renderedActivityKeys),
+      this.history.append(
+        this.createMessageBubble(message, index, openActivityKeys, renderedActivityKeys),
       );
-      const content = bubble.firstElementChild;
-      if (content instanceof HTMLElement && !message.activity) {
-        this.renderedMessageContents.set(activityKey, content);
-        this.renderedMessageTexts.set(activityKey, message.text);
-      }
-      const time = document.createElement("time");
-      time.className = "codex-message-time";
-      time.textContent = new Date(message.timestamp ?? Date.now()).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      bubble.append(time);
-      if (message.approval) this.renderApproval(bubble, message);
-      this.history.append(bubble);
     }
     if (queuedSubmissions.length) {
       const queue = document.createElement("section");
@@ -1575,11 +1660,56 @@ export class CodexRenderer {
     this.historyInitialized = true;
   }
 
-  /** Updates streamed plain messages without rebuilding the rest of the history DOM. */
+  /** Creates a DOM bubble for one history message. */
+  private createMessageBubble(
+    message: RendererState["codex"]["history"][number],
+    index: number,
+    openActivityKeys: Set<string>,
+    renderedActivityKeys: Set<string>,
+  ): HTMLElement {
+    const bubble = document.createElement("div");
+    bubble.className = `codex-message codex-message-${message.role}`;
+    if (message.activity) {
+      bubble.classList.add(`codex-activity-${message.activity.kind}`);
+      if (
+        message.activity.kind === "command" &&
+        (message.activity.status === "failed" || message.activity.status === "declined")
+      ) {
+        bubble.classList.add("codex-activity-command-failed");
+      }
+      if (isReviewActivity(message.activity)) bubble.classList.add("codex-activity-review");
+      if (message.activity.output) bubble.classList.add("codex-activity-output");
+    }
+    if (message.temporary) bubble.classList.add("codex-message-working");
+    const activityKey = historyMessageKeyForRenderer(message, index);
+    if (message.itemId) bubble.dataset.messageItemId = message.itemId;
+    if (message.activity?.kind === "plan") {
+      this.renderedPlanDetails.set(activityKey, message.activity.details ?? "");
+    }
+    bubble.append(
+      this.renderMessageContent(message, activityKey, openActivityKeys, renderedActivityKeys),
+    );
+    const content = bubble.firstElementChild;
+    if (content instanceof HTMLElement && !message.activity) {
+      this.renderedMessageContents.set(activityKey, content);
+      this.renderedMessageTexts.set(activityKey, message.text);
+    }
+    const time = document.createElement("time");
+    time.className = "codex-message-time";
+    time.textContent = new Date(message.timestamp ?? Date.now()).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    bubble.append(time);
+    if (message.approval) this.renderApproval(bubble, message);
+    return bubble;
+  }
+
+  /** Updates rendered message content without rebuilding stable nodes. */
   private updateRenderedMessageContent(history: RendererState["codex"]["history"]): void {
     for (const [index, message] of (history ?? []).entries()) {
       if (message.activity || (message.images?.length ?? 0) > 0) continue;
-      const activityKey = message.itemId ?? `history-${index}`;
+      const activityKey = historyMessageKeyForRenderer(message, index);
       if (this.renderedMessageTexts.get(activityKey) === message.text) continue;
       const content = this.renderedMessageContents.get(activityKey);
       if (!content) return;
@@ -1592,6 +1722,7 @@ export class CodexRenderer {
     }
   }
 
+  /** Synchronizes the active plan implementation confirmation. */
   private updateActivePlanConfirmation(history: RendererState["codex"]["history"]): void {
     this.activePlanConfirmation = undefined;
     const lastMessage = history?.[history.length - 1];
@@ -1613,7 +1744,7 @@ export class CodexRenderer {
       return;
     }
     const planActivity = history[planActivityIndex];
-    const activityKey = planActivity.itemId ?? `history-${planActivityIndex}`;
+    const activityKey = historyMessageKeyForRenderer(planActivity, planActivityIndex);
     if (this.dismissedPlanConfirmations.has(activityKey)) return;
     this.activePlanConfirmation = {
       key: activityKey,
@@ -1621,10 +1752,11 @@ export class CodexRenderer {
     };
   }
 
+  /** Batches streamed plan updates for efficient rendering. */
   private schedulePlanUpdates(history: RendererState["codex"]["history"]): boolean {
     const planUpdates = (history ?? []).filter((message, index) => {
       if (message.activity?.kind !== "plan") return false;
-      const activityKey = message.itemId ?? `history-${index}`;
+      const activityKey = historyMessageKeyForRenderer(message, index);
       return this.renderedPlanDetails.get(activityKey) !== (message.activity.details ?? "");
     });
     if (!planUpdates.length) return true;
@@ -1634,7 +1766,10 @@ export class CodexRenderer {
     if (
       !planUpdates.every((message, index) => {
         const historyIndex = history.indexOf(message);
-        const activityKey = message.itemId ?? `history-${historyIndex >= 0 ? historyIndex : index}`;
+        const activityKey = historyMessageKeyForRenderer(
+          message,
+          historyIndex >= 0 ? historyIndex : index,
+        );
         return activityDetails.some((details) => details.dataset.activityKey === activityKey);
       })
     ) {
@@ -1649,7 +1784,7 @@ export class CodexRenderer {
         if (!nextHistory) return;
         for (const [index, message] of nextHistory.entries()) {
           if (message.activity?.kind !== "plan") continue;
-          const activityKey = message.itemId ?? `history-${index}`;
+          const activityKey = historyMessageKeyForRenderer(message, index);
           const details = Array.from(
             this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"),
           ).find((candidate) => candidate.dataset.activityKey === activityKey);
@@ -1669,6 +1804,7 @@ export class CodexRenderer {
     return true;
   }
 
+  /** Renders markdown, attachments, and activity details for a message. */
   private renderMessageContent(
     message: RendererState["codex"]["history"][number],
     activityKey: string,
@@ -1761,6 +1897,7 @@ export class CodexRenderer {
     return content;
   }
 
+  /** Creates the implementation prompt for a completed plan activity. */
   private renderPlanImplementationPrompt(activityKey: string, planText: string): HTMLElement {
     const prompt = document.createElement("section");
     prompt.className = "codex-plan-implementation-prompt";
@@ -1827,6 +1964,7 @@ export class CodexRenderer {
     return prompt;
   }
 
+  /** Creates the expandable file-change activity presentation. */
   private renderFileChangeActivity(
     activity: NonNullable<RendererState["codex"]["history"][number]["activity"]>,
     activityKey: string,
@@ -1864,6 +2002,7 @@ export class CodexRenderer {
     return details;
   }
 
+  /** Renders the working indicator and elapsed duration. */
   private renderWorkingStatus(): void {
     if (this.workingTimer !== undefined) window.clearInterval(this.workingTimer);
     this.workingTimer = undefined;
@@ -1921,12 +2060,14 @@ export class CodexRenderer {
     this.workingTimer = window.setInterval(update, 1000);
   }
 
+  /** Renders the status dock visibility and current status. */
   private renderStatusDock(): void {
     if (this.statusDock) {
       this.statusDock.hidden = this.commandNotice.hidden && this.workingStatus.hidden;
     }
   }
 
+  /** Renders or hides the current command notice. */
   private renderCommandNotice(notice: string | undefined): void {
     this.commandNotice.hidden = !notice;
     this.commandNotice.replaceChildren();
@@ -1940,6 +2081,7 @@ export class CodexRenderer {
     }
   }
 
+  /** Renders the approval state for the current thread. */
   private renderApproval(
     bubble: HTMLElement,
     message: RendererState["codex"]["history"][number],
@@ -2045,6 +2187,26 @@ function historyStructureKey(history: RendererState["codex"]["history"]): string
         : undefined,
     })),
   );
+}
+
+function historyMessageKeyForRenderer(
+  message: RendererState["codex"]["history"][number],
+  index: number,
+): string {
+  return (
+    message.itemId ?? `${message.turnId ?? "history"}:${message.role}:${message.timestamp ?? index}`
+  );
+}
+
+function isPrefix(previous: string[], next: string[]): boolean {
+  if (previous.length > next.length) return false;
+  return previous.every((key, index) => key === next[index]);
+}
+
+function isSuffix(previous: string[], next: string[]): boolean {
+  if (previous.length > next.length) return false;
+  const offset = next.length - previous.length;
+  return previous.every((key, index) => key === next[offset + index]);
 }
 
 function renderMarkdown(value: string): string {

@@ -732,6 +732,8 @@ body.chat-only #codex-chat {
   box-sizing: border-box;
   margin: 0 0 7px;
   padding: 6px 8px;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 80px;
   border-radius: 9px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

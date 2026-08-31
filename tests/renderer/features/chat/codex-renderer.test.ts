@@ -47,6 +47,8 @@ function makeRenderer(
     suggestions: HTMLElement;
     userInput: HTMLElement;
     commandMode: HTMLElement;
+    modeToggle: HTMLElement;
+    steerButton: HTMLButtonElement;
   };
 } {
   document.body.className = webChat ? "web-chat" : "";
@@ -64,6 +66,8 @@ function makeRenderer(
     <section id="user-input"></section>
     <form id="form">
       <div id="command-mode" hidden></div>
+      <div id="mode-toggle"></div>
+      <button id="steer" type="button"></button>
       <textarea id="input"></textarea>
       <div id="suggestions"></div>
     </form>
@@ -83,6 +87,8 @@ function makeRenderer(
     suggestions: document.querySelector("#suggestions") as HTMLElement,
     userInput: document.querySelector("#user-input") as HTMLElement,
     commandMode: document.querySelector("#command-mode") as HTMLElement,
+    modeToggle: document.querySelector("#mode-toggle") as HTMLElement,
+    steerButton: document.querySelector("#steer") as HTMLButtonElement,
   };
   Object.defineProperties(elements.history, {
     clientHeight: { configurable: true, value: 300 },
@@ -144,9 +150,9 @@ function makeRenderer(
     settings,
     undefined,
     elements.suggestions,
-    undefined,
+    elements.modeToggle,
     elements.userInput,
-    undefined,
+    elements.steerButton,
     elements.commandMode,
   );
   return { renderer, elements };
@@ -238,6 +244,88 @@ test("renders session state, history, activities, approvals, and token usage", (
   expect(elements.tokenUsage.textContent).toContain("gpt-test");
 });
 
+test("appends new history without recreating existing message nodes", () => {
+  const { renderer, elements } = makeRenderer();
+  const firstState: Settings = {
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        { role: "assistant", text: "**world**", itemId: "assistant-1" },
+        { role: "user", text: "continue", itemId: "user-1" },
+      ],
+    },
+  };
+  renderer.updateState(firstState);
+  const firstMessage = elements.history.querySelector<HTMLElement>(
+    '[data-message-item-id="assistant-1"]',
+  );
+  expect(firstMessage).not.toBeNull();
+
+  renderer.updateState({
+    ...firstState,
+    codex: {
+      ...firstState.codex,
+      history: [
+        ...firstState.codex.history,
+        { role: "assistant", text: "done", itemId: "assistant-2" },
+      ],
+    },
+  });
+
+  expect(elements.history.querySelector('[data-message-item-id="assistant-1"]')).toBe(firstMessage);
+  expect(elements.history.querySelectorAll(".codex-message")).toHaveLength(3);
+});
+
+test("removes empty-history placeholders when the first message arrives", () => {
+  const { renderer, elements } = makeRenderer();
+  const emptyState = defaultRendererState();
+  emptyState.codex.threadId = "thread-1";
+  renderer.updateState(emptyState);
+
+  expect(elements.history.querySelector(".codex-empty-history")).not.toBeNull();
+  expect(elements.history.querySelector(".codex-session-connected")).not.toBeNull();
+
+  renderer.updateState({
+    ...emptyState,
+    codex: {
+      ...emptyState.codex,
+      history: [{ role: "user", text: "hello", itemId: "user-1" }],
+    },
+  });
+
+  expect(elements.history.querySelector(".codex-empty-history")).toBeNull();
+  expect(elements.history.querySelector(".codex-session-connected")).toBeNull();
+  expect(elements.history.textContent).toContain("hello");
+});
+
+test("prepends older history without recreating newer message nodes", () => {
+  const { renderer, elements } = makeRenderer();
+  const currentHistory = [
+    { role: "user" as const, text: "new prompt", itemId: "user-1" },
+    { role: "assistant" as const, text: "new answer", itemId: "assistant-1" },
+  ];
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, history: currentHistory },
+  });
+  const newerMessage = elements.history.querySelector<HTMLElement>(
+    '[data-message-item-id="user-1"]',
+  );
+  elements.history.scrollTop = 100;
+
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [{ role: "user", text: "old prompt", itemId: "user-0" }, ...currentHistory],
+    },
+  });
+
+  expect(elements.history.querySelector('[data-message-item-id="user-1"]')).toBe(newerMessage);
+  expect(elements.history.querySelector(".codex-message")?.textContent).toContain("old prompt");
+});
+
 test("updates streamed assistant text without rebuilding a long history", () => {
   const { renderer, elements } = makeRenderer();
   const history = Array.from({ length: 80 }, (_, index) => ({
@@ -272,6 +360,26 @@ test("updates streamed assistant text without rebuilding a long history", () => 
     streamedMessage,
   );
   expect(streamedMessage?.textContent).toContain("streaming update");
+});
+
+test("preserves scroll position when appending while reading older history", () => {
+  const { renderer, elements } = makeRenderer();
+  const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, history: initialHistory },
+  });
+  elements.history.scrollTop = 120;
+
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [...initialHistory, { role: "assistant", text: "new", itemId: "assistant-1" }],
+    },
+  });
+
+  expect(elements.history.scrollTop).toBe(120);
 });
 
 test("renders readable keyboard-friendly user questions", () => {
@@ -1725,6 +1833,8 @@ test("renders working and completed elapsed states", () => {
   });
   expect(elements.workingStatus.hidden).toBe(false);
   expect(elements.workingElapsed.textContent).toBe("1m 5s");
+  jest.advanceTimersByTime(220 * 10);
+  jest.advanceTimersByTime(220 * 5);
 
   renderer.updateState({
     ...defaultRendererState(),
@@ -1741,4 +1851,352 @@ test("renders working and completed elapsed states", () => {
   expect(elements.workingStatus.hidden).toBe(false);
   expect(elements.workingStatus.textContent).toContain("Conversation interrupted");
   expect(elements.workingStatus.classList.contains("codex-working-status-interrupted")).toBe(true);
+});
+
+test("renders complete usage, rate-limit, and goal details", () => {
+  const { renderer, elements } = makeRenderer();
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threadId: "thread-1",
+      cwd: "/tmp/project",
+      modelInfo: {
+        model: "model",
+        provider: "provider",
+        reasoningEffort: "high",
+        serviceTier: "fast",
+      },
+      tokenUsage: {
+        total: {
+          totalTokens: 1_500_000,
+          inputTokens: 1_200_000,
+          outputTokens: 300_000,
+          cachedInputTokens: 12_000,
+          reasoningOutputTokens: 8_000,
+        },
+        last: { totalTokens: 2_000, inputTokens: 2_000 },
+        modelContextWindow: 1_000,
+      },
+      rateLimits: {
+        primary: { usedPercent: 85.4, windowDurationMins: 60, resetsAt: 1_700_000_000 },
+        secondary: { usedPercent: 20, windowDurationMins: 1_440, resetsAt: null },
+        credits: { hasCredits: true, unlimited: false, balance: "10" },
+        individualLimit: {
+          limit: "100",
+          used: "25",
+          remainingPercent: 75,
+          resetsAt: 1_700_000_000,
+        },
+        spendControlReached: false,
+        planType: "pro_plan",
+        rateLimitReachedType: null,
+      },
+      goal: {
+        threadId: "thread-1",
+        objective: "Improve coverage",
+        status: "active",
+        tokenBudget: 1_500_000,
+        tokensUsed: 1_200,
+        timeUsedSeconds: 3661,
+      },
+    },
+  });
+
+  expect(elements.tokenUsage.textContent).toContain("1.50m");
+  expect(elements.tokenUsage.textContent).toContain("/tmp/project");
+  expect(elements.tokenUsage.textContent).toContain("Reasoning 8.0k");
+  expect((renderer as any).goal.textContent).toContain("Improve coverage");
+});
+
+test("handles history keyboard actions and sanitizes message markup", async () => {
+  const { renderer, elements } = makeRenderer({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        { role: "user", text: "copy me", itemId: "user-1" },
+        {
+          role: "system",
+          text: "activity",
+          itemId: "activity-1",
+          activity: { kind: "command", status: "completed", command: "echo hi" },
+        },
+        {
+          role: "assistant",
+          text: '<a href="javascript:bad" onclick="bad()">link</a><img src="bad">',
+          itemId: "assistant-1",
+        },
+      ],
+    },
+  });
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        { role: "user", text: "copy me", itemId: "user-1" },
+        {
+          role: "system",
+          text: "activity",
+          itemId: "activity-1",
+          activity: { kind: "command", status: "completed", command: "echo hi" },
+        },
+        {
+          role: "assistant",
+          text: '<a href="javascript:bad" onclick="bad()">link</a><img src="bad">',
+          itemId: "assistant-1",
+        },
+      ],
+    },
+  });
+  const messages = elements.history.querySelectorAll<HTMLElement>(".codex-message");
+  messages[0].scrollIntoView = jest.fn();
+  messages[1].querySelector("summary")?.dispatchEvent(new MouseEvent("click"));
+
+  renderer.handleKeydown(new KeyboardEvent("keydown", { key: "ArrowUp", altKey: true }));
+  renderer.handleKeydown(new KeyboardEvent("keydown", { key: "ArrowDown", altKey: true }));
+  renderer.handleKeydown(new KeyboardEvent("keydown", { key: "Enter", shiftKey: true }));
+  renderer.handleKeydown(new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true }));
+  await Promise.resolve();
+
+  expect(elements.input.value).toBe("copy me");
+  expect(elements.history.querySelector("a")?.getAttribute("href")).toBeNull();
+  expect(elements.history.querySelector("img")).toBeNull();
+});
+
+test("handles global history shortcuts and selected-message actions", async () => {
+  const { renderer, elements } = makeRenderer({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        { role: "user", text: "first", itemId: "user-1" },
+        { role: "assistant", text: "answer", itemId: "assistant-1" },
+      ],
+    },
+  });
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [
+        { role: "user", text: "first", itemId: "user-1" },
+        {
+          role: "system",
+          text: "activity",
+          itemId: "activity-1",
+          activity: { kind: "command", status: "completed" },
+        },
+        { role: "assistant", text: "answer", itemId: "assistant-1" },
+      ],
+    },
+  });
+  const internal = renderer as any;
+  internal.selectedMessageIndex = 0;
+  const clipboard = { writeText: jest.fn(async () => undefined) };
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
+
+  const copy = new KeyboardEvent("keydown", { key: "c", ctrlKey: true, cancelable: true });
+  renderer.handleKeydown(copy);
+  await Promise.resolve();
+  expect(clipboard.writeText).toHaveBeenCalledWith("first");
+
+  const copyToInput = new KeyboardEvent("keydown", {
+    key: "ArrowRight",
+    altKey: true,
+    cancelable: true,
+  });
+  renderer.handleKeydown(copyToInput);
+  expect(elements.input.value).toBe("first");
+
+  const top = new KeyboardEvent("keydown", { key: "Home", altKey: true, cancelable: true });
+  renderer.handleKeydown(top);
+  const bottom = new KeyboardEvent("keydown", { key: "End", altKey: true, cancelable: true });
+  renderer.handleKeydown(bottom);
+  expect(elements.history.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+  expect(elements.history.scrollTo).toHaveBeenCalledWith({ top: 800, behavior: "smooth" });
+
+  const selectUser = new KeyboardEvent("keydown", {
+    key: "ArrowDown",
+    altKey: true,
+    shiftKey: true,
+    cancelable: true,
+  });
+  renderer.handleKeydown(selectUser);
+  const scroll = new KeyboardEvent("keydown", {
+    key: "ArrowDown",
+    shiftKey: true,
+    cancelable: true,
+  });
+  renderer.handleKeydown(scroll);
+  expect(elements.history.scrollBy).toHaveBeenCalledWith({ top: 64, behavior: "smooth" });
+
+  internal.selectedMessageIndex = 1;
+  const toggle = new KeyboardEvent("keydown", {
+    key: "Enter",
+    shiftKey: true,
+    cancelable: true,
+  });
+  renderer.handleKeydown(toggle);
+  expect(toggle.defaultPrevented).toBe(true);
+});
+
+test("renders optional controls and handles image attachment events", async () => {
+  const { renderer, elements } = makeRenderer();
+  const internal = renderer as any;
+  const imageInput = document.createElement("input");
+  imageInput.type = "file";
+  const imageAttachments = document.createElement("div");
+  const imageSelect = document.createElement("button");
+  imageSelect.id = "codex-image-select";
+  document.body.append(imageInput, imageAttachments, imageSelect);
+  internal.imageInput = imageInput;
+  internal.imageAttachments = imageAttachments;
+  internal.setupImageAttachments();
+  (window.peskApi as any).setChatFileDialogOpen = jest.fn();
+  (window.peskApi as any).steerCodexTurn = jest.fn(async () => state);
+  const readAsDataURL = jest
+    .spyOn(FileReader.prototype, "readAsDataURL")
+    .mockImplementation(function (this: FileReader) {
+      Object.defineProperty(this, "result", {
+        configurable: true,
+        value: "data:image/png;base64,x",
+      });
+      this.onload?.(new ProgressEvent("load") as ProgressEvent<FileReader>);
+    });
+
+  imageSelect.click();
+  expect(window.peskApi.setChatFileDialogOpen).toHaveBeenCalledWith(true);
+  const file = new File(["image"], "screen.png", { type: "image/png" });
+  const paste = new Event("paste", { bubbles: true, cancelable: true }) as any;
+  paste.clipboardData = {
+    items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
+  };
+  elements.input.dispatchEvent(paste);
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(imageAttachments.querySelector("img")).not.toBeNull();
+  expect(readAsDataURL).toHaveBeenCalled();
+
+  const state = {
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threadId: "thread-1",
+      status: "working" as const,
+      collaborationMode: "plan" as const,
+    },
+  };
+  renderer.updateState(state);
+  expect(internal.steerButton.disabled).toBe(false);
+  expect(internal.modeToggle.textContent).toBe("Plan");
+  elements.input.value = "continue";
+  elements.steerButton.click();
+  await Promise.resolve();
+  expect(window.peskApi.steerCodexTurn).toHaveBeenCalledWith("continue");
+
+  const imageTransfer = {
+    items: [{ kind: "file", type: "image/png" }],
+    files: [file],
+  };
+  const dragover = new Event("dragover", { bubbles: true, cancelable: true }) as any;
+  dragover.dataTransfer = imageTransfer;
+  elements.form.dispatchEvent(dragover);
+  expect(elements.form.classList.contains("codex-drop-active")).toBe(true);
+  const dragleave = new Event("dragleave", { bubbles: true }) as any;
+  dragleave.relatedTarget = document.body;
+  elements.form.dispatchEvent(dragleave);
+  const drop = new Event("drop", { bubbles: true, cancelable: true }) as any;
+  drop.dataTransfer = imageTransfer;
+  elements.form.dispatchEvent(drop);
+  await Promise.resolve();
+
+  renderer.updateState({
+    ...state,
+    codex: {
+      ...state.codex,
+      queuedSubmissions: [
+        {
+          id: "queued-1",
+          clientUserMessageId: "client-1",
+          text: "queued",
+          images: [{ url: "data:image/png;base64,q" }],
+        },
+      ],
+    },
+  });
+  expect(elements.history.querySelector(".codex-queued-submission-image")).not.toBeNull();
+  readAsDataURL.mockRestore();
+});
+
+test("handles submit, steer, and suggestion dismissal shortcuts", async () => {
+  const { renderer, elements } = makeRenderer({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-1", status: "working" },
+  });
+  const submit = window.peskApi.submitCodexPrompt as jest.Mock;
+  (window.peskApi as any).steerCodexTurn = jest.fn(async () => defaultRendererState());
+  elements.input.value = "/plan";
+  elements.input.dispatchEvent(new Event("input", { bubbles: true }));
+  elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  expect(elements.suggestions.hidden).toBe(true);
+
+  elements.input.value = "prompt";
+  elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", cancelable: true }));
+  await Promise.resolve();
+  expect(submit).toHaveBeenCalled();
+
+  elements.input.value = "steer me";
+  elements.input.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", altKey: true, cancelable: true }),
+  );
+  await Promise.resolve();
+  expect(window.peskApi.steerCodexTurn).toHaveBeenCalledWith("steer me");
+});
+
+test("renders free-text questions and file-change details", () => {
+  const { renderer, elements } = makeRenderer();
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      pendingUserInput: {
+        requestId: "request-text",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        isBlocking: true,
+        questions: [
+          {
+            id: "secret",
+            header: "Secret",
+            question: "Enter a secret",
+            isOther: true,
+            isSecret: true,
+            options: [],
+          },
+        ],
+      },
+      history: [
+        {
+          role: "system",
+          text: "file change",
+          itemId: "file-1",
+          activity: {
+            kind: "fileChange",
+            status: "completed",
+            changes: ["src/app.ts\n  +added\n  -removed\n  @@ hunk\n  context"],
+          },
+        },
+      ],
+    },
+  });
+
+  const input = elements.userInput.querySelector<HTMLInputElement>("input[data-other='true']");
+  expect(input?.type).toBe("password");
+  expect(elements.history.querySelector(".codex-file-change-added")).not.toBeNull();
+  expect(elements.history.querySelector(".codex-file-change-removed")).not.toBeNull();
+  expect(elements.history.querySelector(".codex-file-change-hunk")).not.toBeNull();
+  expect(elements.history.querySelector(".codex-file-change-context")).not.toBeNull();
 });

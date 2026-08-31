@@ -1246,16 +1246,23 @@ export class CodexController {
       this.options.publishRendererState();
       return;
     }
+    if (this.threadId && !preserveHistory) {
+      this.runtime(this.threadId).captureLiveHistoryForReload();
+    }
     const pendingHistory = preserveHistory ? this.threadRuntime().state.history : undefined;
     this.threadId = id;
     const existing = this.threadControllers.has(id);
     if (!existing) {
       this.runtime(id).reset(preserveHistory ? (pendingHistory ?? []) : []);
+    } else if (!preserveHistory) {
+      this.runtime(id).clearHistory();
     }
     if (!preserveHistory) this.historyPagination.delete(id);
     this.options.publishRendererState();
     if (resume) {
       this.resume(id);
+    } else if (existing) {
+      this.read(id);
     }
   }
 

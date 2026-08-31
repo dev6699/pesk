@@ -260,6 +260,100 @@ describe("CodexThread", () => {
     );
   });
 
+  test("keeps the active-turn prompt visible when history is reloaded", () => {
+    const thread = new CodexThread("thread-1");
+    thread.addUserMessage("run this command");
+    thread.setStatus("waiting");
+    thread.clearHistory();
+
+    thread.restoreTurns([
+      {
+        createdAt: 1_700_000_000,
+        items: [
+          { type: "userMessage", content: [{ text: "older prompt" }] },
+          { type: "agentMessage", text: "older answer" },
+        ],
+      },
+    ]);
+
+    expect(thread.state.history.map((message) => message.text)).toEqual([
+      "older prompt",
+      "older answer",
+      "run this command",
+    ]);
+  });
+
+  test("keeps a repeated active-turn prompt distinct from persisted history", () => {
+    const thread = new CodexThread("thread-1");
+    thread.addUserMessage("repeat this");
+    thread.startTurn("turn-live");
+    thread.clearHistory();
+
+    thread.restoreTurns([
+      {
+        id: "turn-old",
+        createdAt: 1_700_000_000,
+        items: [{ type: "userMessage", id: "user-old", content: [{ text: "repeat this" }] }],
+      },
+    ]);
+
+    expect(thread.state.history).toEqual([
+      expect.objectContaining({ text: "repeat this", turnId: "turn-old", itemId: "user-old" }),
+      expect.objectContaining({ text: "repeat this", turnId: "turn-live" }),
+    ]);
+  });
+
+  test("keeps the prompt visible when an approval survives an idle status", () => {
+    const thread = new CodexThread("thread-1");
+    thread.addUserMessage("run elevated command");
+    thread.setStatus("working");
+    thread.captureLiveHistoryForReload();
+    thread.setStatus("idle");
+    thread.addApproval(
+      "approval-1",
+      {
+        requestId: "approval-1",
+        command: "sudo command",
+        reason: "elevated permission required",
+        decisions: new Map([["accept", "accept"]]),
+      },
+      {
+        requestId: "approval-1",
+        command: "sudo command",
+        reason: "elevated permission required",
+        options: [{ id: "accept", label: "Approve", description: "Allow" }],
+      },
+    );
+    thread.clearHistory();
+    thread.restoreTurns([]);
+
+    expect(thread.state.history).toEqual([
+      expect.objectContaining({ role: "user", text: "run elevated command" }),
+    ]);
+    expect(thread.state.pendingApproval?.command).toBe("sudo command");
+  });
+
+  test("does not duplicate a live assistant response already persisted", () => {
+    const thread = new CodexThread("thread-1");
+    thread.addUserMessage("run command");
+    thread.addMessage("assistant", "I will request permission", "turn-1");
+    thread.setStatus("waiting");
+    thread.captureLiveHistoryForReload();
+    thread.clearHistory();
+    thread.restoreTurns([
+      {
+        items: [
+          { type: "userMessage", content: [{ text: "run command" }] },
+          { type: "agentMessage", text: "I will request permission" },
+        ],
+      },
+    ]);
+
+    expect(
+      thread.state.history.filter((message) => message.text === "I will request permission"),
+    ).toHaveLength(1);
+  });
+
   test("restores review items in persisted order and token usage", () => {
     const thread = new CodexThread("thread-1");
 

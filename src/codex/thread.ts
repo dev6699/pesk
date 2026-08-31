@@ -41,6 +41,8 @@ export interface ThreadState {
 
 /** Owns mutable state and conversation behavior for exactly one Codex thread. */
 export class CodexThread {
+  private liveHistoryForReload: CodexMessage[] = [];
+
   readonly state: ThreadState = {
     status: "idle",
     connected: false,
@@ -87,6 +89,7 @@ export class CodexThread {
 
   /** Resets thread state while retaining the supplied conversation history. */
   reset(history: CodexMessage[] = [], workingDirectory = process.cwd()): void {
+    this.liveHistoryForReload = [];
     this.state.activeTurnId = undefined;
     this.state.status = "idle";
     this.state.connected = false;
@@ -110,6 +113,36 @@ export class CodexThread {
     this.state.prompts.clear();
     this.state.pendingApprovals.clear();
     this.state.workingDirectory = workingDirectory;
+  }
+
+  /** Drops locally loaded messages before rehydrating a selected thread. */
+  clearHistory(): void {
+    this.captureLiveHistoryForReload();
+    this.state.history = [];
+    this.state.streamingAssistant = -1;
+    this.state.streamingAssistantItemId = undefined;
+    this.state.activityIndexes.clear();
+  }
+
+  /** Captures the active-turn suffix before this thread is left in the UI. */
+  captureLiveHistoryForReload(): void {
+    if (
+      this.state.status === "idle" &&
+      !this.state.pendingApproval &&
+      !this.state.pendingUserInput
+    ) {
+      return;
+    }
+    let lastUserIndex = -1;
+    for (let index = this.state.history.length - 1; index >= 0; index -= 1) {
+      if (this.state.history[index].role === "user") {
+        lastUserIndex = index;
+        break;
+      }
+    }
+    if (lastUserIndex >= 0) {
+      this.liveHistoryForReload = this.state.history.slice(lastUserIndex);
+    }
   }
 
   setGoal(goal: ThreadGoal | undefined): void {
@@ -439,6 +472,7 @@ export class CodexThread {
 
     const restored: CodexMessage[] = [];
     for (const turn of turns) {
+      const turnId = stringValue(turn.id);
       const timestamp =
         typeof turn.createdAt === "number"
           ? turn.createdAt < 10_000_000_000
@@ -466,6 +500,8 @@ export class CodexThread {
               role: "user",
               text,
               timestamp,
+              turnId,
+              itemId: stringValue(item.id),
               ...(images.length ? { images } : {}),
             });
           }
@@ -482,6 +518,7 @@ export class CodexThread {
               role: "assistant",
               text: text.trim(),
               timestamp,
+              turnId,
               itemId: stringValue(item.id),
             });
           }
@@ -490,14 +527,38 @@ export class CodexThread {
       }
     }
 
-    const restoredUsers = new Set(
-      restored.filter((message) => message.role === "user").map((message) => message.text),
+    const restoredUserIdentities = new Set(
+      restored
+        .filter((message) => message.role === "user")
+        .flatMap((message) =>
+          [message.itemId, message.turnId].filter((identity): identity is string =>
+            Boolean(identity),
+          ),
+        ),
     );
     const hasMissingLiveUser = this.state.history.some(
-      (message) => message.role === "user" && !restoredUsers.has(message.text),
+      (message) =>
+        message.role === "user" &&
+        ![message.itemId, message.turnId].some(
+          (identity) => identity !== undefined && restoredUserIdentities.has(identity),
+        ),
     );
     if (prepend) {
       this.prependHistory(restored);
+    } else if (this.liveHistoryForReload.length) {
+      const live = this.liveHistoryForReload.filter(
+        (message) =>
+          !restored.some(
+            (candidate) =>
+              (message.itemId && candidate.itemId === message.itemId) ||
+              (message.turnId && candidate.turnId === message.turnId) ||
+              (message.role === "assistant" &&
+                candidate.role === "assistant" &&
+                candidate.text === message.text),
+          ),
+      );
+      this.replaceHistory([...restored, ...live]);
+      this.liveHistoryForReload = [];
     } else if (
       !(this.state.status === "working" && this.state.history.length) &&
       !hasMissingLiveUser
