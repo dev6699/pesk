@@ -47,6 +47,8 @@ export class CodexRenderer {
     "codex-image-input",
   ) as HTMLInputElement | null;
   private renderedHistoryStructureKey = "";
+  private readonly renderedMessageContents = new Map<string, HTMLElement>();
+  private readonly renderedMessageTexts = new Map<string, string>();
   private renderedPlanDetails = new Map<string, string>();
   private planRenderTimer: number | undefined;
   private pendingPlanHistory: PeskSettings["codexHistory"] | undefined;
@@ -1459,6 +1461,7 @@ export class CodexRenderer {
       structureKey === this.renderedHistoryStructureKey &&
       this.schedulePlanUpdates(history)
     ) {
+      this.updateRenderedMessageContent(history);
       return;
     }
     if (this.planRenderTimer !== undefined) {
@@ -1482,6 +1485,8 @@ export class CodexRenderer {
     );
     this.history.replaceChildren();
     this.renderedHistoryStructureKey = structureKey;
+    this.renderedMessageContents.clear();
+    this.renderedMessageTexts.clear();
     this.renderedPlanDetails.clear();
     if (!history?.length) {
       const empty = document.createElement("div");
@@ -1520,6 +1525,11 @@ export class CodexRenderer {
       bubble.append(
         this.renderMessageContent(message, activityKey, openActivityKeys, renderedActivityKeys),
       );
+      const content = bubble.firstElementChild;
+      if (content instanceof HTMLElement && !message.activity) {
+        this.renderedMessageContents.set(activityKey, content);
+        this.renderedMessageTexts.set(activityKey, message.text);
+      }
       const time = document.createElement("time");
       time.className = "codex-message-time";
       time.textContent = new Date(message.timestamp ?? Date.now()).toLocaleTimeString([], {
@@ -1559,6 +1569,23 @@ export class CodexRenderer {
       this.scrollHistoryToBottom();
     }
     this.historyInitialized = true;
+  }
+
+  /** Updates streamed plain messages without rebuilding the rest of the history DOM. */
+  private updateRenderedMessageContent(history: PeskSettings["codexHistory"]): void {
+    for (const [index, message] of (history ?? []).entries()) {
+      if (message.activity || (message.images?.length ?? 0) > 0) continue;
+      const activityKey = message.itemId ?? `history-${index}`;
+      if (this.renderedMessageTexts.get(activityKey) === message.text) continue;
+      const content = this.renderedMessageContents.get(activityKey);
+      if (!content) return;
+      if (message.role === "assistant") {
+        content.innerHTML = renderMarkdown(message.text);
+      } else {
+        content.textContent = message.text;
+      }
+      this.renderedMessageTexts.set(activityKey, message.text);
+    }
   }
 
   private updateActivePlanConfirmation(history: PeskSettings["codexHistory"]): void {
@@ -1994,7 +2021,15 @@ function historyStructureKey(history: PeskSettings["codexHistory"]): string {
       timestamp: message.timestamp,
       temporary: message.temporary,
       approval: message.approval,
-      text: message.activity?.kind === "plan" ? undefined : message.text,
+      // Plain assistant text is streamed frequently. It is updated in place so
+      // a long history does not get rebuilt for every token.
+      text:
+        message.activity?.kind === "plan"
+          ? undefined
+          : message.activity || message.role !== "assistant"
+            ? message.text
+            : undefined,
+      images: message.images,
       activity: message.activity
         ? {
             ...message.activity,

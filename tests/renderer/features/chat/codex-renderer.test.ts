@@ -233,6 +233,36 @@ test("renders session state, history, activities, approvals, and token usage", (
   expect(elements.tokenUsage.textContent).toContain("gpt-test");
 });
 
+test("updates streamed assistant text without rebuilding a long history", () => {
+  const { renderer, elements } = makeRenderer();
+  const history = Array.from({ length: 80 }, (_, index) => ({
+    role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+    text: index === 79 ? "streaming" : `message ${index}`,
+    itemId: `message-${index}`,
+  }));
+
+  renderer.updateSettings({ ...defaultSettings(), codexHistory: history });
+  const unchangedMessage = elements.history.querySelector<HTMLElement>(
+    "[data-message-item-id='message-0']",
+  );
+  const streamedMessage = elements.history.querySelector<HTMLElement>(
+    "[data-message-item-id='message-79']",
+  );
+
+  renderer.updateSettings({
+    ...defaultSettings(),
+    codexHistory: [...history.slice(0, -1), { ...history.at(-1)!, text: "streaming update" }],
+  });
+
+  expect(elements.history.querySelector<HTMLElement>("[data-message-item-id='message-0']")).toBe(
+    unchangedMessage,
+  );
+  expect(elements.history.querySelector<HTMLElement>("[data-message-item-id='message-79']")).toBe(
+    streamedMessage,
+  );
+  expect(streamedMessage?.textContent).toContain("streaming update");
+});
+
 test("renders readable keyboard-friendly user questions", () => {
   const { renderer, elements } = makeRenderer();
   const question = "Which implementation should we use? ".repeat(8);
