@@ -70,6 +70,9 @@ function makeRenderer(
       <button id="steer" type="button"></button>
       <textarea id="input"></textarea>
       <div id="suggestions"></div>
+      <input id="codex-image-input" type="file" />
+      <div id="codex-image-attachments"></div>
+      <button id="codex-image-select" type="button"></button>
     </form>
   `;
   const elements = {
@@ -444,6 +447,166 @@ test("applies stream deltas without requiring a full state payload", () => {
   expect(elements.history.textContent).toContain("partial output");
 });
 
+test("keeps the history pinned while an assistant response streams", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "assistant", text: "partial", itemId: "assistant-scroll" }];
+  renderer.updateState(state);
+
+  elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-scroll",
+    kind: "assistant",
+    delta: " output",
+  });
+
+  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+});
+
+test("does not pull the reader to the bottom during assistant streaming", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "assistant", text: "partial", itemId: "assistant-reader" }];
+  renderer.updateState(state);
+
+  elements.history.scrollTop = 120;
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-reader",
+    kind: "assistant",
+    delta: " output",
+  });
+
+  expect(elements.history.scrollTop).toBe(120);
+});
+
+test("blocks pending autoscroll after manual scrolling", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "assistant", text: "partial", itemId: "manual-scroll" }];
+  renderer.updateState(state);
+
+  elements.history.scrollTop = 120;
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "manual-scroll",
+    kind: "assistant",
+    delta: " output",
+  });
+
+  expect(elements.history.scrollTop).toBe(120);
+});
+
+test("resumes autoscroll after the reader returns to the bottom", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "assistant", text: "partial", itemId: "resume-scroll" }];
+  renderer.updateState(state);
+
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
+  elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
+  elements.history.dispatchEvent(new Event("scroll"));
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "resume-scroll",
+    kind: "assistant",
+    delta: " output",
+  });
+
+  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+});
+
+test("blocks autoscroll after Shift+Up or Shift+Down history scrolling", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "assistant", text: "partial", itemId: "keyboard-scroll" }];
+  renderer.updateState(state);
+
+  elements.history.scrollTop = 120;
+  renderer.handleKeydown(
+    new KeyboardEvent("keydown", {
+      key: "ArrowUp",
+      shiftKey: true,
+      cancelable: true,
+    }),
+  );
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "keyboard-scroll",
+    kind: "assistant",
+    delta: " output",
+  });
+
+  expect(elements.history.scrollTop).toBe(120);
+});
+
+test("Alt+Home blocks autoscroll and Alt+End resumes it at the bottom", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "assistant", text: "partial", itemId: "home-end-scroll" }];
+  renderer.updateState(state);
+
+  renderer.handleKeydown(
+    new KeyboardEvent("keydown", { key: "Home", altKey: true, cancelable: true }),
+  );
+  elements.history.scrollTop = 120;
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "home-end-scroll",
+    kind: "assistant",
+    delta: " output",
+  });
+  expect(elements.history.scrollTop).toBe(120);
+
+  renderer.handleKeydown(
+    new KeyboardEvent("keydown", { key: "End", altKey: true, cancelable: true }),
+  );
+  elements.history.scrollTop = elements.history.scrollHeight;
+  elements.history.dispatchEvent(new Event("scroll"));
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "home-end-scroll",
+    kind: "assistant",
+    delta: " again",
+  });
+  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+});
+
+test("parses streamed assistant Markdown when the turn completes", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "assistant", text: "", itemId: "assistant-markdown" }];
+  renderer.updateState(state);
+
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-markdown",
+    kind: "assistant",
+    delta: "**world**",
+  });
+
+  const completedState = {
+    ...state,
+    codex: {
+      ...state.codex,
+      status: "idle" as const,
+      history: [{ role: "assistant" as const, text: "**world**", itemId: "assistant-markdown" }],
+    },
+  };
+  renderer.updateState(completedState);
+
+  expect(elements.history.querySelector("strong")?.textContent).toBe("world");
+});
+
 test("keeps streamed assistant text when history is re-rendered before completion", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
@@ -577,6 +740,40 @@ test("renders readable keyboard-friendly user questions", () => {
   });
   expect(window.peskApi.focusCodexInput).toHaveBeenCalled();
   expect(document.activeElement).toBe(elements.input);
+});
+
+test("refocuses the text input when a submitted question is resolved", () => {
+  const { renderer, elements } = makeRenderer();
+  const pendingState: Settings = {
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      pendingUserInput: {
+        requestId: "request-resolve",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        isBlocking: true,
+        questions: [
+          {
+            id: "choice",
+            header: "Choice",
+            question: "Choose one",
+            isOther: false,
+            isSecret: false,
+            options: [{ label: "Option A", description: "" }],
+          },
+        ],
+      },
+    },
+  };
+  renderer.updateState(pendingState);
+  elements.userInput.querySelector<HTMLInputElement>("input[type='radio']")?.focus();
+
+  renderer.updateState(defaultRendererState());
+
+  expect(document.activeElement).toBe(elements.input);
+  expect(window.peskApi.focusCodexInput).toHaveBeenCalled();
 });
 
 test("can show the same command notice again after it is cleared", () => {
@@ -2051,6 +2248,11 @@ test("renders complete usage, rate-limit, and goal details", () => {
   expect(elements.tokenUsage.textContent).toContain("1.50m");
   expect(elements.tokenUsage.textContent).toContain("/tmp/project");
   expect(elements.tokenUsage.textContent).toContain("Reasoning 8.0k");
+  const modelLine = elements.tokenUsage.querySelector(".codex-model-line");
+  expect(modelLine?.textContent).toContain("Reasoning high");
+  expect(modelLine?.textContent?.indexOf("Reasoning high")).toBeLessThan(
+    modelLine?.textContent?.indexOf("Context") ?? -1,
+  );
   expect((renderer as any).goal.textContent).toContain("Improve coverage");
 });
 
@@ -2190,15 +2392,9 @@ test("handles global history shortcuts and selected-message actions", async () =
 test("renders optional controls and handles image attachment events", async () => {
   const { renderer, elements } = makeRenderer();
   const internal = renderer as any;
-  const imageInput = document.createElement("input");
-  imageInput.type = "file";
-  const imageAttachments = document.createElement("div");
-  const imageSelect = document.createElement("button");
-  imageSelect.id = "codex-image-select";
-  document.body.append(imageInput, imageAttachments, imageSelect);
-  internal.imageInput = imageInput;
-  internal.imageAttachments = imageAttachments;
-  internal.setupImageAttachments();
+  const imageInput = document.querySelector("#codex-image-input") as HTMLInputElement;
+  const imageAttachments = document.querySelector("#codex-image-attachments") as HTMLElement;
+  const imageSelect = document.querySelector("#codex-image-select") as HTMLButtonElement;
   (window.peskApi as any).setChatFileDialogOpen = jest.fn();
   (window.peskApi as any).steerCodexTurn = jest.fn(async () => state);
   const readAsDataURL = jest

@@ -24,7 +24,6 @@ export class PetRenderer {
   private availableAnimations: AnimationFrames[] = [];
   private currentAnimationName = "idle";
   private focused = false;
-  private codexUpdateActive = false;
   private statusTimer: number | undefined;
   private statusSoundUrl = "";
 
@@ -76,7 +75,6 @@ export class PetRenderer {
   updateFocus(focused: boolean): void {
     this.focused = focused;
     if (focused) {
-      this.codexUpdateActive = false;
       this.stopStatusSound();
       this.options.pet.classList.toggle("codex-update", false);
     }
@@ -85,7 +83,6 @@ export class PetRenderer {
   }
 
   updateCodexUpdate(active: boolean): void {
-    this.codexUpdateActive = active;
     if (!active) {
       this.stopStatusSound();
     }
@@ -180,10 +177,6 @@ export class PetRenderer {
     );
     const waitingCount = otherThreads.filter((activity) => activity.status === "waiting").length;
     const workingCount = otherThreads.filter((activity) => activity.status === "working").length;
-    const counts = [
-      waitingCount ? `Waiting · ${waitingCount}` : "",
-      workingCount ? `Working · ${workingCount}` : "",
-    ].filter(Boolean);
     const separator = document.createElement("span");
     separator.className = "aggregate-status-separator";
     separator.textContent = "|";
