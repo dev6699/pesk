@@ -12,6 +12,9 @@ const slashCommands = [
   { command: "/review", description: "Review current changes" },
   { command: "/exec", description: "Run a sandboxed command" },
 ];
+const VIRTUAL_HISTORY_THRESHOLD = 300;
+const VIRTUAL_HISTORY_WINDOW = 100;
+const DEFAULT_HISTORY_ROW_HEIGHT = 72;
 
 export class CodexRenderer {
   private readonly webChat = document.body.classList.contains("web-chat");
@@ -49,7 +52,13 @@ export class CodexRenderer {
   private renderedHistoryStructureKey = "";
   private readonly renderedMessageContents = new Map<string, HTMLElement>();
   private readonly renderedMessageTexts = new Map<string, string>();
+  private readonly renderedActivityDetails = new Map<string, HTMLElement>();
+  private readonly renderedActivityOutputs = new Map<string, string>();
+  private readonly streamingPlainMessages = new Set<string>();
+  private readonly streamedAssistantTexts = new Map<string, string>();
   private renderedHistoryKeys: string[] = [];
+  private virtualHistoryStart = 0;
+  private virtualHistoryAverageHeight = DEFAULT_HISTORY_ROW_HEIGHT;
   private renderedPlanDetails = new Map<string, string>();
   private planRenderTimer: number | undefined;
   private pendingPlanHistory: RendererState["codex"]["history"] | undefined;
@@ -99,6 +108,7 @@ export class CodexRenderer {
     });
     sessionCopy.addEventListener("click", () => void this.copySessionId());
     this.history.addEventListener("scroll", () => {
+      this.updateVirtualHistoryWindow();
       if (
         this.state.codex.hasOlderHistory &&
         !this.state.codex.historyLoading &&
@@ -348,6 +358,54 @@ export class CodexRenderer {
       this.modeToggle.classList.toggle("codex-mode-plan", plan);
       this.modeToggle.title = plan ? "Plan mode enabled for the next turn" : "Default mode";
     }
+  }
+
+  /** Applies streamed output without transferring the complete history again. */
+  applyStreamDelta(delta: CodexStreamDelta): void {
+    if (delta.threadId && delta.threadId !== this.state.codex.threadId) return;
+    const key =
+      delta.itemId ??
+      [...this.renderedHistoryKeys]
+        .reverse()
+        .find((candidate) => this.renderedMessageContents.has(candidate));
+    if (!key) return;
+    if (delta.kind === "assistant") {
+      let content = this.renderedMessageContents.get(key);
+      if (!content && delta.itemId) {
+        const message = {
+          role: "assistant" as const,
+          text: this.streamedAssistantTexts.get(key) ?? "",
+          itemId: delta.itemId,
+        };
+        const bubble = this.createMessageBubble(
+          message,
+          this.renderedHistoryKeys.length,
+          new Set(),
+          new Set(),
+        );
+        this.history.append(bubble);
+        this.renderedHistoryKeys.push(key);
+        content = this.renderedMessageContents.get(key);
+      }
+      if (!content) return;
+      const text = `${this.streamedAssistantTexts.get(key) ?? this.renderedMessageTexts.get(key) ?? content.textContent ?? ""}${delta.delta}`;
+      content.textContent = text;
+      this.renderedMessageTexts.set(key, text);
+      if (delta.itemId) this.streamedAssistantTexts.set(key, text);
+      this.streamingPlainMessages.add(key);
+      return;
+    }
+    const details = this.renderedActivityDetails.get(key);
+    if (!details) return;
+    const previousOutput = this.renderedActivityOutputs.get(key) ?? "";
+    const output = `${previousOutput}${delta.delta}`;
+    const currentDetails = details.textContent ?? "";
+    const prefix =
+      previousOutput && currentDetails.endsWith(previousOutput)
+        ? currentDetails.slice(0, -previousOutput.length)
+        : "";
+    details.textContent = `${prefix}${output}`;
+    this.renderedActivityOutputs.set(key, output);
   }
 
   /** Loads and anchors the next page of older history messages. */
@@ -1503,6 +1561,10 @@ export class CodexRenderer {
     queuedSubmissions: RendererState["codex"]["queuedSubmissions"] = [],
   ): void {
     this.updateActivePlanConfirmation(history);
+    if ((history ?? []).length > VIRTUAL_HISTORY_THRESHOLD) {
+      this.renderVirtualHistory(history, sessionConnected, historyLoading, queuedSubmissions);
+      return;
+    }
     const structureKey = `${historyStructureKey(history)}|queue:${queuedSubmissions
       .map((submission) => `${submission.id}:${submission.text}`)
       .join("|")}|loading:${historyLoading}|connected:${sessionConnected}`;
@@ -1613,6 +1675,9 @@ export class CodexRenderer {
     this.renderedHistoryKeys = historyKeys;
     this.renderedMessageContents.clear();
     this.renderedMessageTexts.clear();
+    this.renderedActivityDetails.clear();
+    this.renderedActivityOutputs.clear();
+    this.streamingPlainMessages.clear();
     this.renderedPlanDetails.clear();
     if (!history?.length && historyLoading) {
       const loading = document.createElement("div");
@@ -1667,6 +1732,110 @@ export class CodexRenderer {
     this.historyInitialized = true;
   }
 
+  /** Maintains a bounded DOM window while retaining the complete history array. */
+  private renderVirtualHistory(
+    history: RendererState["codex"]["history"],
+    sessionConnected: boolean,
+    historyLoading: boolean,
+    queuedSubmissions: RendererState["codex"]["queuedSubmissions"],
+  ): void {
+    const historyKeys = (history ?? []).map(historyMessageKeyForRenderer);
+    const structureKey = `${historyStructureKey(history)}|queue:${queuedSubmissions
+      .map((submission) => `${submission.id}:${submission.text}`)
+      .join("|")}|loading:${historyLoading}|connected:${sessionConnected}`;
+    const maxStart = Math.max(0, historyKeys.length - VIRTUAL_HISTORY_WINDOW);
+    const desiredStart = !this.historyInitialized
+      ? maxStart
+      : Math.min(
+          maxStart,
+          Math.max(0, Math.floor(this.history.scrollTop / this.virtualHistoryAverageHeight) - 20),
+        );
+    const sameWindow =
+      this.historyInitialized &&
+      this.renderedHistoryStructureKey === structureKey &&
+      this.virtualHistoryStart === desiredStart;
+    if (sameWindow) {
+      this.updateRenderedMessageContent(history);
+      return;
+    }
+    const previousTop = this.history.scrollTop;
+    const openActivityKeys = new Set(
+      Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
+        .filter((details) => details.open)
+        .map((details) => details.dataset.activityKey)
+        .filter((key): key is string => Boolean(key)),
+    );
+    const renderedActivityKeys = new Set(
+      Array.from(this.history.querySelectorAll<HTMLElement>("details[data-activity-key]"))
+        .map((details) => details.dataset.activityKey)
+        .filter((key): key is string => Boolean(key)),
+    );
+    this.history.replaceChildren();
+    this.renderedMessageContents.clear();
+    this.renderedMessageTexts.clear();
+    this.renderedActivityDetails.clear();
+    this.renderedActivityOutputs.clear();
+    this.streamingPlainMessages.clear();
+    this.renderedPlanDetails.clear();
+    this.virtualHistoryStart = desiredStart;
+    const end = Math.min(historyKeys.length, desiredStart + VIRTUAL_HISTORY_WINDOW);
+    const topSpacer = document.createElement("div");
+    topSpacer.className = "codex-history-virtual-spacer";
+    topSpacer.style.height = `${desiredStart * this.virtualHistoryAverageHeight}px`;
+    const bottomSpacer = document.createElement("div");
+    bottomSpacer.className = "codex-history-virtual-spacer";
+    bottomSpacer.style.height = `${(historyKeys.length - end) * this.virtualHistoryAverageHeight}px`;
+    const fragment = document.createDocumentFragment();
+    for (let index = desiredStart; index < end; index += 1) {
+      fragment.append(
+        this.createMessageBubble(history[index], index, openActivityKeys, renderedActivityKeys),
+      );
+    }
+    this.history.append(topSpacer, fragment, bottomSpacer);
+    if (queuedSubmissions.length) {
+      const queue = document.createElement("section");
+      queue.className = "codex-queued-submissions";
+      const title = document.createElement("strong");
+      title.textContent = "Queued";
+      queue.append(title);
+      for (const submission of queuedSubmissions) {
+        const item = document.createElement("div");
+        item.className = "codex-queued-submission";
+        const text = document.createElement("span");
+        text.textContent = submission.text || "Image attachment";
+        item.append(text);
+        for (const image of submission.images ?? []) {
+          const preview = document.createElement("img");
+          preview.className = "codex-queued-submission-image";
+          preview.src = image.url;
+          preview.alt = image.name ? `Queued image: ${image.name}` : "Queued image";
+          item.append(preview);
+        }
+        queue.append(item);
+      }
+      this.history.append(queue);
+    }
+    this.renderedHistoryStructureKey = structureKey;
+    this.renderedHistoryKeys = historyKeys;
+    this.applySelectedMessage();
+    this.history.scrollTop = this.historyInitialized
+      ? previousTop
+      : desiredStart * this.virtualHistoryAverageHeight;
+    this.historyInitialized = true;
+  }
+
+  /** Re-renders only when scrolling enters a different history window. */
+  private updateVirtualHistoryWindow(): void {
+    const history = this.state.codex.history;
+    if (history.length <= VIRTUAL_HISTORY_THRESHOLD) return;
+    this.renderVirtualHistory(
+      history,
+      Boolean(this.state.codex.threadId),
+      this.state.codex.historyLoading,
+      this.state.codex.queuedSubmissions,
+    );
+  }
+
   /** Creates a DOM bubble for one history message. */
   private createMessageBubble(
     message: RendererState["codex"]["history"][number],
@@ -1699,7 +1868,23 @@ export class CodexRenderer {
     const content = bubble.firstElementChild;
     if (content instanceof HTMLElement && !message.activity) {
       this.renderedMessageContents.set(activityKey, content);
-      this.renderedMessageTexts.set(activityKey, message.text);
+      const streamedText =
+        message.role === "assistant" && this.state.codex.status !== "idle"
+          ? this.streamedAssistantTexts.get(activityKey)
+          : undefined;
+      const text = streamedText ?? message.text;
+      if (streamedText !== undefined) content.textContent = streamedText;
+      this.renderedMessageTexts.set(activityKey, text);
+      if (message.role === "assistant" && this.state.codex.status === "idle") {
+        this.streamedAssistantTexts.delete(activityKey);
+      }
+    }
+    if (content instanceof HTMLElement && message.activity?.kind === "command") {
+      const details = content.querySelector<HTMLElement>(".codex-activity-details");
+      if (details) {
+        this.renderedActivityDetails.set(activityKey, details);
+        this.renderedActivityOutputs.set(activityKey, message.activity.output ?? "");
+      }
     }
     const time = document.createElement("time");
     time.className = "codex-message-time";
@@ -1715,13 +1900,33 @@ export class CodexRenderer {
   /** Updates rendered message content without rebuilding stable nodes. */
   private updateRenderedMessageContent(history: RendererState["codex"]["history"]): void {
     for (const [index, message] of (history ?? []).entries()) {
-      if (message.activity || (message.images?.length ?? 0) > 0) continue;
       const activityKey = historyMessageKeyForRenderer(message, index);
+      if (message.activity?.kind === "command") {
+        const output = message.activity.output ?? "";
+        if (this.renderedActivityOutputs.get(activityKey) !== output) {
+          const details = this.renderedActivityDetails.get(activityKey);
+          if (details) {
+            details.textContent = formatCommandActivity(message.activity);
+            this.renderedActivityOutputs.set(activityKey, output);
+          }
+        }
+        continue;
+      }
+      if (message.activity || (message.images?.length ?? 0) > 0) continue;
       if (this.renderedMessageTexts.get(activityKey) === message.text) continue;
       const content = this.renderedMessageContents.get(activityKey);
-      if (!content) return;
+      if (!content) continue;
       if (message.role === "assistant") {
-        content.innerHTML = renderMarkdown(message.text);
+        if (this.streamingPlainMessages.has(activityKey)) {
+          if (this.state.codex.status === "working" || this.state.codex.status === "waiting") {
+            content.textContent = message.text;
+            this.renderedMessageTexts.set(activityKey, message.text);
+            continue;
+          }
+          this.streamingPlainMessages.delete(activityKey);
+          this.streamedAssistantTexts.delete(activityKey);
+        }
+        this.renderAssistantContent(content, message.text);
       } else {
         content.textContent = message.text;
       }
@@ -1890,7 +2095,7 @@ export class CodexRenderer {
     const content = document.createElement("div");
     if (message.role === "assistant" && !message.activity) {
       content.className = "codex-markdown";
-      content.innerHTML = renderMarkdown(message.text);
+      this.renderAssistantContent(content, message.text);
     } else {
       content.textContent = message.text;
     }
@@ -1902,6 +2107,11 @@ export class CodexRenderer {
       content.append(preview);
     }
     return content;
+  }
+
+  /** Renders assistant Markdown synchronously. */
+  private renderAssistantContent(content: HTMLElement, text: string): void {
+    content.innerHTML = renderMarkdown(text);
   }
 
   /** Creates the implementation prompt for a completed plan activity. */
@@ -2170,30 +2380,55 @@ function formatElapsed(milliseconds: number): string {
 }
 
 function historyStructureKey(history: RendererState["codex"]["history"]): string {
-  return JSON.stringify(
-    (history ?? []).map((message) => ({
-      role: message.role,
-      itemId: message.itemId,
-      timestamp: message.timestamp,
-      temporary: message.temporary,
-      approval: message.approval,
-      // Plain assistant text is streamed frequently. It is updated in place so
-      // a long history does not get rebuilt for every token.
-      text:
-        message.activity?.kind === "plan"
-          ? undefined
-          : message.activity || message.role !== "assistant"
-            ? message.text
-            : undefined,
-      images: message.images,
-      activity: message.activity
-        ? {
-            ...message.activity,
-            details: message.activity.kind === "plan" ? undefined : message.activity.details,
-          }
-        : undefined,
-    })),
-  );
+  let first = 2166136261;
+  let second = 2246822519;
+  const add = (value: unknown): void => {
+    const text = `${value ?? ""}|`;
+    for (let index = 0; index < text.length; index += 1) {
+      const code = text.charCodeAt(index);
+      first = Math.imul(first ^ code, 16777619);
+      second = Math.imul(second ^ code, 2246822519);
+    }
+  };
+  const addApproval = (approval: NonNullable<(typeof history)[number]["approval"]>): void => {
+    add(approval.requestId);
+    add(approval.state);
+    for (const option of approval.options ?? []) {
+      add(option.id);
+      add(option.label);
+      add(option.description);
+    }
+  };
+  for (const message of history ?? []) {
+    add(message.role);
+    add(message.itemId);
+    add(message.timestamp);
+    add(message.temporary);
+    if (message.approval) addApproval(message.approval);
+    // Plain assistant text is streamed frequently. It is updated in place so
+    // a long history does not get rebuilt for every token.
+    if (message.activity?.kind !== "plan" && message.activity?.kind !== "command") {
+      if (message.activity || message.role !== "assistant") add(message.text);
+    }
+    for (const image of message.images ?? []) {
+      add(image.url);
+      add(image.name);
+    }
+    const activity = message.activity;
+    if (!activity) continue;
+    add(activity.kind);
+    add(activity.source);
+    add(activity.userInitiated);
+    add(activity.label);
+    add(activity.status);
+    add(activity.command);
+    add(activity.cwd);
+    add(activity.summary);
+    for (const change of activity.changes ?? []) add(change);
+    if (activity.kind !== "plan") add(activity.details);
+    if (activity.kind !== "command") add(activity.output);
+  }
+  return `${history?.length ?? 0}:${first >>> 0}:${second >>> 0}`;
 }
 
 function historyMessageKeyForRenderer(

@@ -88,6 +88,7 @@ const api: PeskApi = {
   onCodexInputFocus: listenChannel("codex-input-focus"),
   onCodexUserInputFocus: listenChannel("codex-user-input-focus"),
   onSettingsChanged: listenChannel("settings-changed"),
+  onCodexStreamDelta: listenChannel("codex-stream-delta"),
 } satisfies Window["peskApi"];
 
 contextBridge.exposeInMainWorld("peskApi", api);

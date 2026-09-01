@@ -68,6 +68,14 @@ export interface CodexThreadActivity {
   attention?: "approval" | "userInput";
 }
 
+/** Incremental renderer update for high-frequency streamed output. */
+export interface CodexStreamDelta {
+  threadId?: string;
+  itemId?: string;
+  kind: "assistant" | "command";
+  delta: string;
+}
+
 export interface CodexModelInfo {
   model?: string;
   provider?: string;

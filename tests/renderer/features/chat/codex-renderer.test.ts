@@ -387,6 +387,126 @@ test("updates streamed assistant text without rebuilding a long history", () => 
   expect(streamedMessage?.textContent).toContain("streaming update");
 });
 
+test("updates streamed command output without rebuilding history", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.history = [
+    {
+      role: "system",
+      text: "$ npm test",
+      itemId: "command-1",
+      activity: {
+        kind: "command",
+        label: "commandExecution",
+        command: "npm test",
+        output: "first line",
+      },
+    },
+  ];
+
+  renderer.updateState(state);
+  const bubble = elements.history.querySelector<HTMLElement>("[data-message-item-id='command-1']");
+  const details = bubble?.querySelector<HTMLElement>(".codex-activity-details");
+
+  renderer.updateState({
+    ...state,
+    codex: {
+      ...state.codex,
+      history: [
+        {
+          ...state.codex.history[0],
+          text: "$ npm test\nfirst line\nsecond line",
+          activity: { ...state.codex.history[0].activity!, output: "first line\nsecond line" },
+        },
+      ],
+    },
+  });
+
+  expect(elements.history.querySelector("[data-message-item-id='command-1']")).toBe(bubble);
+  expect(elements.history.querySelector(".codex-activity-details")).toBe(details);
+  expect(details?.textContent).toContain("second line");
+});
+
+test("applies stream deltas without requiring a full state payload", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.history = [{ role: "assistant", text: "partial", itemId: "assistant-delta" }];
+  state.codex.status = "working";
+  renderer.updateState(state);
+
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-delta",
+    kind: "assistant",
+    delta: " output",
+  });
+
+  expect(elements.history.textContent).toContain("partial output");
+});
+
+test("keeps streamed assistant text when history is re-rendered before completion", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "user", text: "hello", itemId: "user-1" }];
+  renderer.updateState(state);
+
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-1",
+    kind: "assistant",
+    delta: "first",
+  });
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-1",
+    kind: "assistant",
+    delta: " partial",
+  });
+  expect(elements.history.textContent).toContain("first partial");
+
+  renderer.updateState({
+    ...state,
+    codex: {
+      ...state.codex,
+      history: [{ role: "user", text: "other thread", itemId: "other-1" }],
+    },
+  });
+  renderer.updateState(state);
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-1",
+    kind: "assistant",
+    delta: " response",
+  });
+
+  expect(elements.history.textContent).toContain("first partial response");
+});
+
+test("windows very long history without truncating renderer state", () => {
+  const { renderer, elements } = makeRenderer();
+  const history = Array.from({ length: 400 }, (_, index) => ({
+    role: "user" as const,
+    text: `message ${index}`,
+    itemId: `message-${index}`,
+  }));
+  const state = defaultRendererState();
+  state.codex.history = history;
+
+  renderer.updateState(state);
+
+  expect(state.codex.history).toHaveLength(400);
+  expect(elements.history.querySelectorAll(".codex-message")).toHaveLength(100);
+  expect(elements.history.querySelector("[data-message-item-id='message-0']")).toBeNull();
+  expect(elements.history.querySelector("[data-message-item-id='message-399']")).not.toBeNull();
+
+  elements.history.scrollTop = 2_000;
+  elements.history.dispatchEvent(new Event("scroll"));
+
+  expect(elements.history.querySelector("[data-message-item-id='message-7']")).not.toBeNull();
+  expect(elements.history.querySelectorAll(".codex-message")).toHaveLength(100);
+});
+
 test("preserves scroll position when appending while reading older history", () => {
   const { renderer, elements } = makeRenderer();
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];

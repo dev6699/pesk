@@ -1,6 +1,7 @@
 import { matchesShortcut } from "../shared/shortcuts.js";
 
 const listeners = new Set<(state: RendererState) => void>();
+const streamDeltaListeners = new Set<(delta: CodexStreamDelta) => void>();
 const pendingFileSearches = new Map<number, (results: FuzzyFileSearchResult[]) => void>();
 const pendingCommands = new Map<number, (result: { ok: boolean; state?: RendererState }) => void>();
 let nextFileSearchId = 0;
@@ -272,6 +273,12 @@ function connect(): void {
       });
       return;
     }
+    if (type === "codexStreamDelta") {
+      const delta = (message as { delta?: unknown }).delta;
+      if (!delta || typeof delta !== "object") return;
+      for (const listener of streamDeltaListeners) listener(delta as CodexStreamDelta);
+      return;
+    }
     if (type !== "state") return;
     authenticated = true;
     setConnectionStatus("connected");
@@ -379,6 +386,8 @@ function sendCommand(
 const webApi = {
   getSettings: () => (state ? Promise.resolve(state) : initialState),
   onSettingsChanged: (callback: (state: RendererState) => void) => listeners.add(callback),
+  onCodexStreamDelta: (callback: (delta: CodexStreamDelta) => void) =>
+    streamDeltaListeners.add(callback),
   refreshCodexRateLimits: async () => send("refreshRateLimits"),
   getChatSize: async () => ({ width: innerWidth, height: innerHeight }),
   selectCodexThread: (threadId: string) => send("selectThread", { threadId }),

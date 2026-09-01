@@ -8,6 +8,7 @@ import * as path from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
 import webpush from "web-push";
 import QRCode from "qrcode";
+import type { CodexStreamDelta } from "../codex/types";
 
 interface PushSubscription {
   endpoint: string;
@@ -148,6 +149,14 @@ export class ChatWebServer {
   broadcast(state = this.options.getState()): void {
     if (!this.options.enabled) return;
     const message = JSON.stringify({ type: "state", state });
+    for (const client of this.clients.keys()) {
+      if (client.readyState === WebSocket.OPEN) client.send(message);
+    }
+  }
+
+  broadcastStreamDelta(delta: CodexStreamDelta): void {
+    if (!this.options.enabled) return;
+    const message = JSON.stringify({ type: "codexStreamDelta", delta });
     for (const client of this.clients.keys()) {
       if (client.readyState === WebSocket.OPEN) client.send(message);
     }

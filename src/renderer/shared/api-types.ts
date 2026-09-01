@@ -63,4 +63,5 @@ export interface PeskApi {
   onCodexInputFocus: (callback: () => void) => void;
   onCodexUserInputFocus: (callback: () => void) => void;
   onSettingsChanged: (callback: (state: RendererState) => void) => void;
+  onCodexStreamDelta: (callback: (delta: CodexStreamDelta) => void) => void;
 }

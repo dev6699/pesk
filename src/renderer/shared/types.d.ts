@@ -60,6 +60,13 @@ interface CodexThreadActivity {
   attention?: "approval" | "userInput";
 }
 
+interface CodexStreamDelta {
+  threadId?: string;
+  itemId?: string;
+  kind: "assistant" | "command";
+  delta: string;
+}
+
 interface TokenCounts {
   totalTokens: number;
   inputTokens?: number;

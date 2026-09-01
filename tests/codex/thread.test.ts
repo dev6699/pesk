@@ -534,7 +534,20 @@ describe("CodexThread", () => {
     thread.appendAssistantDelta(" second");
 
     expect(thread.state.history).toHaveLength(41);
-    expect(thread.state.history.at(-1)).toMatchObject({
+    expect(thread.snapshot().history.at(-1)).toMatchObject({
+      role: "assistant",
+      text: "first second",
+    });
+  });
+
+  test("preserves all chunks when a stream is interrupted", () => {
+    const thread = new CodexThread("thread-1");
+    thread.appendAssistantDelta("first", "assistant-1");
+    thread.appendAssistantDelta(" second", "assistant-1");
+
+    thread.completeTurn(true);
+
+    expect(thread.snapshot().history.at(-1)).toMatchObject({
       role: "assistant",
       text: "first second",
     });

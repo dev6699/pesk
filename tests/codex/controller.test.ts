@@ -56,6 +56,7 @@ function respondHistoryPage(socket: FakeWebSocket, turns: unknown[]): void {
 function options() {
   return {
     publishRendererState: jest.fn(),
+    publishStreamDelta: jest.fn(),
     handleNotification: jest.fn(),
     isChatVisible: jest.fn(() => false),
     clearNotification: jest.fn(),
@@ -3223,5 +3224,56 @@ describe("CodexController", () => {
       hasOlderHistory: false,
       historyLoading: false,
     });
+  });
+
+  test("does not publish selected state for background streaming deltas", () => {
+    const { controller, socket, options: controllerOptions } = connectedController();
+    controllerOptions.publishRendererState.mockClear();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/agentMessage/delta",
+        params: { threadId: "background-thread", itemId: "assistant-1", delta: "background" },
+      }),
+    );
+
+    expect(controllerOptions.publishRendererState).not.toHaveBeenCalled();
+  });
+
+  test("publishes selected assistant deltas without a full state snapshot", () => {
+    const { controller, socket, options: controllerOptions } = connectedController();
+    controllerOptions.publishRendererState.mockClear();
+    controllerOptions.publishStreamDelta.mockClear();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/agentMessage/delta",
+        params: { threadId: "thread-1", itemId: "assistant-1", delta: "selected" },
+      }),
+    );
+
+    expect(controllerOptions.publishStreamDelta).toHaveBeenCalledWith({
+      threadId: "thread-1",
+      kind: "assistant",
+      itemId: "assistant-1",
+      delta: "selected",
+    });
+    expect(controllerOptions.publishRendererState).not.toHaveBeenCalled();
+  });
+
+  test("bounds inactive runtime history retention", () => {
+    const { controller } = connectedController();
+    const internal = controller as unknown as {
+      runtime: (threadId: string) => CodexThread;
+      threadControllers: Map<string, CodexThread>;
+    };
+    for (let index = 0; index < 32; index += 1) {
+      internal.runtime(`inactive-${index}`);
+    }
+
+    expect(internal.threadControllers.size).toBeLessThanOrEqual(16);
+    expect(internal.threadControllers.has("thread-1")).toBe(true);
   });
 });

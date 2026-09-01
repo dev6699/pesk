@@ -6,6 +6,7 @@ import type { AnimationFrames } from "../windows/pet";
 import type { RendererState } from "./renderer-state";
 import type { FuzzyFileSearchResult } from "../codex-schema/FuzzyFileSearchResult";
 import type { ImageInput, RequestId } from "./validation";
+import type { CodexStreamDelta } from "../codex/types";
 
 export interface RendererEventContract {
   "menu-updated": [];
@@ -16,6 +17,7 @@ export interface RendererEventContract {
   "codex-input-focus": [];
   "codex-user-input-focus": [];
   "settings-changed": [state: RendererState];
+  "codex-stream-delta": [delta: CodexStreamDelta];
 }
 
 export interface PresetInfo {

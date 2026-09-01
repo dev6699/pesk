@@ -42,6 +42,7 @@ export interface ThreadState {
 /** Owns mutable state and conversation behavior for exactly one Codex thread. */
 export class CodexThread {
   private liveHistoryForReload: CodexMessage[] = [];
+  private streamingAssistantChunks: string[] = [];
 
   readonly state: ThreadState = {
     status: "idle",
@@ -68,10 +69,11 @@ export class CodexThread {
 
   /** Returns the renderer-facing state for this thread without exposing internals. */
   snapshot(): CodexThreadSnapshot {
+    const history = this.streamingAssistantHistory();
     return {
       status: this.state.status,
       connected: this.state.connected,
-      history: [...this.state.history],
+      history,
       workingDirectory: this.state.workingDirectory,
       workingSince: this.state.workingSince,
       workedElapsed: this.state.workedElapsed,
@@ -90,6 +92,7 @@ export class CodexThread {
   /** Resets thread state while retaining the supplied conversation history. */
   reset(history: CodexMessage[] = [], workingDirectory = process.cwd()): void {
     this.liveHistoryForReload = [];
+    this.streamingAssistantChunks = [];
     this.state.activeTurnId = undefined;
     this.state.status = "idle";
     this.state.connected = false;
@@ -118,6 +121,7 @@ export class CodexThread {
   /** Drops locally loaded messages before rehydrating a selected thread. */
   clearHistory(): void {
     this.captureLiveHistoryForReload();
+    this.streamingAssistantChunks = [];
     this.state.history = [];
     this.state.streamingAssistant = -1;
     this.state.streamingAssistantItemId = undefined;
@@ -141,7 +145,7 @@ export class CodexThread {
       }
     }
     if (lastUserIndex >= 0) {
-      this.liveHistoryForReload = this.state.history.slice(lastUserIndex);
+      this.liveHistoryForReload = this.streamingAssistantHistory().slice(lastUserIndex);
     }
   }
 
@@ -314,7 +318,12 @@ export class CodexThread {
     const message = index === undefined ? undefined : this.state.history[index];
     if (!message?.activity) return;
     message.activity.output = `${message.activity.output ?? ""}${delta}`;
-    message.text = formatActivityText(message.activity);
+    // The renderer reads command output from activity.output and updates its
+    // existing output node in place. Do not rebuild a second full copy of the
+    // growing output string for message.text on every delta.
+    if (message.activity.kind !== "command") {
+      message.text = formatActivityText(message.activity);
+    }
   }
 
   /** Appends streamed plan text to an indexed plan activity message. */
@@ -340,6 +349,7 @@ export class CodexThread {
 
   /** Completes the active turn and records its elapsed working time. */
   completeTurn(interrupted: boolean): void {
+    this.materializeStreamingAssistant();
     this.state.activeTurnId = undefined;
     this.state.reviewInProgress = false;
     this.state.interrupted = interrupted;
@@ -350,6 +360,7 @@ export class CodexThread {
     this.state.workingSince = undefined;
     this.state.streamingAssistant = -1;
     this.state.streamingAssistantItemId = undefined;
+    this.streamingAssistantChunks = [];
   }
 
   /** Appends streamed assistant text to the current assistant message. */
@@ -374,8 +385,9 @@ export class CodexThread {
       });
       this.state.streamingAssistant = this.state.history.length - 1;
       this.state.streamingAssistantItemId = itemId;
+      this.streamingAssistantChunks = [delta];
     } else {
-      current.text += delta;
+      this.streamingAssistantChunks.push(delta);
     }
   }
 
@@ -399,6 +411,7 @@ export class CodexThread {
     }
     this.state.streamingAssistant = -1;
     this.state.streamingAssistantItemId = undefined;
+    this.streamingAssistantChunks = [];
   }
 
   /** Normalizes a server item when it starts and records its visible output. */
@@ -723,6 +736,7 @@ export class CodexThread {
 
   /** Clears transport-owned ephemeral state while retaining conversation history. */
   resetTransportState(): void {
+    this.materializeStreamingAssistant();
     this.state.status = "idle";
     this.state.connected = false;
     this.state.activeTurnId = undefined;
@@ -809,6 +823,7 @@ export class CodexThread {
   /** Replaces history and rebuilds indexes used by streaming updates. */
   replaceHistory(history: CodexMessage[]): void {
     this.state.history = [...history];
+    this.streamingAssistantChunks = [];
     this.state.streamingAssistant = -1;
     this.state.streamingAssistantItemId = undefined;
     this.rebuildActivityIndexes();
@@ -864,6 +879,28 @@ export class CodexThread {
         message.itemId && message.activity ? [[message.itemId, index] as const] : [],
       ),
     );
+  }
+
+  /** Materializes only the active assistant stream for a renderer snapshot. */
+  private streamingAssistantHistory(): CodexMessage[] {
+    if (this.state.streamingAssistant < 0 || this.streamingAssistantChunks.length < 2) {
+      return [...this.state.history];
+    }
+    return this.state.history.map((message, index) =>
+      index === this.state.streamingAssistant
+        ? { ...message, text: this.streamingAssistantChunks.join("") }
+        : message,
+    );
+  }
+
+  /** Preserves a partial stream before transport state or the stream marker is cleared. */
+  private materializeStreamingAssistant(): void {
+    const index = this.state.streamingAssistant;
+    if (index < 0 || this.streamingAssistantChunks.length < 2) return;
+    const message = this.state.history[index];
+    if (message?.role === "assistant") {
+      message.text = this.streamingAssistantChunks.join("");
+    }
   }
 
   /** Clears approvals when new conversation output supersedes them. */

@@ -59,6 +59,7 @@ window.peskApi.onSettingsChanged((next) => {
     void window.peskApi.refreshCodexRateLimits();
   }
 });
+window.peskApi.onCodexStreamDelta((delta) => codex.applyStreamDelta(delta));
 window.peskApi.onCodexInputFocus(() => codex.focusInput());
 window.peskApi.onCodexUserInputFocus(() => codex.focusUserInputOption());
 

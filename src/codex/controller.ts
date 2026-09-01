@@ -48,7 +48,7 @@ import type {
   ThreadTurnsListResponse,
 } from "../codex-schema/v2";
 import type { UserInput } from "../codex-schema/v2/UserInput";
-import type { CodexState, CodexThreadActivity } from "./types";
+import type { CodexState, CodexStreamDelta, CodexThreadActivity } from "./types";
 import type {
   AccountRateLimitsRequest,
   CommandExecRequest,
@@ -84,6 +84,7 @@ If the steer is materially ambiguous, ask one concise clarifying question. Other
 
 Steer message:
 `;
+const MAX_CACHED_THREAD_RUNTIMES = 16;
 
 const HISTORY_PAGE_LIMIT = 5;
 
@@ -97,6 +98,7 @@ interface HistoryPaginationState {
 /** Codex-related settings persisted alongside the pet settings. */
 interface Options {
   publishRendererState: () => void;
+  publishStreamDelta?: (delta: CodexStreamDelta) => void;
   handleNotification: (request: NotificationRequest) => void;
   isChatVisible: () => boolean;
   clearNotification?: () => void;
@@ -146,6 +148,8 @@ export class CodexController {
   private readonly requests = new Map<number, (message: JsonRpcResponse) => void>();
   /** Isolated runtime state for every known or active thread. */
   private readonly threadControllers = new Map<string, CodexThread>();
+  /** Last access time for inactive runtime eviction. */
+  private readonly runtimeAccess = new Map<string, number>();
   /** Local command/exec activity before a Codex thread exists. */
   private readonly standaloneThread = new CodexThread("standalone");
   /** Runtime owning each standalone command/exec process. */
@@ -190,7 +194,34 @@ export class CodexController {
       runtime = new CodexThread(threadId);
       this.threadControllers.set(threadId, runtime);
     }
+    this.runtimeAccess.delete(threadId);
+    this.runtimeAccess.set(threadId, Date.now());
+    this.evictInactiveRuntimes();
     return runtime;
+  }
+
+  /** Releases inactive loaded histories while retaining active thread state. */
+  private evictInactiveRuntimes(): void {
+    if (this.threadControllers.size <= MAX_CACHED_THREAD_RUNTIMES) return;
+    for (const [threadId] of this.runtimeAccess) {
+      if (this.threadControllers.size <= MAX_CACHED_THREAD_RUNTIMES) return;
+      if (threadId === this.threadId) continue;
+      const runtime = this.threadControllers.get(threadId);
+      if (
+        !runtime ||
+        runtime.state.status !== "idle" ||
+        runtime.state.pendingApproval ||
+        runtime.state.pendingUserInput
+      ) {
+        continue;
+      }
+      this.threadControllers.delete(threadId);
+      this.runtimeAccess.delete(threadId);
+      this.historyPagination.delete(threadId);
+      this.pendingHistoryLoads.delete(threadId);
+      this.readonlyThreadIds.delete(threadId);
+      this.attentionQueue.delete(threadId);
+    }
   }
 
   /** Runs a notification against its own runtime without changing the UI selection. */
@@ -279,7 +310,6 @@ export class CodexController {
     }
     return [...known.entries()].map(([threadId, thread]) => {
       const runtime = this.threadControllers.get(threadId);
-      const snapshot = runtime?.snapshot();
       const attention = runtime?.state.pendingUserInput
         ? "userInput"
         : runtime?.state.pendingApproval
@@ -288,8 +318,8 @@ export class CodexController {
       return {
         threadId,
         preview: thread?.preview ?? threadId,
-        status: snapshot?.status ?? "idle",
-        workingSince: snapshot?.workingSince,
+        status: runtime?.state.status ?? "idle",
+        workingSince: runtime?.state.workingSince,
         attention,
       };
     });
@@ -709,7 +739,7 @@ export class CodexController {
       const thread = message.result?.thread;
       if (typeof thread?.id === "string") {
         const runtime = this.runtime(thread.id);
-        const pendingHistory = this.standaloneThread.state.history;
+        const pendingHistory = this.standaloneThread.snapshot().history;
         this.threadId = thread.id;
         runtime.reset(pendingHistory);
         this.withRuntime(thread.id, () => {
@@ -1176,7 +1206,7 @@ export class CodexController {
     });
     const selectedRuntime = this.threadId ? this.runtime(this.threadId) : this.standaloneThread;
     if (this.threadId) {
-      this.standaloneThread.replaceHistory(selectedRuntime.state.history);
+      this.standaloneThread.replaceHistory(selectedRuntime.snapshot().history);
     }
     this.socket = null;
     this.initialized = false;
@@ -1190,6 +1220,7 @@ export class CodexController {
     this.pendingThreadResumeId = undefined;
     this.locallyStartedThreads.clear();
     this.threadControllers.clear();
+    this.runtimeAccess.clear();
     this.historyPagination.clear();
     this.pendingHistoryLoads.clear();
     this.standaloneThread.resetTransportState();
@@ -1254,7 +1285,7 @@ export class CodexController {
     if (this.threadId && !preserveHistory) {
       this.runtime(this.threadId).captureLiveHistoryForReload();
     }
-    const pendingHistory = preserveHistory ? this.threadRuntime().state.history : undefined;
+    const pendingHistory = preserveHistory ? this.threadRuntime().snapshot().history : undefined;
     this.threadId = id;
     const existing = this.threadControllers.has(id);
     if (!existing) {
@@ -1483,7 +1514,21 @@ export class CodexController {
           selectedThreadId: previousSelectedThread,
         });
       }
-      this.options.publishRendererState();
+      // Streaming deltas for a background thread do not affect the selected
+      // history. Avoid cloning and broadcasting every background token.
+      const highFrequencyStream =
+        message.method === "item/agentMessage/delta" ||
+        message.method === "item/commandExecution/outputDelta";
+      const shouldPublish =
+        !highFrequencyStream &&
+        (!wasBackgroundThread ||
+          nextStatus !== previousStatus ||
+          message.method === "turn/completed" ||
+          message.method === "item/commandExecution/requestApproval" ||
+          message.method === "item/fileChange/requestApproval" ||
+          message.method === "item/tool/requestUserInput" ||
+          message.method === "thread/status/changed");
+      if (shouldPublish) this.options.publishRendererState();
       return;
     }
     this.handleServerMessageInternal(message);
@@ -1587,6 +1632,7 @@ export class CodexController {
   private handleThreadRemoved(threadId: string): void {
     this.threads = this.threads.filter((thread) => thread.id !== threadId);
     this.threadControllers.delete(threadId);
+    this.runtimeAccess.delete(threadId);
     this.readonlyThreadIds.delete(threadId);
     this.attentionQueue.delete(threadId);
     if (this.threadId !== threadId) {
@@ -1764,7 +1810,11 @@ export class CodexController {
         message.params.itemId,
         message.params.turnId,
       );
-      this.options.publishRendererState();
+      this.options.publishStreamDelta?.({
+        kind: "assistant",
+        itemId: message.params.itemId,
+        delta: message.params.delta,
+      });
       return;
     }
     const runtime = this.runtime(message.params.threadId);
@@ -1773,7 +1823,14 @@ export class CodexController {
       message.params.itemId,
       message.params.turnId,
     );
-    this.options.publishRendererState();
+    if (message.params.threadId === this.threadId) {
+      this.options.publishStreamDelta?.({
+        threadId: message.params.threadId,
+        kind: "assistant",
+        itemId: message.params.itemId,
+        delta: message.params.delta,
+      });
+    }
   }
 
   /** Appends streamed command output to its activity message. */
@@ -1782,7 +1839,18 @@ export class CodexController {
   ): void {
     if (this.threadId || this.routedThreadId) {
       this.threadRuntime().appendActivityOutput(message.params.itemId, message.params.delta);
-      this.options.publishRendererState();
+      if (
+        !this.threadId ||
+        this.routedThreadId === undefined ||
+        this.routedThreadId === this.threadId
+      ) {
+        this.options.publishStreamDelta?.({
+          threadId: this.routedThreadId ?? this.threadId,
+          kind: "command",
+          itemId: message.params.itemId,
+          delta: message.params.delta,
+        });
+      }
     }
   }
 

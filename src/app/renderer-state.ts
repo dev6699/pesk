@@ -4,11 +4,14 @@ import type { BrowserWindow } from "electron";
 import type { ChatWebServer } from "../services/chat-web-server";
 import type { CodexController } from "../codex";
 import type { PeskSettings as AppSettings } from "../config/config";
+import type { CodexStreamDelta } from "../codex/types";
 
 /** The renderer payload is defined once in renderer/shared/types.d.ts. */
 export type RendererState = globalThis.RendererState;
 
 export class RendererStatePublisher {
+  private publishTimer: NodeJS.Timeout | undefined;
+
   constructor(
     private readonly getSettings: () => AppSettings,
     private readonly codex: CodexController,
@@ -28,6 +31,21 @@ export class RendererStatePublisher {
   }
 
   publish(): void {
+    if (this.publishTimer !== undefined) return;
+    this.publishTimer = setTimeout(() => {
+      this.publishTimer = undefined;
+      this.publishNow();
+    }, 16);
+  }
+
+  publishStreamDelta(delta: CodexStreamDelta): void {
+    for (const window of [this.getPetWindow(), this.getChatWindow()]) {
+      if (window && !window.isDestroyed()) window.webContents.send("codex-stream-delta", delta);
+    }
+    this.webServer.broadcastStreamDelta(delta);
+  }
+
+  private publishNow(): void {
     const state = this.getState();
     for (const window of [this.getPetWindow(), this.getChatWindow()]) {
       if (window && !window.isDestroyed()) window.webContents.send("settings-changed", state);

@@ -130,6 +130,7 @@ export class PeskApplication implements ApplicationContext {
     });
     this._codex = new CodexController({
       publishRendererState: () => this.state.publish(),
+      publishStreamDelta: (delta) => this.state.publishStreamDelta(delta),
       handleNotification: (request) => this.notifications.handle(request),
       isChatVisible: () => this.chat.window?.isVisible() ?? false,
       clearNotification: () => this.notifications.clear(),
