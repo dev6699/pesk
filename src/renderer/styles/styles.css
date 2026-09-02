@@ -475,19 +475,23 @@ body.chat-only #codex-chat {
   cursor: pointer;
 }
 
-.codex-project-manager-form label {
+.codex-project-manager-form label,
+.codex-project-thread-form label {
   display: flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
 }
 
-.codex-project-manager-form label > :first-child {
+.codex-project-manager-form label > :first-child,
+.codex-project-thread-form label > :first-child {
   flex: 0 0 72px;
 }
 
 .codex-project-manager-form label > input,
-.codex-project-manager-form label > select {
+.codex-project-manager-form label > select,
+.codex-project-thread-form label > input,
+.codex-project-thread-form label > select {
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -1366,9 +1370,30 @@ body.chat-only #codex-chat {
   text-align: center;
 }
 
+.codex-location {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  gap: 2px;
+}
+
+.codex-location > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-project-name {
+  flex: 0 1 auto;
+  color: #222;
+  font-weight: 600;
+}
+
 .codex-cwd {
   flex: 0 1 auto;
-  margin-left: auto;
+  margin-left: 0;
   color: #222;
   font-weight: 600;
   text-align: right;

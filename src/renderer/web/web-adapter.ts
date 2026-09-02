@@ -395,6 +395,8 @@ const webApi = {
   setCodexCollaborationMode: (mode: "default" | "plan") => send("setCollaborationMode", { mode }),
   submitCodexPrompt: async (prompt: string, images?: Array<{ url: string; name: string }>) =>
     (await sendCommand("submitPrompt", { prompt, images })).state ?? state!,
+  startCodexProjectThread: async (projectId: string, cwd: string) =>
+    (await sendCommand("startProjectThread", { projectId, cwd })).state ?? state!,
   startCodexReview: async (instructions: string) =>
     (await sendCommand("startReview", { instructions })).state ?? state!,
   implementCodexPlan: async (planText: string, clearContext: boolean) =>

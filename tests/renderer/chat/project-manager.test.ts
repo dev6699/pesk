@@ -9,7 +9,11 @@ const project = (id = "project-1", name = "Workspace") => ({
   id,
   name,
   roots: [{ path: "/workspace" }, { path: "/shared" }],
-  metadata: {}, position: 0, createdAt: 1, updatedAt: 1, recencyAt: null,
+  metadata: {},
+  position: 0,
+  createdAt: 1,
+  updatedAt: 1,
+  recencyAt: null,
 });
 
 function setup() {
@@ -25,10 +29,12 @@ function setup() {
     moveCodexProject: jest.fn(() => Promise.resolve(state)),
     deleteCodexProject: jest.fn(() => Promise.resolve(state)),
     chooseCodexProjectRoot: jest.fn(() => Promise.resolve("/chosen")),
-    setChatFileDialogOpen: jest.fn(), focusCodexInput: jest.fn(),
+    setChatFileDialogOpen: jest.fn(),
+    focusCodexInput: jest.fn(),
   } as unknown as Window["peskApi"];
   window.peskApi = api;
-  document.body.innerHTML = '<form id="codex-chat-form"></form><section id="project-prompt"></section>';
+  document.body.innerHTML =
+    '<form id="codex-chat-form"></form><section id="project-prompt"></section>';
   return { api, state, container: document.getElementById("project-prompt") as HTMLElement };
 }
 
@@ -100,7 +106,10 @@ test("requires delete confirmation and supports cancellation", async () => {
 
 test("shows delete errors and supports moving a project upward", async () => {
   const { api, container, state } = setup();
-  (api.deleteCodexProject as jest.Mock).mockResolvedValue({ ...state, codex: { ...state.codex, error: "delete failed" } });
+  (api.deleteCodexProject as jest.Mock).mockResolvedValue({
+    ...state,
+    codex: { ...state.codex, error: "delete failed" },
+  });
   await openProjectManager(container);
   const controlsSet = controls(container);
   controlsSet.action.value = "delete";
@@ -121,7 +130,10 @@ test("shows delete errors and supports moving a project upward", async () => {
 test("handles cancelled folder selection and failed project refresh", async () => {
   const { api, container, state } = setup();
   (api.chooseCodexProjectRoot as jest.Mock).mockResolvedValue(undefined);
-  (api.listCodexProjects as jest.Mock).mockResolvedValue({ ...state, codex: { ...state.codex, error: "refresh failed" } });
+  (api.listCodexProjects as jest.Mock).mockResolvedValue({
+    ...state,
+    codex: { ...state.codex, error: "refresh failed" },
+  });
   await openProjectManager(container);
   const controlsSet = controls(container);
   await controlsSet.choose.click();
@@ -134,7 +146,10 @@ test("handles cancelled folder selection and failed project refresh", async () =
 
 test("shows errors and validates missing fields", async () => {
   const { api, container, state } = setup();
-  (api.createCodexProject as jest.Mock).mockResolvedValue({ ...state, codex: { ...state.codex, error: "create failed" } });
+  (api.createCodexProject as jest.Mock).mockResolvedValue({
+    ...state,
+    codex: { ...state.codex, error: "create failed" },
+  });
   await openProjectManager(container);
   const controlsSet = controls(container);
   await submit(controlsSet.form);
@@ -158,7 +173,10 @@ test("handles an empty project list and invalid move positions", async () => {
   await submit(controlsSet.form);
   expect(api.deleteCodexProject).not.toHaveBeenCalled();
 
-  (api.getSettings as jest.Mock).mockResolvedValue({ ...state, codex: { ...state.codex, projects: [project()] } });
+  (api.getSettings as jest.Mock).mockResolvedValue({
+    ...state,
+    codex: { ...state.codex, projects: [project()] },
+  });
   await openProjectManager(container);
   const moveControls = controls(container);
   moveControls.action.value = "move";

@@ -158,15 +158,85 @@ describe("CodexController", () => {
     expect(controller.getState().projects).toEqual([project]);
 
     const move = controller.moveProject("project-1", null);
-    expect(lastMessage(socket)).toMatchObject({ method: "project/move", params: { projectId: "project-1", beforeProjectId: null } });
+    expect(lastMessage(socket)).toMatchObject({
+      method: "project/move",
+      params: { projectId: "project-1", beforeProjectId: null },
+    });
     socket.emit("message", JSON.stringify({ id: lastMessage(socket).id, result: {} }));
     await expect(move).resolves.toBe(true);
 
     const deletion = controller.deleteProject("project-1");
-    expect(lastMessage(socket)).toMatchObject({ method: "project/delete", params: { projectId: "project-1" } });
+    expect(lastMessage(socket)).toMatchObject({
+      method: "project/delete",
+      params: { projectId: "project-1" },
+    });
     socket.emit("message", JSON.stringify({ id: lastMessage(socket).id, result: {} }));
     await expect(deletion).resolves.toBe(true);
     expect(controller.getState().projects).toEqual([]);
+  });
+
+  test("starts a new thread with the selected project and root", async () => {
+    const { controller, socket } = connectedController();
+    const project = {
+      id: "project-1",
+      name: "Workspace",
+      roots: [{ path: "/workspace" }, { path: "/shared" }],
+      metadata: {},
+      position: 0,
+      createdAt: 1,
+      updatedAt: 1,
+      recencyAt: null,
+    };
+    const listing = controller.listProjects();
+    expect(lastMessage(socket)).toMatchObject({ method: "project/list" });
+    socket.emit(
+      "message",
+      JSON.stringify({ id: lastMessage(socket).id, result: { data: [project] } }),
+    );
+    expect(await listing).toBe(true);
+
+    expect(controller.startProjectThread("project-1", "/shared")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/start",
+      params: { projectId: "project-1", cwd: "/shared", serviceName: "pesk" },
+    });
+    const startId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({ id: startId, result: { thread: { id: "project-thread" } } }),
+    );
+    expect(controller.getState()).toMatchObject({
+      threadId: "project-thread",
+      projectId: "project-1",
+      cwd: "/shared",
+    });
+  });
+
+  test("rejects an unconfigured project root and reports start errors", async () => {
+    const { controller, socket } = connectedController();
+    const project = {
+      id: "project-1",
+      name: "Workspace",
+      roots: [{ path: "/workspace" }],
+      metadata: {},
+      position: 0,
+      createdAt: 1,
+      updatedAt: 1,
+      recencyAt: null,
+    };
+    const listing = controller.listProjects();
+    socket.emit(
+      "message",
+      JSON.stringify({ id: lastMessage(socket).id, result: { data: [project] } }),
+    );
+    await listing;
+
+    expect(controller.startProjectThread("project-1", "/missing")).toBe(false);
+    expect(controller.getState().commandNotice).toContain("not configured");
+    expect(controller.startProjectThread("project-1", "/workspace")).toBe(true);
+    const startId = lastMessage(socket).id;
+    socket.emit("message", JSON.stringify({ id: startId, error: "start failed" }));
+    expect(controller.getState().commandNotice).toBe("start failed");
   });
 
   test("logs connection and socket errors and retries after construction fails", () => {
@@ -968,7 +1038,7 @@ describe("CodexController", () => {
     );
     expect(controller.getState().tokenUsage?.total.totalTokens).toBe(1650);
 
-    expect(controller.submitPrompt("/new")).toBe(true);
+    expect(controller.startNewThread()).toBe(true);
     expect(controller.getState().tokenUsage).toBeUndefined();
 
     socket.emit(
@@ -1100,10 +1170,10 @@ describe("CodexController", () => {
     });
   });
 
-  test("starts /new in the requested working directory", () => {
+  test("starts a new thread in the requested working directory", () => {
     const { controller, socket } = connectedController();
 
-    expect(controller.submitPrompt("/new /workspace/other-project")).toBe(true);
+    expect(controller.startNewThread("/workspace/other-project")).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/start",
       params: {
@@ -1112,12 +1182,12 @@ describe("CodexController", () => {
     });
   });
 
-  test("starts /new while the selected thread is working", () => {
+  test("starts a new thread while the selected thread is working", () => {
     const { controller, socket } = connectedController();
     threadState(controller).status = "working";
     threadState(controller).activeTurnId = "turn-1";
 
-    expect(controller.submitPrompt("/new")).toBe(true);
+    expect(controller.startNewThread()).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/start",
       params: { serviceName: "pesk" },
@@ -1130,7 +1200,7 @@ describe("CodexController", () => {
     expect(controller.getState().threadId).toBe("new-thread");
   });
 
-  test("reuses the current thread working directory for /new", () => {
+  test("reuses the current thread working directory for a new thread", () => {
     const { controller, socket } = connectedController();
 
     socket.emit(
@@ -1146,7 +1216,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.submitPrompt("/new")).toBe(true);
+    expect(controller.startNewThread()).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/start",
       params: {

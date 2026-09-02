@@ -25,5 +25,7 @@ module.exports = {
       "<rootDir>/src/renderer/shared/default-settings.ts",
     "^\\./codex-(.*)\\.js$": "<rootDir>/src/renderer/features/chat/codex-$1.ts",
     "^\\./project-manager\\.js$": "<rootDir>/src/renderer/features/chat/project-manager.ts",
+    "^\\./project-thread-renderer\\.js$":
+      "<rootDir>/src/renderer/features/chat/project-thread-renderer.ts",
   },
 };

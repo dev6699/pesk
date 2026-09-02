@@ -7,6 +7,7 @@ interface CodexInputControllerCallbacks {
   updateState(next: RendererState): void;
   openReviewPrompt(): void;
   openProjectManager(): void;
+  openNewThreadPrompt(): void;
   renderUserInput(force: boolean): void;
 }
 
@@ -148,6 +149,15 @@ export class CodexInputController {
       this.hideSuggestions();
       this.resize();
       this.callbacks.openProjectManager();
+      this.input.focus();
+      return;
+    }
+    if (/^\/new(?:\s+.*)?$/i.test(prompt)) {
+      this.rememberPrompt(prompt);
+      this.input.value = "";
+      this.hideSuggestions();
+      this.resize();
+      this.callbacks.openNewThreadPrompt();
       this.input.focus();
       return;
     }

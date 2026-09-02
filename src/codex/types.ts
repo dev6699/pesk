@@ -86,6 +86,7 @@ export interface CodexModelInfo {
 
 /** Renderer-facing state owned by one thread runtime. */
 export interface CodexThreadSnapshot {
+  projectId?: string | null;
   status: "idle" | "working" | "waiting";
   connected: boolean;
   history: CodexMessage[];
@@ -106,6 +107,7 @@ export interface CodexThreadSnapshot {
 /** Complete state published by the Codex controller to renderer clients. */
 export interface CodexState {
   threadId?: string;
+  projectId?: string | null;
   readOnly: boolean;
   cwd?: string;
   error?: string;

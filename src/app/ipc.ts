@@ -52,6 +52,11 @@ export function registerIpcHandlers(context: ApplicationContext): void {
     if (typeof prompt === "string") codex.submitPromptWithImages(prompt, validImageInputs(images));
     return state.getState();
   });
+  registerInvoke("start-codex-project-thread", (_event, projectId, cwd) => {
+    if (typeof projectId === "string" && typeof cwd === "string")
+      codex.startProjectThread(projectId, cwd);
+    return state.getState();
+  });
   registerInvoke("start-codex-review", (_event, instructions) => {
     if (typeof instructions === "string") codex.startReview(instructions);
     return state.getState();

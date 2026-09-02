@@ -7,6 +7,7 @@ import { CodexStatusRenderer } from "./codex-status-renderer.js";
 import { CodexSuggestionRenderer } from "./codex-suggestions-renderer.js";
 import { formatElapsed, formatRateLimitDetails, formatTokens } from "./codex-renderer-helpers.js";
 import { openProjectManager } from "./project-manager.js";
+import { openProjectThreadPrompt } from "./project-thread-renderer.js";
 
 export class CodexRenderer {
   private readonly webChat = document.body.classList.contains("web-chat");
@@ -34,6 +35,7 @@ export class CodexRenderer {
   private readonly attachmentRenderer: CodexAttachmentRenderer;
   private readonly inputController: CodexInputController;
   private readonly historyRenderer: CodexHistoryRenderer;
+  private readonly threadProjectIds = new Map<string, string | null>();
 
   /** Creates the renderer and wires chat, history, and composer events. */
   constructor(
@@ -97,7 +99,10 @@ export class CodexRenderer {
         getState: () => this.state,
         updateState: (next) => this.updateState(next),
         openReviewPrompt: () => this.promptRenderer.openReviewPrompt(),
-        openProjectManager: () => void openProjectManager(this.userInput ?? document.createElement("section")),
+        openProjectManager: () =>
+          void openProjectManager(this.userInput ?? document.createElement("section")),
+        openNewThreadPrompt: () =>
+          void openProjectThreadPrompt(this.userInput ?? document.createElement("section")),
         renderUserInput: (force) => this.renderUserInput(force),
       },
     );
@@ -167,12 +172,26 @@ export class CodexRenderer {
 
   /** Applies renderer state and refreshes all visible chat controls. */
   updateState(next: RendererState): void {
+    for (const thread of next.codex.threads) {
+      if (thread.projectId !== undefined) this.threadProjectIds.set(thread.id, thread.projectId);
+    }
+    if (next.codex.threadId && next.codex.projectId !== undefined) {
+      this.threadProjectIds.set(next.codex.threadId, next.codex.projectId);
+    }
+    const closedProjectThread =
+      next.codex.threadId !== this.state.codex.threadId &&
+      document.body.dataset.projectThread === "true";
     if (
       next.codex.threadId !== this.state.codex.threadId &&
-      document.body.dataset.projectManager === "true"
+      (document.body.dataset.projectManager === "true" ||
+        document.body.dataset.projectThread === "true")
     ) {
       delete document.body.dataset.projectManager;
-      if (this.userInput) delete this.userInput.dataset.projectManager;
+      delete document.body.dataset.projectThread;
+      if (this.userInput) {
+        delete this.userInput.dataset.projectManager;
+        delete this.userInput.dataset.projectThread;
+      }
       this.userInput?.replaceChildren();
       if (this.userInput) this.userInput.hidden = true;
       this.form.hidden = false;
@@ -259,8 +278,10 @@ export class CodexRenderer {
       next.codex.pendingApproval ||
       this.activePlanConfirmation ||
       this.promptRenderer.isReviewPromptOpen ||
-      document.body.dataset.projectManager === "true",
+      document.body.dataset.projectManager === "true" ||
+      document.body.dataset.projectThread === "true",
     );
+    if (closedProjectThread) this.inputController.focusChatInput();
     if (this.modeToggle) {
       const plan = next.codex.collaborationMode === "plan";
       this.modeToggle.hidden = !plan;
@@ -289,11 +310,16 @@ export class CodexRenderer {
   handleKeydown(event: KeyboardEvent): void {
     if (
       matchesShortcut(event, "closeProjectManager") &&
-      document.body.dataset.projectManager === "true"
+      (document.body.dataset.projectManager === "true" ||
+        document.body.dataset.projectThread === "true")
     ) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      this.userInput?.querySelector<HTMLButtonElement>("[data-project-cancel='true']")?.click();
+      this.userInput
+        ?.querySelector<HTMLButtonElement>(
+          "[data-project-cancel='true'], [data-project-thread-cancel='true']",
+        )
+        ?.click();
       return;
     }
     if (
@@ -733,7 +759,24 @@ export class CodexRenderer {
     ].filter(Boolean);
     const modelLine = modelParts.join(" · ");
     const cwd = this.state.codex.cwd;
-    const lines = [modelLine, contextLabel, cwd, usageParts.join(" · ")].filter(Boolean);
+    const currentThread = this.state.codex.threads.find(
+      (thread) => thread.id === this.state.codex.threadId,
+    );
+    const projectId =
+      this.state.codex.projectId ??
+      currentThread?.projectId ??
+      (this.state.codex.threadId
+        ? this.threadProjectIds.get(this.state.codex.threadId)
+        : undefined);
+    const project = projectId
+      ? this.state.codex.projects?.find((candidate) => candidate.id === projectId)
+      : this.state.codex.projects?.find((candidate) =>
+          cwd ? candidate.roots.some((root) => root.path === cwd) : false,
+        );
+    const projectName = project?.name;
+    const lines = [modelLine, contextLabel, projectName, cwd, usageParts.join(" · ")].filter(
+      Boolean,
+    );
     this.tokenUsage.replaceChildren();
     if (modelLine || contextLabel || cwd) {
       const modelRow = document.createElement("div");
@@ -748,12 +791,24 @@ export class CodexRenderer {
         contextLabelElement.title = contextLabel;
         modelRow.append(contextLabelElement);
       }
-      if (cwd) {
-        const cwdLabel = document.createElement("span");
-        cwdLabel.className = "codex-cwd";
-        cwdLabel.textContent = cwd;
-        cwdLabel.title = cwd;
-        modelRow.append(cwdLabel);
+      if (projectName || cwd) {
+        const location = document.createElement("span");
+        location.className = "codex-location";
+        if (projectName) {
+          const projectLabel = document.createElement("span");
+          projectLabel.className = "codex-project-name";
+          projectLabel.textContent = `${projectName} ·`;
+          projectLabel.title = projectName;
+          location.append(projectLabel);
+        }
+        if (cwd) {
+          const cwdLabel = document.createElement("span");
+          cwdLabel.className = "codex-cwd";
+          cwdLabel.textContent = cwd;
+          cwdLabel.title = cwd;
+          location.append(cwdLabel);
+        }
+        modelRow.append(location);
       }
       this.tokenUsage.append(modelRow);
     }
@@ -768,7 +823,13 @@ export class CodexRenderer {
       if (this.modeToggle) usageLine.append(this.modeToggle);
       this.tokenUsage.append(usageLine);
     }
-    this.tokenUsage.title = [...modelParts, contextLabel, cwd ?? "", ...usageParts]
+    this.tokenUsage.title = [
+      ...modelParts,
+      contextLabel,
+      projectName ?? "",
+      cwd ?? "",
+      ...usageParts,
+    ]
       .filter(Boolean)
       .join(" · ");
     this.tokenUsage.hidden = lines.length === 0 && !cwd;

@@ -32,6 +32,10 @@ export function handleWebCommand(
           context.codex.submitPromptWithImages(command.prompt, validImageInputs(command.images)),
       );
       break;
+    case "startProjectThread":
+      if (typeof command.projectId === "string" && typeof command.cwd === "string")
+        replyCommand(context.codex.startProjectThread(command.projectId, command.cwd));
+      break;
     case "startReview":
       replyCommand(
         typeof command.instructions === "string" && context.codex.startReview(command.instructions),

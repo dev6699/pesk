@@ -85,6 +85,7 @@ import type {
   ThreadForkRequest,
   ThreadShellCommandRequest,
   ThreadStartRequest,
+  ProjectThreadStartRequest,
   ThreadGoalGetRequest,
   ThreadGoalClearRequest,
   ThreadGoalSetRequest,
@@ -271,6 +272,7 @@ export class CodexController {
         : "idle";
     return {
       threadId: this.threadId,
+      projectId: thread.projectId,
       readOnly: Boolean(this.threadId && this.readonlyThreadIds.has(this.threadId)),
       cwd: thread.workingDirectory ?? process.cwd(),
       error: this.connectionError,
@@ -537,7 +539,9 @@ export class CodexController {
         }
         const project = message.result?.project;
         if (message.error || !isProject(project)) {
-          this.threadRuntime().setCommandNotice(`Unable to ${method.slice("project/".length)} project.`);
+          this.threadRuntime().setCommandNotice(
+            `Unable to ${method.slice("project/".length)} project.`,
+          );
           this.options.publishRendererState();
           resolve(false);
           return;
@@ -884,7 +888,8 @@ export class CodexController {
     }
     const newThreadMatch = prompt.match(/^\/new(?:\s+(.+))?$/);
     if (newThreadMatch) {
-      return this.startNewThread(newThreadMatch[1]);
+      this.threadRuntime().setCommandNotice("Choose a project and root in the /new prompt.");
+      return false;
     }
     if (/^\/fork$/i.test(prompt)) {
       return this.forkThread();
@@ -1322,6 +1327,66 @@ export class CodexController {
         this.threadRuntime().rememberPrompt(initialPrompt);
         this.startTurn(thread.id, initialPrompt);
       }
+    });
+    return true;
+  }
+
+  /** Starts and selects an empty thread assigned to a project and one of its roots. */
+  startProjectThread(projectId: string, workingDirectory: string): boolean {
+    const cwd = typeof workingDirectory === "string" ? workingDirectory.trim() : "";
+    if (!this.initialized || !validProjectId(projectId) || !validProjectRoots([{ path: cwd }])) {
+      this.threadRuntime().setCommandNotice("Choose a valid project and absolute root.");
+      this.options.publishRendererState();
+      return false;
+    }
+    const project = this.projects.find((candidate) => candidate.id === projectId);
+    if (!project || !project.roots.some((root) => root.path === cwd)) {
+      this.threadRuntime().setCommandNotice(
+        "The selected root is not configured for that project.",
+      );
+      this.options.publishRendererState();
+      return false;
+    }
+    this.startingNewThread = true;
+    this.threadRuntime().setTokenUsage(undefined);
+    this.options.publishRendererState();
+    const id = ++this.nextId;
+    this.options.debug("Pesk starting project Codex thread", {
+      cwd,
+      projectId,
+      reason: "new project thread",
+    });
+    this.send({
+      method: "thread/start",
+      id,
+      params: {
+        cwd: cwd,
+        projectId,
+        serviceName: "pesk",
+      },
+    } satisfies ProjectThreadStartRequest);
+    this.pendingThreadStarts += 1;
+    this.setRequest<ThreadStartResponse>(id, (message) => {
+      const thread = message.result?.thread;
+      if (typeof thread?.id !== "string") {
+        this.startingNewThread = false;
+        this.threadRuntime().setCommandNotice(
+          typeof message.error === "string" ? message.error : "Unable to create project thread.",
+        );
+        this.options.publishRendererState();
+        return;
+      }
+      this.startingNewThread = false;
+      this.noteThreadStartResponse(thread.id);
+      this.threadId = thread.id;
+      const runtime = this.runtime(thread.id);
+      runtime.reset([], cwd);
+      runtime.setProjectId(projectId);
+      runtime.setConnected(true);
+      runtime.syncServerThread(thread);
+      this.updateModelInfo(message);
+      this.threads = [thread, ...this.threads.filter((candidate) => candidate.id !== thread.id)];
+      this.options.publishRendererState();
     });
     return true;
   }
@@ -1810,7 +1875,9 @@ export class CodexController {
         this.scheduleProjectRefresh();
         break;
       case "thread/project/updated":
+        this.runtime(message.params.threadId).setProjectId(message.params.projectId);
         this.scheduleProjectRefresh();
+        this.options.publishRendererState();
         break;
       case "thread/archived":
         this.handleThreadRemoved(message.params.threadId);

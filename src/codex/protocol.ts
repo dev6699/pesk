@@ -74,6 +74,11 @@ export function approvalDecisions(
 type RequestOf<Method extends ClientRequest["method"]> = Extract<ClientRequest, { method: Method }>;
 export type InitializeRequest = RequestOf<"initialize">;
 export type ThreadStartRequest = RequestOf<"thread/start">;
+export type ProjectThreadStartRequest = {
+  method: "thread/start";
+  id: number;
+  params: ThreadStartRequest["params"] & { projectId: string };
+};
 export type ThreadResumeRequest = RequestOf<"thread/resume">;
 export type ThreadForkRequest = RequestOf<"thread/fork">;
 export type ThreadListRequest = RequestOf<"thread/list">;

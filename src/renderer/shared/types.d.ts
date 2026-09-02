@@ -155,6 +155,7 @@ interface CodexGoal {
 
 interface CodexRuntimeState {
   threadId?: string;
+  projectId?: string | null;
   readOnly: boolean;
   cwd?: string;
   error?: string;
@@ -162,7 +163,7 @@ interface CodexRuntimeState {
   aggregateStatus: "idle" | "working" | "waiting";
   connected: boolean;
   history: CodexHistoryItem[];
-  threads: Array<{ id: string; preview?: string; status?: unknown }>;
+  threads: Array<{ id: string; preview?: string; status?: unknown; projectId?: string | null }>;
   projects?: Array<{
     id: string;
     name: string;

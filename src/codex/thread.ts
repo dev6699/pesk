@@ -14,6 +14,7 @@ import type { ThreadGoal, ThreadTokenUsage, TokenUsageBreakdown } from "../codex
 export type ThreadStatus = "idle" | "working" | "waiting";
 
 export interface ThreadState {
+  projectId?: string | null;
   activeTurnId?: string;
   status: ThreadStatus;
   connected: boolean;
@@ -71,6 +72,7 @@ export class CodexThread {
   snapshot(): CodexThreadSnapshot {
     const history = this.streamingAssistantHistory();
     return {
+      projectId: this.state.projectId,
       status: this.state.status,
       connected: this.state.connected,
       history,
@@ -94,6 +96,7 @@ export class CodexThread {
     this.liveHistoryForReload = [];
     this.streamingAssistantChunks = [];
     this.state.activeTurnId = undefined;
+    this.state.projectId = undefined;
     this.state.status = "idle";
     this.state.connected = false;
     this.state.history = [...history];
@@ -797,7 +800,14 @@ export class CodexThread {
   syncServerThread(thread: unknown): void {
     if (!thread || typeof thread !== "object") return;
     const cwd = (thread as { cwd?: unknown }).cwd;
+    const projectId = (thread as { projectId?: unknown }).projectId;
+    if (typeof projectId === "string" || projectId === null) this.state.projectId = projectId;
     if (typeof cwd === "string") this.setWorkingDirectory(cwd);
+  }
+
+  /** Stores the project assignment for a newly started or updated thread. */
+  setProjectId(projectId: string | null | undefined): void {
+    if (typeof projectId === "string" || projectId === null) this.state.projectId = projectId;
   }
 
   /** Updates the active turn ID from a request response. */

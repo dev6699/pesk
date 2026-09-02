@@ -79,7 +79,9 @@ export async function openProjectManager(container: HTMLElement): Promise<void> 
     valueLabel.style.display = usesValue && !removingRoot ? "" : "none";
     rootChoiceLabel.hidden = !removingRoot;
     rootChoiceLabel.style.display = removingRoot ? "" : "none";
-    rootChoice.replaceChildren(...(current?.roots ?? []).map((entry) => new Option(entry.path, entry.path)));
+    rootChoice.replaceChildren(
+      ...(current?.roots ?? []).map((entry) => new Option(entry.path, entry.path)),
+    );
     rootsInfo.replaceChildren();
     rootsInfo.hidden = !current || mode === "create";
     if (current && mode !== "create") {
@@ -115,7 +117,7 @@ export async function openProjectManager(container: HTMLElement): Promise<void> 
     project.replaceChildren(...projects.map((entry) => new Option(entry.name, entry.id)));
     project.value = projects.some((entry) => entry.id === previousId)
       ? previousId
-      : projects[0]?.id ?? "";
+      : (projects[0]?.id ?? "");
     update();
   };
   action.addEventListener("change", update);
@@ -162,19 +164,37 @@ export async function openProjectManager(container: HTMLElement): Promise<void> 
       return;
     }
     let result: RendererState | undefined;
-    if (mode === "create" && value.value.trim() && name.value.trim()) result = await window.peskApi.createCodexProject(name.value.trim(), value.value.trim());
-    else if (mode === "rename" && current && value.value.trim()) result = await window.peskApi.updateCodexProject(current.id, { name: value.value.trim() });
-    else if (mode === "add-root" && current && value.value.trim()) result = await window.peskApi.updateCodexProject(current.id, { roots: [...current.roots.map((entry) => entry.path), value.value.trim()] });
-    else if (mode === "remove-root" && current && rootChoice.value) result = await window.peskApi.updateCodexProject(current.id, { roots: current.roots.map((entry) => entry.path).filter((entry) => entry !== rootChoice.value) });
+    if (mode === "create" && value.value.trim() && name.value.trim())
+      result = await window.peskApi.createCodexProject(name.value.trim(), value.value.trim());
+    else if (mode === "rename" && current && value.value.trim())
+      result = await window.peskApi.updateCodexProject(current.id, { name: value.value.trim() });
+    else if (mode === "add-root" && current && value.value.trim())
+      result = await window.peskApi.updateCodexProject(current.id, {
+        roots: [...current.roots.map((entry) => entry.path), value.value.trim()],
+      });
+    else if (mode === "remove-root" && current && rootChoice.value)
+      result = await window.peskApi.updateCodexProject(current.id, {
+        roots: current.roots
+          .map((entry) => entry.path)
+          .filter((entry) => entry !== rootChoice.value),
+      });
     else if (mode === "move" && current) {
       const requested = Number(position.value) - 1;
       const currentIndex = projects.findIndex((entry) => entry.id === current.id);
-      if (!Number.isInteger(requested) || requested < 0 || requested >= projects.length) { message.textContent = `Position must be between 1 and ${projects.length}.`; return; }
-      if (requested === currentIndex) { cancel.click(); return; }
+      if (!Number.isInteger(requested) || requested < 0 || requested >= projects.length) {
+        message.textContent = `Position must be between 1 and ${projects.length}.`;
+        return;
+      }
+      if (requested === currentIndex) {
+        cancel.click();
+        return;
+      }
       const before = requested < currentIndex ? projects[requested] : projects[requested + 1];
       result = await window.peskApi.moveCodexProject(current.id, before?.id ?? null);
+    } else {
+      message.textContent = "Complete the required field.";
+      return;
     }
-    else { message.textContent = "Complete the required field."; return; }
     if (result?.codex.error) message.textContent = result.codex.error;
     else {
       await refreshProjects();

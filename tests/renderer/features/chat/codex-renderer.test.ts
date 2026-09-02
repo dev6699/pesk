@@ -113,6 +113,9 @@ function makeRenderer(
     implementCodexPlan: jest.fn(async () => settings),
     interruptCodexTurn: jest.fn(async () => true),
     submitCodexPrompt: jest.fn(async () => settings),
+    getSettings: jest.fn(async () => settings),
+    listCodexProjects: jest.fn(async () => settings),
+    startCodexProjectThread: jest.fn(async () => settings),
     startCodexReview: jest.fn(async () => settings),
     fuzzyFileSearch: jest.fn(async (): Promise<FuzzyFileSearchResult[]> => [
       {
@@ -174,7 +177,19 @@ test("renders session state, history, activities, approvals, and token usage", (
       ...defaultRendererState().codex,
       threadId: "thread-1",
       error: "socket failed",
-      threads: [{ id: "thread-1", preview: "Inspect project" }],
+      threads: [{ id: "thread-1", preview: "Inspect project", projectId: "project-1" }],
+      projects: [
+        {
+          id: "project-1",
+          name: "Frontend",
+          roots: [{ path: "/tmp/project" }],
+          metadata: {},
+          position: 0,
+          createdAt: 1,
+          updatedAt: 1,
+          recencyAt: null,
+        },
+      ],
       modelInfo: {
         model: "gpt-test",
         provider: "openai",
@@ -1992,6 +2007,49 @@ test("submits a prompt, queues while working, and handles input shortcuts", asyn
   expect(submit).toHaveBeenLastCalledWith("blocked");
 });
 
+test("opens the guided project flow for /new", async () => {
+  const { elements } = makeRenderer({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      projects: [
+        {
+          id: "project-1",
+          name: "Workspace",
+          roots: [{ path: "/workspace" }],
+          metadata: {},
+          position: 0,
+          createdAt: 1,
+          updatedAt: 1,
+          recencyAt: null,
+        },
+      ],
+    },
+  });
+  elements.input.value = "/new /ignored-path";
+  elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(elements.input.value).toBe("");
+  expect(elements.userInput.querySelector("legend")?.textContent).toBe("New project thread");
+  expect(elements.userInput.querySelector("select[aria-label='Thread root']")).not.toBeNull();
+});
+
+test("refocuses the composer after a project thread is selected", () => {
+  const { renderer, elements } = makeRenderer({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "old-thread" },
+  });
+  document.body.dataset.projectThread = "true";
+  elements.userInput.dataset.projectThread = "true";
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "new-thread" },
+  });
+  expect(window.peskApi.focusCodexInput).toHaveBeenCalled();
+  expect(elements.form.hidden).toBe(false);
+});
+
 test("cycles through submitted prompt history and restores the draft", async () => {
   const { renderer, elements } = makeRenderer({
     ...defaultRendererState(),
@@ -2282,6 +2340,19 @@ test("renders complete usage, rate-limit, and goal details", () => {
       ...defaultRendererState().codex,
       threadId: "thread-1",
       cwd: "/tmp/project",
+      threads: [{ id: "thread-1", projectId: "project-1" }],
+      projects: [
+        {
+          id: "project-1",
+          name: "Frontend",
+          roots: [{ path: "/tmp/project" }],
+          metadata: {},
+          position: 0,
+          createdAt: 1,
+          updatedAt: 1,
+          recencyAt: null,
+        },
+      ],
       modelInfo: {
         model: "model",
         provider: "provider",
@@ -2326,13 +2397,109 @@ test("renders complete usage, rate-limit, and goal details", () => {
 
   expect(elements.tokenUsage.textContent).toContain("1.50m");
   expect(elements.tokenUsage.textContent).toContain("/tmp/project");
+  expect(elements.tokenUsage.textContent).toContain("Frontend");
   expect(elements.tokenUsage.textContent).toContain("Reasoning 8.0k");
   const modelLine = elements.tokenUsage.querySelector(".codex-model-line");
   expect(modelLine?.textContent).toContain("Reasoning high");
   expect(modelLine?.textContent?.indexOf("Reasoning high")).toBeLessThan(
     modelLine?.textContent?.indexOf("Context") ?? -1,
   );
+  expect(modelLine?.textContent?.indexOf("Frontend")).toBeLessThan(
+    modelLine?.textContent?.indexOf("/tmp/project") ?? -1,
+  );
   expect((renderer as any).goal.textContent).toContain("Improve coverage");
+});
+
+test("keeps the project name when the thread list entry has no project field", () => {
+  const { renderer, elements } = makeRenderer();
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threadId: "thread-2",
+      projectId: "project-1",
+      cwd: "/tmp/project",
+      modelInfo: { model: "model" },
+      threads: [{ id: "thread-2" }],
+      projects: [
+        {
+          id: "project-1",
+          name: "Frontend",
+          roots: [{ path: "/tmp/project" }],
+          metadata: {},
+          position: 0,
+          createdAt: 1,
+          updatedAt: 1,
+          recencyAt: null,
+        },
+      ],
+    },
+  });
+  expect(elements.tokenUsage.querySelector(".codex-project-name")?.textContent).toBe("Frontend ·");
+});
+
+test("keeps a thread project name after switching away and back", () => {
+  const { renderer, elements } = makeRenderer();
+  const projectState = {
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threadId: "thread-1",
+      projectId: "project-1",
+      cwd: "/tmp/project",
+      threads: [{ id: "thread-1", projectId: "project-1" }],
+      projects: [
+        {
+          id: "project-1",
+          name: "Frontend",
+          roots: [{ path: "/tmp/project" }],
+          metadata: {},
+          position: 0,
+          createdAt: 1,
+          updatedAt: 1,
+          recencyAt: null,
+        },
+      ],
+      modelInfo: { model: "model" },
+    },
+  };
+  renderer.updateState(projectState);
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-2" },
+  });
+  renderer.updateState({
+    ...projectState,
+    codex: { ...projectState.codex, projectId: undefined, threads: [{ id: "thread-1" }] },
+  });
+  expect(elements.tokenUsage.querySelector(".codex-project-name")?.textContent).toBe("Frontend ·");
+});
+
+test("falls back to the project root for an empty thread", () => {
+  const { renderer, elements } = makeRenderer();
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threadId: "empty-thread",
+      cwd: "/tmp/project",
+      threads: [{ id: "empty-thread" }],
+      projects: [
+        {
+          id: "project-1",
+          name: "Frontend",
+          roots: [{ path: "/tmp/project" }],
+          metadata: {},
+          position: 0,
+          createdAt: 1,
+          updatedAt: 1,
+          recencyAt: null,
+        },
+      ],
+      modelInfo: { model: "model" },
+    },
+  });
+  expect(elements.tokenUsage.querySelector(".codex-project-name")?.textContent).toBe("Frontend ·");
 });
 
 test("handles history keyboard actions and sanitizes message markup", async () => {

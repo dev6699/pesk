@@ -75,6 +75,7 @@ const api: PeskApi = {
   quitPesk: sendChannel("quit-pesk"),
   respondCodexPermission: sendChannel("respond-codex-permission"),
   submitCodexPrompt: invokeChannel("submit-codex-prompt"),
+  startCodexProjectThread: invokeChannel("start-codex-project-thread"),
   startCodexReview: invokeChannel("start-codex-review"),
   fuzzyFileSearch: invokeChannel("fuzzy-file-search"),
   listCodexProjects: invokeChannel("list-codex-projects"),
