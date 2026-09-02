@@ -725,7 +725,6 @@ export class CodexRenderer {
       this.tokenUsage.textContent = "";
       return;
     }
-    const total = usage?.total.totalTokens;
     const currentContext = usage?.last?.inputTokens;
     const context = usage?.modelContextWindow ?? undefined;
     const contextPercent =
@@ -745,13 +744,13 @@ export class CodexRenderer {
       modelInfo?.serviceTier ? `Tier ${modelInfo.serviceTier}` : "",
     ].filter(Boolean);
     const usageParts = [
-      total !== undefined ? `Total ${formatTokens(total)}` : "",
-      usage?.total.inputTokens !== undefined ? `In ${formatTokens(usage.total.inputTokens)}` : "",
+      usage?.total.inputTokens !== undefined
+        ? `In ${formatTokens(usage.total.inputTokens)}${usage.total.cachedInputTokens !== undefined ? ` (${formatTokens(usage.total.cachedInputTokens)})` : ""}`
+        : usage?.total.cachedInputTokens !== undefined
+          ? `Cached ${formatTokens(usage.total.cachedInputTokens)}`
+          : "",
       usage?.total.outputTokens !== undefined
         ? `Out ${formatTokens(usage.total.outputTokens)}`
-        : "",
-      usage?.total.cachedInputTokens !== undefined
-        ? `Cached ${formatTokens(usage.total.cachedInputTokens)}`
         : "",
       usage?.total.reasoningOutputTokens !== undefined
         ? `Reasoning ${formatTokens(usage.total.reasoningOutputTokens)}`
@@ -784,13 +783,6 @@ export class CodexRenderer {
       const modelLabel = document.createElement("span");
       modelLabel.textContent = modelLine;
       modelRow.append(modelLabel);
-      if (contextLabel) {
-        const contextLabelElement = document.createElement("span");
-        contextLabelElement.className = "codex-context";
-        contextLabelElement.textContent = contextLabel;
-        contextLabelElement.title = contextLabel;
-        modelRow.append(contextLabelElement);
-      }
       if (projectName || cwd) {
         const location = document.createElement("span");
         location.className = "codex-location";
@@ -812,9 +804,16 @@ export class CodexRenderer {
       }
       this.tokenUsage.append(modelRow);
     }
-    if (usageParts.length > 0 || this.modeToggle) {
+    if (usageParts.length > 0 || contextLabel || this.modeToggle) {
       const usageLine = document.createElement("div");
       usageLine.className = "codex-usage-line";
+      if (contextLabel) {
+        const contextLabelElement = document.createElement("span");
+        contextLabelElement.className = "codex-context";
+        contextLabelElement.textContent = contextLabel;
+        contextLabelElement.title = contextLabel;
+        usageLine.append(contextLabelElement);
+      }
       if (usageParts.length > 0) {
         const usageLabel = document.createElement("span");
         usageLabel.textContent = usageParts.join(" · ");

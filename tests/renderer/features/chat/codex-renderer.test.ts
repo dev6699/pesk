@@ -2395,17 +2395,20 @@ test("renders complete usage, rate-limit, and goal details", () => {
     },
   });
 
-  expect(elements.tokenUsage.textContent).toContain("1.50m");
+  expect(elements.tokenUsage.textContent).not.toContain("1.50m");
   expect(elements.tokenUsage.textContent).toContain("/tmp/project");
   expect(elements.tokenUsage.textContent).toContain("Frontend");
   expect(elements.tokenUsage.textContent).toContain("Reasoning 8.0k");
+  expect(elements.tokenUsage.textContent).toContain("In 1.20m (12.0k)");
   const modelLine = elements.tokenUsage.querySelector(".codex-model-line");
   expect(modelLine?.textContent).toContain("Reasoning high");
-  expect(modelLine?.textContent?.indexOf("Reasoning high")).toBeLessThan(
-    modelLine?.textContent?.indexOf("Context") ?? -1,
-  );
+  expect(modelLine?.textContent).not.toContain("Context");
   expect(modelLine?.textContent?.indexOf("Frontend")).toBeLessThan(
     modelLine?.textContent?.indexOf("/tmp/project") ?? -1,
+  );
+  const usageLine = elements.tokenUsage.querySelector(".codex-usage-line");
+  expect(usageLine?.textContent?.indexOf("Context")).toBeLessThan(
+    usageLine?.textContent?.indexOf("In") ?? -1,
   );
   expect((renderer as any).goal.textContent).toContain("Improve coverage");
 });
