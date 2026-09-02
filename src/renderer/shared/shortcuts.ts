@@ -35,6 +35,8 @@ export const SHORTCUTS = {
   unfocusChat: { key: "Escape" },
   suggestionPrevious: { key: "ArrowUp" },
   suggestionNext: { key: "ArrowDown" },
+  promptHistoryPrevious: { key: "ArrowUp" },
+  promptHistoryNext: { key: "ArrowDown" },
   dismissSuggestions: { key: "Escape" },
   questionPrevious: { key: "ArrowUp" },
   questionNext: { key: "ArrowDown" },

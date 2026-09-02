@@ -216,38 +216,60 @@ All shortcut definitions are centralized in `src/renderer/shared/shortcuts.ts`.
 Global shortcuts are fixed application behavior; they are not configuration
 options.
 
-| Shortcut                          | Context                | Action                                           |
-| --------------------------------- | ---------------------- | ------------------------------------------------ |
-| `Ctrl+Down`                       | Global                 | Open the Pesk menu                               |
-| `Ctrl+Up`                         | Global                 | Focus the pet, chat input, or pending question   |
-| `Ctrl+Left` / `Ctrl+Right`        | Chat                   | Switch to the previous or next Codex session     |
-| `Ctrl+Up`                         | Chat                   | Focus the pending question option                |
-| `Ctrl+C` / `Cmd+C`                | Chat history           | Copy the selected message                        |
-| `Alt+Home` / `Alt+End`            | Chat history           | Scroll to the top or bottom                      |
-| `Alt+Up` / `Alt+Down`             | Chat history           | Select the previous or next message              |
-| `Alt+Shift+Up` / `Alt+Shift+Down` | Chat history           | Select the previous or next user message         |
-| `Shift+Up` / `Shift+Down`         | Chat history           | Scroll history by one step                       |
-| `Alt+Right`                       | Chat history           | Copy the selected message into the composer      |
-| `Shift+Enter`                     | Selected chat message  | Expand or collapse the selected message          |
-| `Enter`                           | Desktop composer       | Submit the prompt                                |
-| `Enter`                           | Web composer           | Insert a newline                                 |
-| `Ctrl+Enter`                      | Composer               | Insert a newline                                 |
-| `Alt+Enter`                       | Composer               | Steer the active Codex turn, or submit when idle |
-| `Ctrl+C`                          | Working composer       | Interrupt the active Codex turn                  |
-| `Escape`                          | Chat                   | Hide chat and unfocus the pet                    |
-| `Up` / `Down`                     | Suggestions            | Select the previous or next suggestion           |
-| `Enter`                           | Suggestions            | Accept the selected suggestion                   |
-| `Escape`                          | Suggestions/review     | Dismiss suggestions or cancel the review form    |
-| `Up` / `Down`                     | Question options       | Select the previous or next radio option         |
-| `Tab`                             | Question options       | Move from an option to its note field            |
-| `Tab`                             | Question note          | Return to the selected option                    |
-| `Enter`                           | Question/review fields | Submit the current form                          |
-| `Tab` / `Shift+Tab`               | Pesk menu              | Move to the next or previous section             |
-| `Up` / `Down`                     | Pesk menu              | Move between actions                             |
-| `Left` / `Right`                  | Pesk menu device row   | Move between row actions                         |
-| `Escape`                          | Pesk menu              | Close the menu                                   |
-| `Enter`                           | Pairing field          | Generate a pairing QR code                       |
-| `Enter` / `Space`                 | Web connection status  | Reload and reconnect                             |
+#### Global and window controls
+
+| Shortcut    | Action                                         |
+| ----------- | ---------------------------------------------- |
+| `Ctrl+Down` | Open the Pesk menu                             |
+| `Ctrl+Up`   | Focus the pet, chat input, or pending question |
+| `Escape`    | Hide chat and unfocus the pet                  |
+
+#### Chat history and navigation
+
+| Shortcut                          | Action                                      |
+| --------------------------------- | ------------------------------------------- |
+| `Ctrl+Left` / `Ctrl+Right`        | Switch between Codex sessions               |
+| `Ctrl+C` / `Cmd+C`                | Copy the selected message                   |
+| `Alt+Home` / `Alt+End`            | Scroll to the top or bottom                 |
+| `Alt+Up` / `Alt+Down`             | Select the previous or next message         |
+| `Alt+Shift+Up` / `Alt+Shift+Down` | Select the previous or next user message    |
+| `Shift+Up` / `Shift+Down`         | Scroll history by one step                  |
+| `Alt+Right`                       | Copy the selected message into the composer |
+| `Shift+Enter`                     | Expand or collapse the selected message     |
+
+#### Chat composer
+
+| Shortcut      | Context          | Action                                                          |
+| ------------- | ---------------- | --------------------------------------------------------------- |
+| `Enter`       | Desktop composer | Submit the prompt                                               |
+| `Enter`       | Web composer     | Insert a newline                                                |
+| `Ctrl+Enter`  | Composer         | Insert a newline                                                |
+| `Alt+Enter`   | Composer         | Steer the active Codex turn, or submit when idle                |
+| `Ctrl+C`      | Working composer | Interrupt the active Codex turn                                 |
+| `Up` / `Down` | Composer         | Recall the previous or next submitted prompt at a line boundary |
+
+#### Suggestions and question forms
+
+| Shortcut      | Context                | Action                                        |
+| ------------- | ---------------------- | --------------------------------------------- |
+| `Up` / `Down` | Suggestions            | Select the previous or next suggestion        |
+| `Enter`       | Suggestions            | Accept the selected suggestion                |
+| `Escape`      | Suggestions/review     | Dismiss suggestions or cancel the review form |
+| `Up` / `Down` | Question options       | Select the previous or next radio option      |
+| `Tab`         | Question options       | Move from an option to its note field         |
+| `Tab`         | Question note          | Return to the selected option                 |
+| `Enter`       | Question/review fields | Submit the current form                       |
+
+#### Pesk menu and pairing
+
+| Shortcut            | Context               | Action                               |
+| ------------------- | --------------------- | ------------------------------------ |
+| `Tab` / `Shift+Tab` | Pesk menu             | Move to the next or previous section |
+| `Up` / `Down`       | Pesk menu             | Move between actions                 |
+| `Left` / `Right`    | Pesk menu device row  | Move between row actions             |
+| `Escape`            | Pesk menu             | Close the menu                       |
+| `Enter`             | Pairing field         | Generate a pairing QR code           |
+| `Enter` / `Space`   | Web connection status | Reload and reconnect                 |
 
 In the menu’s Presets section, typing unmodified printable characters filters
 presets and `Backspace` removes the last filter character.

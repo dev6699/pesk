@@ -1,6 +1,7 @@
 import { matchesShortcut } from "../../shared/shortcuts.js";
 import { CodexAttachmentRenderer } from "./codex-attachments-renderer.js";
 import { CodexHistoryRenderer } from "./codex-history-renderer.js";
+import { CodexInputController } from "./codex-input-controller.js";
 import { CodexPromptRenderer } from "./codex-prompt-renderer.js";
 import { CodexStatusRenderer } from "./codex-status-renderer.js";
 import { CodexSuggestionRenderer } from "./codex-suggestions-renderer.js";
@@ -30,6 +31,7 @@ export class CodexRenderer {
     document.getElementById("codex-read-only") ?? document.createElement("div");
   private readonly statusRenderer: CodexStatusRenderer;
   private readonly attachmentRenderer: CodexAttachmentRenderer;
+  private readonly inputController: CodexInputController;
   private readonly historyRenderer: CodexHistoryRenderer;
 
   /** Creates the renderer and wires chat, history, and composer events. */
@@ -63,8 +65,8 @@ export class CodexRenderer {
       input,
       this.fileSuggestions,
       () => this.state.codex.cwd,
-      () => this.resizeInput(),
-      () => this.renderCommandMode(),
+      () => this.inputController.resize(),
+      () => this.inputController.renderCommandMode(),
     );
     this.historyRenderer = new CodexHistoryRenderer(this.history, () => this.state, {
       scrollHistoryToBottom: () => this.scrollHistoryToBottom(),
@@ -75,6 +77,28 @@ export class CodexRenderer {
       isPlanConfirmationDismissed: (activityKey) =>
         this.dismissedPlanConfirmations.has(activityKey),
     });
+    this.attachmentRenderer = new CodexAttachmentRenderer(
+      form,
+      input,
+      this.imageInput,
+      this.imageAttachments,
+    );
+    this.inputController = new CodexInputController(
+      form,
+      input,
+      this.history,
+      this.webChat,
+      steerButton,
+      commandMode,
+      this.attachmentRenderer,
+      this.suggestionRenderer,
+      {
+        getState: () => this.state,
+        updateState: (next) => this.updateState(next),
+        openReviewPrompt: () => this.promptRenderer.openReviewPrompt(),
+        renderUserInput: (force) => this.renderUserInput(force),
+      },
+    );
     this.promptRenderer = new CodexPromptRenderer(
       userInput,
       this.history,
@@ -84,23 +108,12 @@ export class CodexRenderer {
       this.webChat,
       () => this.state,
       () => this.activePlanConfirmation,
+      this.inputController,
       {
         updateState: (next) => this.updateState(next),
-        focusChatInput: () => this.focusChatInput(),
-        hideSuggestions: () => this.hideFileSuggestions(),
-        resizeInput: () => this.resizeInput(),
-        updateSuggestions: (nextInput, allowCommands) =>
-          this.updateSuggestions(nextInput, allowCommands),
-        handleSuggestionKeydown: (event) => this.handleSuggestionKeydown(event),
         renderPlanImplementationPrompt: (activityKey, planText) =>
           this.renderPlanImplementationPrompt(activityKey, planText),
       },
-    );
-    this.attachmentRenderer = new CodexAttachmentRenderer(
-      form,
-      input,
-      this.imageInput,
-      this.imageAttachments,
     );
     this.statusRenderer = new CodexStatusRenderer(
       workingStatus,
@@ -110,12 +123,12 @@ export class CodexRenderer {
       () => this.state,
     );
     this.statusRenderer.update();
-    this.renderCommandMode();
+    this.inputController.setup();
+    this.inputController.renderCommandMode();
     this.setupSessionControls();
     this.setupHistoryControls();
     this.setupComposerControls();
-    this.setupWebChatViewport();
-    this.resizeInput();
+    this.inputController.resize();
   }
 
   /** Wires session selection and session-copy controls. */
@@ -143,59 +156,11 @@ export class CodexRenderer {
     this.history.addEventListener("touchstart", () => this.historyRenderer.noteManualScroll());
   }
 
-  /** Wires composer submission, steering, attachments, and keyboard input. */
+  /** Wires chat-level pointer handling and attachment input. */
   private setupComposerControls(): void {
-    this.steerButton?.addEventListener("click", () => {
-      const prompt = this.input.value.trim();
-      if (!prompt) return;
-      void window.peskApi
-        .steerCodexTurn(prompt)
-        .then((next) => {
-          this.input.value = "";
-          this.resizeInput();
-          this.updateState(next);
-          this.input.focus();
-        })
-        .catch((error: unknown) => console.error("Failed to steer Codex turn", error));
-    });
     this.chat.addEventListener("mousedown", (event) => event.stopPropagation());
     this.chat.addEventListener("wheel", (event) => event.stopPropagation());
-    this.form.addEventListener("submit", (event) => {
-      void this.submit(event).catch((error: unknown) =>
-        console.error("Failed to submit Codex prompt", error),
-      );
-    });
     this.attachmentRenderer.setup();
-    this.input.addEventListener("input", () => {
-      this.resizeInput();
-      this.renderCommandMode();
-      void this.updateSuggestions(this.input);
-    });
-    this.input.addEventListener("keydown", (event) => this.handleInputKeydown(event));
-  }
-
-  /** Wires mobile viewport handling for the browser chat composer. */
-  private setupWebChatViewport(): void {
-    if (!this.webChat) return;
-    const visualViewport = window.visualViewport;
-    const keepFormVisible = (): void => {
-      if (visualViewport && Number.isFinite(visualViewport.height)) {
-        document.documentElement.style.setProperty(
-          "--web-chat-viewport-height",
-          `${visualViewport.height}px`,
-        );
-      }
-      this.keepWebChatFormVisible();
-    };
-    this.input.addEventListener("focus", keepFormVisible);
-    visualViewport?.addEventListener("resize", keepFormVisible);
-    const removeListeners = (): void => {
-      this.input.removeEventListener("focus", keepFormVisible);
-      visualViewport?.removeEventListener("resize", keepFormVisible);
-      window.removeEventListener("pagehide", removeListeners);
-      document.documentElement.style.removeProperty("--web-chat-viewport-height");
-    };
-    window.addEventListener("pagehide", removeListeners, { once: true });
   }
 
   /** Applies renderer state and refreshes all visible chat controls. */
@@ -258,13 +223,13 @@ export class CodexRenderer {
       next.codex.queuedSubmissions,
     );
     this.statusRenderer.update();
-    this.renderCommandMode();
+    this.inputController.renderCommandMode();
     this.renderTokenUsage();
     this.renderRateLimit();
     this.renderGoal();
     this.renderUserInput();
     if (resolvedUserInput && !next.codex.pendingApproval) {
-      this.focusChatInput();
+      this.inputController.focusChatInput();
     }
     const steerable =
       !next.codex.readOnly && (next.codex.status === "working" || next.codex.status === "waiting");
@@ -299,7 +264,7 @@ export class CodexRenderer {
 
   /** Focuses the main prompt input on the next animation frame. */
   focusInput(): void {
-    requestAnimationFrame(() => this.input.focus());
+    this.inputController.focusInput();
   }
 
   /** Focuses the currently available user-input choice. */
@@ -549,9 +514,8 @@ export class CodexRenderer {
   private copySelectedMessageToInput(): boolean {
     const text = this.selectedMessageText();
     if (!text) return false;
-    this.input.value = text;
-    this.resizeInput();
-    this.focusInput();
+    this.inputController.setInputValue(text);
+    this.inputController.focusInput();
     return true;
   }
 
@@ -586,173 +550,6 @@ export class CodexRenderer {
     }
     const selection = window.getSelection();
     return Boolean(selection && !selection.isCollapsed && selection.toString());
-  }
-
-  private suggestionCount(): number {
-    return this.suggestionRenderer.hasSuggestions() ? 1 : 0;
-  }
-
-  private selectCurrentSuggestion(): void {
-    this.suggestionRenderer.selectCurrent();
-  }
-
-  private hideFileSuggestions(): void {
-    this.suggestionRenderer.hide();
-  }
-
-  private handleSuggestionKeydown(event: KeyboardEvent): boolean {
-    return this.suggestionRenderer.handleSuggestionKeydown(event);
-  }
-
-  private updateSuggestions(input: HTMLTextAreaElement, allowCommands = true): Promise<void> {
-    return this.suggestionRenderer.updateSuggestions(input, allowCommands);
-  }
-
-  /** Validates and submits the current prompt or review request. */
-  private async submit(event: SubmitEvent): Promise<void> {
-    event.preventDefault();
-    if (this.suggestionCount()) {
-      this.selectCurrentSuggestion();
-      return;
-    }
-    const prompt = this.input.value.trim();
-    if (!prompt && !this.attachmentRenderer.images.length) return;
-    if (this.state.codex.readOnly) return;
-    if (/^\/review$/i.test(prompt)) {
-      if (this.state.codex.status !== "idle" || !this.state.codex.threadId) {
-        return;
-      }
-      this.input.value = "";
-      this.hideFileSuggestions();
-      this.resizeInput();
-      this.promptRenderer.openReviewPrompt();
-      this.form.hidden = true;
-      this.renderUserInput(true);
-      return;
-    }
-    const keepInputFocused = this.webChat;
-    if (keepInputFocused) this.input.focus();
-    const images = this.attachmentRenderer.images;
-    const next = images.length
-      ? await window.peskApi.submitCodexPrompt(prompt, images)
-      : await window.peskApi.submitCodexPrompt(prompt);
-    this.input.value = "";
-    this.attachmentRenderer.clear();
-    this.resizeInput();
-    this.renderCommandMode();
-    this.updateState(next);
-    this.history.scrollTop = this.history.scrollHeight;
-    if (keepInputFocused) {
-      this.input.focus();
-      this.keepWebChatFormVisible();
-    } else {
-      this.input.focus();
-    }
-  }
-
-  /** Handles prompt editing, submission, and suggestion shortcuts. */
-  private handleInputKeydown(event: KeyboardEvent): void {
-    if (this.handleSuggestionKeydown(event)) {
-      return;
-    }
-    if (
-      matchesShortcut(event, "interrupt") &&
-      (this.state.codex.status === "working" || this.state.codex.status === "waiting")
-    ) {
-      event.preventDefault();
-      void window.peskApi.interruptCodexTurn();
-      return;
-    }
-    if (event.key !== "Enter") return;
-    if (this.webChat && matchesShortcut(event, "submit")) {
-      event.preventDefault();
-      const start = this.input.selectionStart;
-      const end = this.input.selectionEnd;
-      this.input.value = `${this.input.value.slice(0, start)}\n${this.input.value.slice(end)}`;
-      this.input.selectionStart = start + 1;
-      this.input.selectionEnd = start + 1;
-      this.resizeInput();
-      return;
-    }
-    if (matchesShortcut(event, "newline")) {
-      event.preventDefault();
-      const start = this.input.selectionStart;
-      const end = this.input.selectionEnd;
-      this.input.value = `${this.input.value.slice(0, start)}\n${this.input.value.slice(end)}`;
-      this.input.selectionStart = start + 1;
-      this.input.selectionEnd = start + 1;
-      this.resizeInput();
-    } else if (event.shiftKey) {
-      event.preventDefault();
-    } else if (matchesShortcut(event, "submit")) {
-      event.preventDefault();
-      this.form.requestSubmit();
-    } else if (matchesShortcut(event, "steer")) {
-      event.preventDefault();
-      const prompt = this.input.value.trim();
-      if (
-        prompt &&
-        (this.state.codex.status === "working" || this.state.codex.status === "waiting") &&
-        this.state.codex.threadId
-      ) {
-        void window.peskApi.steerCodexTurn(prompt).then((next) => {
-          this.input.value = "";
-          this.resizeInput();
-          this.updateState(next);
-        });
-      } else {
-        this.form.requestSubmit();
-      }
-    }
-  }
-
-  /** Requests native focus and focuses the chat input. */
-  private focusChatInput(): void {
-    window.peskApi.focusCodexInput();
-    this.focusInput();
-  }
-
-  /** Keeps the web composer visible when the mobile viewport changes. */
-  private keepWebChatFormVisible(): void {
-    if (!this.webChat) return;
-    requestAnimationFrame(() => {
-      this.history.scrollTop = this.history.scrollHeight;
-    });
-  }
-
-  /** Resizes the prompt input while preserving bottom anchoring. */
-  private resizeInput(): void {
-    const maxHeight = 220;
-    const wasAtBottom =
-      this.history.scrollTop + this.history.clientHeight >= this.history.scrollHeight - 24;
-    this.input.style.height = "auto";
-    const height = Math.min(this.input.scrollHeight, maxHeight);
-    this.input.style.height = `${height}px`;
-    this.input.style.overflowY = this.input.scrollHeight > maxHeight ? "auto" : "hidden";
-    if (wasAtBottom) {
-      requestAnimationFrame(() => {
-        this.history.scrollTop = this.history.scrollHeight;
-      });
-    }
-  }
-
-  /** Renders the current shell or sandbox command-mode indicator. */
-  private renderCommandMode(): void {
-    if (!this.commandMode) return;
-    const value = this.input.value.trimStart();
-    if (value.startsWith("!")) {
-      this.commandMode.hidden = false;
-      this.commandMode.textContent = "Shell · full access";
-      this.commandMode.dataset.mode = "shell";
-    } else if (/^\/exec(?:\s|$)/i.test(value)) {
-      this.commandMode.hidden = false;
-      this.commandMode.textContent = "Exec · sandboxed";
-      this.commandMode.dataset.mode = "exec";
-    } else {
-      this.commandMode.hidden = true;
-      this.commandMode.textContent = "";
-      delete this.commandMode.dataset.mode;
-    }
   }
 
   /** Copies the active session identifier to the clipboard. */
@@ -828,7 +625,7 @@ export class CodexRenderer {
         this.renderHistory(this.state.codex.history, Boolean(this.state.codex.threadId));
         this.renderUserInput();
         this.form.hidden = false;
-        this.focusChatInput();
+        this.inputController.focusChatInput();
         return;
       }
       submit.disabled = true;
@@ -838,7 +635,7 @@ export class CodexRenderer {
       );
       void implementation.then((next) => {
         this.updateState(next);
-        this.focusChatInput();
+        this.inputController.focusChatInput();
         this.renderHistory(this.state.codex.history, Boolean(this.state.codex.threadId));
       });
     });

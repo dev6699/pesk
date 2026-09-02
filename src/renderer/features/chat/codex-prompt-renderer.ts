@@ -1,12 +1,8 @@
 import { matchesShortcut } from "../../shared/shortcuts.js";
+import { CodexInputController } from "./codex-input-controller.js";
 
 interface PromptRendererCallbacks {
   updateState(next: RendererState): void;
-  focusChatInput(): void;
-  hideSuggestions(): void;
-  resizeInput(): void;
-  updateSuggestions(input: HTMLTextAreaElement, allowCommands: boolean): Promise<void>;
-  handleSuggestionKeydown(event: KeyboardEvent): boolean;
   renderPlanImplementationPrompt(activityKey: string, planText: string): HTMLElement;
 }
 
@@ -26,6 +22,7 @@ export class CodexPromptRenderer {
     private readonly webChat: boolean,
     private readonly getState: () => RendererState,
     private readonly getPlanConfirmation: () => { key: string; planText: string } | undefined,
+    private readonly inputController: CodexInputController,
     private readonly callbacks: PromptRendererCallbacks,
   ) {}
 
@@ -203,7 +200,7 @@ export class CodexPromptRenderer {
       const answers = { ...this.userInputAnswers };
       window.peskApi.respondCodexUserInput(pending.requestId, answers);
       submit.disabled = true;
-      this.callbacks.focusChatInput();
+      this.inputController.focusChatInput();
     });
     form.addEventListener("keydown", (event) => {
       if (
@@ -302,13 +299,13 @@ export class CodexPromptRenderer {
     input.placeholder = "For example: Check for bugs and missing tests.";
     input.setAttribute("aria-label", "Review instructions");
     input.addEventListener("input", () => {
-      void this.callbacks.updateSuggestions(input, false);
+      void this.inputController.updateSuggestions(input, false);
     });
     input.addEventListener("keydown", (event) => {
-      if (this.callbacks.handleSuggestionKeydown(event)) return;
+      if (this.inputController.handleSuggestionKeydown(event)) return;
       if (matchesShortcut(event, "dismissSuggestions")) {
         event.preventDefault();
-        this.callbacks.hideSuggestions();
+        this.inputController.hideSuggestions();
         cancel.click();
         return;
       }
@@ -349,7 +346,7 @@ export class CodexPromptRenderer {
     cancel.textContent = "Cancel";
     cancel.addEventListener("click", () => {
       this.reviewPromptOpen = false;
-      this.callbacks.hideSuggestions();
+      this.inputController.hideSuggestions();
       this.composerForm.hidden = false;
       this.composerForm.append(this.fileSuggestions);
       this.renderUserInput(true);
@@ -366,7 +363,7 @@ export class CodexPromptRenderer {
       submit.disabled = true;
       cancel.disabled = true;
       this.reviewPromptOpen = false;
-      this.callbacks.hideSuggestions();
+      this.inputController.hideSuggestions();
       this.composerForm.hidden = false;
       this.composerForm.append(this.fileSuggestions);
       const next = await window.peskApi.startCodexReview(value);
@@ -437,7 +434,7 @@ export class CodexPromptRenderer {
       if (!selected) return;
       window.peskApi.respondCodexPermission(pending.requestId, selected.value);
       submit.disabled = true;
-      this.callbacks.focusChatInput();
+      this.inputController.focusChatInput();
     });
     container.append(form);
     requestAnimationFrame(() => {

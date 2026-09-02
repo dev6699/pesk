@@ -1991,6 +1991,84 @@ test("submits a prompt, queues while working, and handles input shortcuts", asyn
   expect(submit).toHaveBeenLastCalledWith("blocked");
 });
 
+test("cycles through submitted prompt history and restores the draft", async () => {
+  const { renderer, elements } = makeRenderer({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-2" },
+  });
+  const submit = window.peskApi.submitCodexPrompt as jest.Mock;
+
+  for (const prompt of ["first", "/plan"]) {
+    elements.input.value = prompt;
+    elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+    await Promise.resolve();
+  }
+
+  elements.input.value = "draft";
+  elements.input.setSelectionRange(elements.input.value.length, elements.input.value.length);
+  const previous = new KeyboardEvent("keydown", {
+    key: "ArrowUp",
+    cancelable: true,
+  });
+  elements.input.dispatchEvent(previous);
+  expect(previous.defaultPrevented).toBe(true);
+  expect(elements.input.value).toBe("/plan");
+
+  elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" }));
+  expect(elements.input.value).toBe("first");
+
+  elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
+  expect(elements.input.value).toBe("/plan");
+  elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
+  expect(elements.input.value).toBe("draft");
+  expect(submit).toHaveBeenCalledTimes(2);
+  void renderer;
+});
+
+test("keeps normal multiline arrow movement away from prompt history boundaries", async () => {
+  const { elements } = makeRenderer({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-2" },
+  });
+  elements.input.value = "previous";
+  elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+  await Promise.resolve();
+
+  elements.input.value = "first line\nsecond line";
+  elements.input.setSelectionRange("first line\n".length + 3, "first line\n".length + 3);
+  const up = new KeyboardEvent("keydown", { key: "ArrowUp", cancelable: true });
+  elements.input.dispatchEvent(up);
+  expect(up.defaultPrevented).toBe(false);
+  expect(elements.input.value).toBe("first line\nsecond line");
+
+  elements.input.setSelectionRange(3, 3);
+  const down = new KeyboardEvent("keydown", { key: "ArrowDown", cancelable: true });
+  elements.input.dispatchEvent(down);
+  expect(down.defaultPrevented).toBe(false);
+});
+
+test("deduplicates consecutive prompts and caps prompt history at 100 entries", async () => {
+  const { elements } = makeRenderer({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "thread-2" },
+  });
+  for (let index = 0; index < 102; index += 1) {
+    elements.input.value = index === 1 ? "prompt-0" : `prompt-${index}`;
+    elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
+    await Promise.resolve();
+  }
+
+  elements.input.value = "";
+  elements.input.setSelectionRange(0, 0);
+  for (let index = 0; index < 100; index += 1) {
+    elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" }));
+  }
+  expect(elements.input.value).toBe("prompt-2");
+
+  elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" }));
+  expect(elements.input.value).toBe("prompt-2");
+});
+
 test("renders attached images in user message history", () => {
   const { renderer, elements } = makeRenderer({
     ...defaultRendererState(),
