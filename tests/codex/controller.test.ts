@@ -136,6 +136,39 @@ beforeEach(() => {
 });
 
 describe("CodexController", () => {
+  test("sends project CRUD mutations and accepts empty move/delete responses", async () => {
+    const { controller, socket } = connectedController();
+    const project = {
+      id: "project-1",
+      name: "Workspace",
+      roots: [{ path: "/workspace" }],
+      metadata: {},
+      position: 0,
+      createdAt: 1,
+      updatedAt: 1,
+      recencyAt: null,
+    };
+    const create = controller.createProject("Workspace", ["/workspace"], {}, "key-1");
+    expect(lastMessage(socket)).toMatchObject({
+      method: "project/create",
+      params: { name: "Workspace", roots: [{ path: "/workspace" }], idempotencyKey: "key-1" },
+    });
+    socket.emit("message", JSON.stringify({ id: lastMessage(socket).id, result: { project } }));
+    await expect(create).resolves.toBe(true);
+    expect(controller.getState().projects).toEqual([project]);
+
+    const move = controller.moveProject("project-1", null);
+    expect(lastMessage(socket)).toMatchObject({ method: "project/move", params: { projectId: "project-1", beforeProjectId: null } });
+    socket.emit("message", JSON.stringify({ id: lastMessage(socket).id, result: {} }));
+    await expect(move).resolves.toBe(true);
+
+    const deletion = controller.deleteProject("project-1");
+    expect(lastMessage(socket)).toMatchObject({ method: "project/delete", params: { projectId: "project-1" } });
+    socket.emit("message", JSON.stringify({ id: lastMessage(socket).id, result: {} }));
+    await expect(deletion).resolves.toBe(true);
+    expect(controller.getState().projects).toEqual([]);
+  });
+
   test("logs connection and socket errors and retries after construction fails", () => {
     jest.useFakeTimers();
     FakeWebSocket.shouldThrow = true;

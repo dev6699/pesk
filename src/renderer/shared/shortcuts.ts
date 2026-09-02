@@ -33,6 +33,7 @@ export const SHORTCUTS = {
   newline: { key: "Enter", ctrl: true },
   steer: { key: "Enter", alt: true },
   unfocusChat: { key: "Escape" },
+  closeProjectManager: { key: "Escape" },
   suggestionPrevious: { key: "ArrowUp" },
   suggestionNext: { key: "ArrowDown" },
   promptHistoryPrevious: { key: "ArrowUp" },

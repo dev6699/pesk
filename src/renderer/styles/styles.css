@@ -422,6 +422,37 @@ body.chat-only #codex-chat {
   font-size: 9px;
 }
 
+.codex-project-roots {
+  margin: 6px 0;
+  padding: 5px 7px;
+  border: 1px solid #ffffff44;
+  border-radius: 5px;
+  background: #ffffff0a;
+  color: #ffffffcc;
+  font-size: 10px;
+}
+
+.codex-project-roots[hidden] {
+  display: none;
+}
+
+.codex-project-roots strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #fff;
+  font-size: 10px;
+}
+
+.codex-project-roots ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.codex-project-roots li {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+
 .codex-user-input-form fieldset {
   margin: 5px 0;
   padding: 4px 6px;
@@ -442,6 +473,23 @@ body.chat-only #codex-chat {
   white-space: normal;
   overflow-wrap: anywhere;
   cursor: pointer;
+}
+
+.codex-project-manager-form label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.codex-project-manager-form label > :first-child {
+  flex: 0 0 72px;
+}
+
+.codex-project-manager-form label > input,
+.codex-project-manager-form label > select {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .codex-user-input-note-label {

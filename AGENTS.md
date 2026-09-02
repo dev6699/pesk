@@ -30,7 +30,7 @@ Use TypeScript with strict compiler settings. During incremental work, format an
 
 ## Testing Guidelines
 
-Tests use Jest with `@swc/jest`; name files `*.test.ts` under `tests/`. Run `npm test` for the normal verification path. TypeScript no-emit checks are useful for read-only environments:
+Tests use Jest with `@swc/jest`; name files `*.test.ts` under `tests/`. Run `npm test` for the normal verification path. Use TypeScript no-emit checks for type verification, and run formatting and `git diff --check` separately afterward:
 
 ```bash
 npx tsc -p tsconfig.json --noEmit

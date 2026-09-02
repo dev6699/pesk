@@ -18,6 +18,7 @@ export function defaultCodexRuntimeState(): CodexRuntimeState {
     readOnly: false,
     history: [],
     threads: [],
+    projects: [],
     threadActivities: [],
     queuedSubmissions: [],
     collaborationMode: "default",

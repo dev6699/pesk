@@ -418,6 +418,28 @@ const webApi = {
       send("fuzzyFileSearch", { requestId, query, roots });
     });
   },
+  listCodexProjects: async () => (await sendCommand("listProjects")).state ?? state!,
+  readCodexProject: async (projectId: string) =>
+    (await sendCommand("readProject", { projectId })).state ?? state!,
+  createCodexProject: async (name: string, root: string, idempotencyKey?: string) =>
+    (await sendCommand("createProject", { name, root, idempotencyKey })).state ?? state!,
+  importCodexProject: async (
+    name: string,
+    roots: string[],
+    threadIds: string[],
+    idempotencyKey?: string,
+  ) =>
+    (await sendCommand("importProject", { name, roots, threadIds, idempotencyKey })).state ??
+    state!,
+  updateCodexProject: async (
+    projectId: string,
+    changes: { name?: string; roots?: string[]; metadata?: Record<string, string> },
+  ) => (await sendCommand("updateProject", { projectId, changes })).state ?? state!,
+  moveCodexProject: async (projectId: string, beforeProjectId: string | null) =>
+    (await sendCommand("moveProject", { projectId, beforeProjectId })).state ?? state!,
+  deleteCodexProject: async (projectId: string) =>
+    (await sendCommand("deleteProject", { projectId })).state ?? state!,
+  chooseCodexProjectRoot: async () => undefined,
 } as unknown as Window["peskApi"];
 
 window.peskApi = webApi;

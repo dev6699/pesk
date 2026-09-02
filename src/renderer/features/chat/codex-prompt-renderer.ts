@@ -45,6 +45,7 @@ export class CodexPromptRenderer {
     const pendingApproval = this.getState().codex.pendingApproval;
     const planConfirmation = this.getPlanConfirmation();
     if (!container) return;
+    if (container.dataset.projectManager === "true") return;
     if (!pending && !pendingApproval && !planConfirmation && !this.reviewPromptOpen) {
       container.replaceChildren();
       container.hidden = true;

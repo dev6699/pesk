@@ -6,6 +6,7 @@ interface CodexInputControllerCallbacks {
   getState(): RendererState;
   updateState(next: RendererState): void;
   openReviewPrompt(): void;
+  openProjectManager(): void;
   renderUserInput(force: boolean): void;
 }
 
@@ -140,11 +141,20 @@ export class CodexInputController {
   /** Submits a prompt, local command, review request, or image attachment. */
   private async submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
+    const prompt = this.input.value.trim();
+    if (/^\/project$/i.test(prompt)) {
+      this.rememberPrompt(prompt);
+      this.input.value = "";
+      this.hideSuggestions();
+      this.resize();
+      this.callbacks.openProjectManager();
+      this.input.focus();
+      return;
+    }
     if (this.hasSuggestions()) {
       this.suggestionRenderer.selectCurrent();
       return;
     }
-    const prompt = this.input.value.trim();
     if (!prompt && !this.attachmentRenderer.images.length) return;
     const state = this.callbacks.getState();
     if (state.codex.readOnly) return;

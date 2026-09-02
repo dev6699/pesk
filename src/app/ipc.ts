@@ -1,4 +1,4 @@
-import { shell } from "electron";
+import { dialog, shell } from "electron";
 import type { ApplicationContext } from "./application";
 import type { PeskSettings } from "../config/config";
 import { isRequestId, validAnswers, validImageInputs, validRoots } from "./validation";
@@ -69,6 +69,38 @@ export function registerIpcHandlers(context: ApplicationContext): void {
   registerInvoke("fuzzy-file-search", (_event, query, roots) => {
     const valid = validRoots(roots);
     return typeof query === "string" && valid ? codex.fuzzyFileSearch(query, valid) : [];
+  });
+  registerInvoke("list-codex-projects", async () => {
+    await codex.listProjects();
+    return state.getState();
+  });
+  registerInvoke("read-codex-project", async (_event, id) => {
+    await codex.readProject(id);
+    return state.getState();
+  });
+  registerInvoke("create-codex-project", async (_event, name, root, key) => {
+    await codex.createProject(name, [root], {}, key);
+    return state.getState();
+  });
+  registerInvoke("import-codex-project", async (_event, name, roots, threadIds, key) => {
+    await codex.importProject(name, roots, threadIds, {}, key);
+    return state.getState();
+  });
+  registerInvoke("update-codex-project", async (_event, id, changes) => {
+    await codex.updateProject(id, changes);
+    return state.getState();
+  });
+  registerInvoke("move-codex-project", async (_event, id, beforeId) => {
+    await codex.moveProject(id, beforeId);
+    return state.getState();
+  });
+  registerInvoke("delete-codex-project", async (_event, id) => {
+    await codex.deleteProject(id);
+    return state.getState();
+  });
+  registerInvoke("choose-codex-project-root", async (event) => {
+    const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+    return result.canceled ? undefined : result.filePaths[0];
   });
   registerEvent("select-codex-thread", (_event, id) => {
     if (typeof id === "string") codex.selectThread(id);

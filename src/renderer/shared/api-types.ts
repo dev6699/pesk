@@ -52,6 +52,26 @@ export interface PeskApi {
   ) => Promise<RendererState>;
   startCodexReview: (instructions: string) => Promise<RendererState>;
   fuzzyFileSearch: (query: string, roots: string[]) => Promise<FuzzyFileSearchResult[]>;
+  listCodexProjects: () => Promise<RendererState>;
+  readCodexProject: (id: string) => Promise<RendererState>;
+  createCodexProject: (
+    name: string,
+    root: string,
+    idempotencyKey?: string,
+  ) => Promise<RendererState>;
+  importCodexProject: (
+    name: string,
+    roots: string[],
+    threadIds: string[],
+    idempotencyKey?: string,
+  ) => Promise<RendererState>;
+  updateCodexProject: (
+    id: string,
+    changes: { name?: string; roots?: string[]; metadata?: Record<string, string> },
+  ) => Promise<RendererState>;
+  moveCodexProject: (id: string, beforeId: string | null) => Promise<RendererState>;
+  deleteCodexProject: (id: string) => Promise<RendererState>;
+  chooseCodexProjectRoot: () => Promise<string | undefined>;
   getPresets: () => Promise<{ name: string }[]>;
   runPreset: (name: string) => void;
   closeMenuWindow: () => void;

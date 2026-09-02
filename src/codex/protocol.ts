@@ -12,6 +12,7 @@ import type {
   FileChangeRequestApprovalResponse,
 } from "../codex-schema/v2";
 import type { ApprovalDecision } from "./types";
+import type { ProjectRequest } from "./projects";
 
 // Temporarily disabled because reconciling the full thread history on idle is
 // too heavy during normal use. Re-enable after a lighter reconciliation path
@@ -140,6 +141,7 @@ export type OutgoingMessage =
   | ClientNotification
   | LocalQueueAddRequest
   | LocalQueueListRequest
+  | ProjectRequest
   | JsonRpcResponse;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

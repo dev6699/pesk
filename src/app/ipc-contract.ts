@@ -3,10 +3,10 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import type { ChatSize } from "../windows/chat";
 import type { PairingDevice, PairingInfo, PairingStatus } from "../services/chat-web-server";
 import type { AnimationFrames } from "../windows/pet";
-import type { RendererState } from "./renderer-state";
 import type { FuzzyFileSearchResult } from "../codex-schema/FuzzyFileSearchResult";
 import type { ImageInput, RequestId } from "./validation";
 import type { CodexStreamDelta } from "../codex/types";
+import type { RendererState } from "./renderer-state";
 
 export interface RendererEventContract {
   "menu-updated": [];
@@ -44,6 +44,26 @@ export interface IpcInvokeContract {
   "steer-codex-turn": { args: [prompt: string]; result: RendererState };
   "load-older-codex-history": { args: []; result: boolean };
   "fuzzy-file-search": { args: [query: string, roots: string[]]; result: FuzzyFileSearchResult[] };
+  "list-codex-projects": { args: []; result: RendererState };
+  "read-codex-project": { args: [id: string]; result: RendererState };
+  "create-codex-project": {
+    args: [name: string, root: string, idempotencyKey?: string];
+    result: RendererState;
+  };
+  "import-codex-project": {
+    args: [name: string, roots: string[], threadIds: string[], idempotencyKey?: string];
+    result: RendererState;
+  };
+  "update-codex-project": {
+    args: [
+      id: string,
+      changes: { name?: string; roots?: string[]; metadata?: Record<string, string> },
+    ];
+    result: RendererState;
+  };
+  "move-codex-project": { args: [id: string, beforeId: string | null]; result: RendererState };
+  "delete-codex-project": { args: [id: string]; result: RendererState };
+  "choose-codex-project-root": { args: []; result: string | undefined };
 }
 
 export interface IpcEventContract {

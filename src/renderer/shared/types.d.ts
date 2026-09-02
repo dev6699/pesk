@@ -163,6 +163,16 @@ interface CodexRuntimeState {
   connected: boolean;
   history: CodexHistoryItem[];
   threads: Array<{ id: string; preview?: string; status?: unknown }>;
+  projects?: Array<{
+    id: string;
+    name: string;
+    roots: Array<{ path: string }>;
+    metadata: { [key: string]: string | undefined };
+    position: number;
+    createdAt: number;
+    updatedAt: number;
+    recencyAt: number | null;
+  }>;
   threadActivities: CodexThreadActivity[];
   workingSince?: number;
   workedElapsed?: number;

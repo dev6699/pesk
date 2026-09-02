@@ -3,6 +3,7 @@ import { matchesShortcut } from "../../shared/shortcuts.js";
 const slashCommands = [
   { command: "/plan", description: "Switch to Plan mode" },
   { command: "/goal", description: "Usage: /goal [<objective>|clear|edit|pause|resume]" },
+  { command: "/project", description: "Manage projects" },
   { command: "/default", description: "Switch to Default mode" },
   { command: "/new", description: "Start a new Codex session" },
   { command: "/fork", description: "Fork the current session" },

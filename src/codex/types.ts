@@ -1,4 +1,5 @@
 import type { RequestId } from "../codex-schema";
+import type { Project } from "../codex-schema/v2";
 import type {
   CommandExecutionApprovalDecision,
   FileChangeApprovalDecision,
@@ -113,6 +114,7 @@ export interface CodexState {
   connected: boolean;
   history: CodexMessage[];
   threads: Thread[];
+  projects: Project[];
   threadActivities: CodexThreadActivity[];
   workingSince?: number;
   workedElapsed?: number;

@@ -1583,6 +1583,7 @@ test("shows and selects slash commands", () => {
   ).toEqual([
     "/planSwitch to Plan mode",
     "/goalUsage: /goal [<objective>|clear|edit|pause|resume]",
+    "/projectManage projects",
     "/defaultSwitch to Default mode",
     "/newStart a new Codex session",
     "/forkFork the current session",

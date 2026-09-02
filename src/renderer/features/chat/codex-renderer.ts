@@ -6,6 +6,7 @@ import { CodexPromptRenderer } from "./codex-prompt-renderer.js";
 import { CodexStatusRenderer } from "./codex-status-renderer.js";
 import { CodexSuggestionRenderer } from "./codex-suggestions-renderer.js";
 import { formatElapsed, formatRateLimitDetails, formatTokens } from "./codex-renderer-helpers.js";
+import { openProjectManager } from "./project-manager.js";
 
 export class CodexRenderer {
   private readonly webChat = document.body.classList.contains("web-chat");
@@ -96,6 +97,7 @@ export class CodexRenderer {
         getState: () => this.state,
         updateState: (next) => this.updateState(next),
         openReviewPrompt: () => this.promptRenderer.openReviewPrompt(),
+        openProjectManager: () => void openProjectManager(this.userInput ?? document.createElement("section")),
         renderUserInput: (force) => this.renderUserInput(force),
       },
     );
@@ -165,6 +167,16 @@ export class CodexRenderer {
 
   /** Applies renderer state and refreshes all visible chat controls. */
   updateState(next: RendererState): void {
+    if (
+      next.codex.threadId !== this.state.codex.threadId &&
+      document.body.dataset.projectManager === "true"
+    ) {
+      delete document.body.dataset.projectManager;
+      if (this.userInput) delete this.userInput.dataset.projectManager;
+      this.userInput?.replaceChildren();
+      if (this.userInput) this.userInput.hidden = true;
+      this.form.hidden = false;
+    }
     const resolvedUserInput =
       Boolean(this.state.codex.pendingUserInput) && !next.codex.pendingUserInput;
     if (next.codex.threadId !== this.state.codex.threadId) {
@@ -246,7 +258,8 @@ export class CodexRenderer {
       next.codex.pendingUserInput ||
       next.codex.pendingApproval ||
       this.activePlanConfirmation ||
-      this.promptRenderer.isReviewPromptOpen,
+      this.promptRenderer.isReviewPromptOpen ||
+      document.body.dataset.projectManager === "true",
     );
     if (this.modeToggle) {
       const plan = next.codex.collaborationMode === "plan";
@@ -274,6 +287,15 @@ export class CodexRenderer {
 
   /** Handles global chat shortcuts and keyboard navigation. */
   handleKeydown(event: KeyboardEvent): void {
+    if (
+      matchesShortcut(event, "closeProjectManager") &&
+      document.body.dataset.projectManager === "true"
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.userInput?.querySelector<HTMLButtonElement>("[data-project-cancel='true']")?.click();
+      return;
+    }
     if (
       !this.chat.hidden &&
       (matchesShortcut(event, "sessionPrevious") || matchesShortcut(event, "sessionNext"))

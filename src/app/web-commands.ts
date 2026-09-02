@@ -19,6 +19,12 @@ export function handleWebCommand(
     if (typeof requestId !== "number") return;
     reply({ type: "commandResult", requestId, ok, state: context.getState() });
   };
+  const replyProject = (operation: Promise<boolean>): void => {
+    if (typeof requestId !== "number") return;
+    void operation.then((ok) =>
+      reply({ type: "commandResult", requestId, ok, state: context.getState() }),
+    );
+  };
   switch (command.type) {
     case "submitPrompt":
       replyCommand(
@@ -80,5 +86,69 @@ export function handleWebCommand(
       }
       break;
     }
+    case "listProjects":
+      replyProject(context.codex.listProjects());
+      break;
+    case "readProject":
+      if (typeof command.projectId === "string")
+        replyProject(context.codex.readProject(command.projectId));
+      break;
+    case "createProject":
+      if (typeof command.name === "string" && typeof command.root === "string")
+        replyProject(
+          context.codex.createProject(
+            command.name,
+            [command.root],
+            {},
+            typeof command.idempotencyKey === "string" ? command.idempotencyKey : undefined,
+          ),
+        );
+      break;
+    case "importProject":
+      if (
+        typeof command.name === "string" &&
+        Array.isArray(command.roots) &&
+        command.roots.every((root) => typeof root === "string") &&
+        Array.isArray(command.threadIds) &&
+        command.threadIds.every((threadId) => typeof threadId === "string")
+      )
+        replyProject(
+          context.codex.importProject(
+            command.name,
+            command.roots,
+            command.threadIds,
+            {},
+            typeof command.idempotencyKey === "string" ? command.idempotencyKey : undefined,
+          ),
+        );
+      break;
+    case "updateProject":
+      if (
+        typeof command.projectId === "string" &&
+        command.changes &&
+        typeof command.changes === "object"
+      )
+        replyProject(
+          context.codex.updateProject(
+            command.projectId,
+            command.changes as {
+              name?: string;
+              roots?: string[];
+              metadata?: Record<string, string>;
+            },
+          ),
+        );
+      break;
+    case "moveProject":
+      if (
+        typeof command.projectId === "string" &&
+        (typeof command.beforeProjectId === "string" || command.beforeProjectId === null)
+      )
+        replyProject(context.codex.moveProject(command.projectId, command.beforeProjectId));
+      break;
+    case "deleteProject":
+      if (typeof command.projectId === "string")
+        replyProject(context.codex.deleteProject(command.projectId));
+      break;
   }
 }
