@@ -624,6 +624,147 @@ test("parses streamed assistant Markdown when the turn completes", () => {
   expect(elements.history.querySelector("strong")?.textContent).toBe("world");
 });
 
+test("parses completed assistant items before the turn completes", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [
+    { role: "assistant", text: "**world**", itemId: "assistant-1" },
+    { role: "assistant", text: "second", itemId: "assistant-2" },
+  ];
+  renderer.updateState(state);
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-1",
+    kind: "assistant",
+    delta: " update",
+  });
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-2",
+    kind: "assistant",
+    delta: " output",
+  });
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-1",
+    kind: "assistant",
+    delta: "",
+    completed: true,
+  });
+
+  renderer.updateState({
+    ...state,
+    codex: {
+      ...state.codex,
+      history: [
+        { role: "assistant" as const, text: "**world** update", itemId: "assistant-1" },
+        { role: "assistant" as const, text: "second output", itemId: "assistant-2" },
+      ],
+    },
+  });
+
+  const messages = elements.history.querySelectorAll<HTMLElement>(".codex-markdown");
+  expect(messages[0].querySelector("strong")?.textContent).toBe("world");
+  expect(messages[0].textContent).toContain("update");
+  expect(messages[1].textContent).toContain("second output");
+  expect(messages[1].querySelector("strong")).toBeNull();
+});
+
+test("parses a completed assistant item without an item ID", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "assistant", text: "first" }];
+  renderer.updateState(state);
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    kind: "assistant",
+    delta: " **world**",
+  });
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    kind: "assistant",
+    delta: "",
+    completed: true,
+  });
+
+  renderer.updateState({
+    ...state,
+    codex: {
+      ...state.codex,
+      history: [
+        { role: "assistant" as const, text: "first **world**" },
+        { role: "assistant" as const, text: "second" },
+      ],
+    },
+  });
+
+  const messages = elements.history.querySelectorAll<HTMLElement>(".codex-markdown");
+  expect(messages[0].querySelector("strong")?.textContent).toBe("world");
+  expect(messages[1].textContent).toBe("second");
+});
+
+test("parses an item after its no-ID stream completes while work continues", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "assistant", text: "first" }];
+  renderer.updateState(state);
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    kind: "assistant",
+    delta: " **world**",
+  });
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    kind: "assistant",
+    delta: "",
+    completed: true,
+  });
+
+  renderer.updateState({
+    ...state,
+    codex: {
+      ...state.codex,
+      history: [
+        { role: "assistant" as const, text: "first **world**" },
+        {
+          role: "system" as const,
+          text: "$ npm test",
+          itemId: "command-1",
+          activity: { kind: "command" as const, output: "running" },
+        },
+      ],
+    },
+  });
+
+  expect(elements.history.querySelector("strong")?.textContent).toBe("world");
+});
+
+test("parses an assistant item from an explicit completion delta", () => {
+  const { renderer, elements } = makeRenderer();
+  const state = defaultRendererState();
+  state.codex.status = "working";
+  state.codex.history = [{ role: "assistant", text: "", itemId: "assistant-1" }];
+  renderer.updateState(state);
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-1",
+    kind: "assistant",
+    delta: "**world**",
+  });
+  renderer.applyStreamDelta({
+    threadId: undefined,
+    itemId: "assistant-1",
+    kind: "assistant",
+    delta: "",
+    completed: true,
+  });
+
+  expect(elements.history.querySelector("strong")?.textContent).toBe("world");
+});
+
 test("keeps streamed assistant text when history is re-rendered before completion", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();

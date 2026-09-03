@@ -14,6 +14,7 @@ import {
   messageThreadId,
   records,
   requestIdKey,
+  stringValue,
   shouldReconcileOnIdle,
   shouldResumeOnActiveStatus,
 } from "./protocol";
@@ -2214,7 +2215,18 @@ export class CodexController {
   /** Commits a completed assistant or activity item to conversation history. */
   private handleItemCompleted(message: Extract<ServerMessage, { method: "item/completed" }>): void {
     const item = isRecord(message.params.item) ? message.params.item : undefined;
-    if (item) this.threadRuntime().processCompletedItem(item);
+    if (item) {
+      this.threadRuntime().processCompletedItem(item);
+      if (item.type === "agentMessage") {
+        this.options.publishStreamDelta?.({
+          threadId: messageThreadId(message),
+          itemId: stringValue(item.id),
+          kind: "assistant",
+          delta: "",
+          completed: true,
+        });
+      }
+    }
     this.options.publishRendererState();
   }
 

@@ -75,6 +75,7 @@ export interface CodexStreamDelta {
   itemId?: string;
   kind: "assistant" | "command";
   delta: string;
+  completed?: boolean;
 }
 
 export interface CodexModelInfo {

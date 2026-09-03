@@ -1442,6 +1442,64 @@ describe("CodexController", () => {
     );
   });
 
+  test("publishes assistant completion before the next tool item update", () => {
+    const { socket, options: callbacks } = connectedController();
+    callbacks.publishRendererState.mockClear();
+    callbacks.publishStreamDelta.mockClear();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "turn/started",
+        params: { threadId: "thread-1", turn: { id: "turn-1" } },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "assistant-1",
+          delta: "first **world**",
+        },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          threadId: "thread-1",
+          item: { id: "assistant-1", type: "agentMessage", text: "first **world**" },
+        },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: { id: "command-1", type: "commandExecution", command: "npm test" },
+        },
+      }),
+    );
+
+    expect(callbacks.publishStreamDelta).toHaveBeenCalledWith({
+      threadId: "thread-1",
+      itemId: "assistant-1",
+      kind: "assistant",
+      delta: "",
+      completed: true,
+    });
+    expect(callbacks.publishStreamDelta.mock.invocationCallOrder[0]).toBeLessThan(
+      callbacks.publishRendererState.mock.invocationCallOrder.at(-1) ?? Infinity,
+    );
+  });
+
   test("waits for active status before resuming an externally announced thread", () => {
     const { controller, socket } = connectedController();
 

@@ -65,6 +65,7 @@ interface CodexStreamDelta {
   itemId?: string;
   kind: "assistant" | "command";
   delta: string;
+  completed?: boolean;
 }
 
 interface TokenCounts {

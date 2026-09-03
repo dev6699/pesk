@@ -183,6 +183,15 @@ export class CodexHistoryRenderer {
         content = this.renderedMessageContents.get(key);
       }
       if (!content) return;
+      if (delta.completed) {
+        this.streamingPlainMessages.delete(key);
+        this.streamedAssistantTexts.delete(key);
+        this.activityRenderer.renderAssistantContent(
+          content,
+          this.renderedMessageTexts.get(key) ?? content.textContent ?? "",
+        );
+        return;
+      }
       const text = `${this.streamedAssistantTexts.get(key) ?? this.renderedMessageTexts.get(key) ?? content.textContent ?? ""}${delta.delta}`;
       content.textContent = text;
       this.renderedMessageTexts.set(key, text);
