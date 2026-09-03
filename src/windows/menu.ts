@@ -112,9 +112,9 @@ export class MenuController {
     this.menuWindow.once("ready-to-show", () => {
       this.menuWindow?.show();
       this.menuWindow?.focus();
-      if (process.env.DESKTOP_PET_DEVTOOLS === "1") {
-        this.menuWindow?.webContents.openDevTools({ mode: "detach" });
-      }
+      // if (process.env.DESKTOP_PET_DEVTOOLS === "1") {
+      //   this.menuWindow?.webContents.openDevTools({ mode: "detach" });
+      // }
     });
     this.menuWindow.on("focus", () =>
       this.menuWindow?.webContents.send("menu-focus-changed", true),

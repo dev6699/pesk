@@ -129,9 +129,9 @@ export class PetWindowController {
     this.petWindow.loadFile(path.join(__dirname, "..", "renderer", "pet.html"));
     this.petWindow.once("ready-to-show", () => {
       if (settings.visible) this.petWindow?.showInactive();
-      if (process.env.DESKTOP_PET_DEVTOOLS === "1") {
-        this.petWindow?.webContents.openDevTools({ mode: "detach" });
-      }
+      // if (process.env.DESKTOP_PET_DEVTOOLS === "1") {
+      //   this.petWindow?.webContents.openDevTools({ mode: "detach" });
+      // }
     });
     this.petWindow.on("moved", () => {
       this.saveWindowPosition();

@@ -15,7 +15,6 @@ export class CodexPromptRenderer {
 
   constructor(
     private readonly userInput: HTMLElement | undefined,
-    private readonly history: HTMLElement,
     private readonly composerForm: HTMLFormElement,
     private readonly fileSuggestions: HTMLElement,
     private readonly input: HTMLTextAreaElement,
@@ -77,9 +76,6 @@ export class CodexPromptRenderer {
           planConfirmation.planText,
         ),
       );
-      requestAnimationFrame(() => {
-        this.history.scrollTop = this.history.scrollHeight;
-      });
       return;
     }
     if (!pending && pendingApproval) {
@@ -269,9 +265,6 @@ export class CodexPromptRenderer {
       form.querySelector<HTMLInputElement>("input[type='radio']")?.focus();
       requestAnimationFrame(() => {
         form.querySelector<HTMLInputElement>("input[type='radio']")?.focus();
-        if (requestChanged) {
-          this.history.scrollTop = this.history.scrollHeight;
-        }
       });
     }
   }
@@ -375,10 +368,7 @@ export class CodexPromptRenderer {
     container.append(form);
     if (force) {
       input.focus();
-      requestAnimationFrame(() => {
-        input.focus();
-        this.history.scrollTop = this.history.scrollHeight;
-      });
+      requestAnimationFrame(() => input.focus());
     }
   }
 
@@ -439,10 +429,9 @@ export class CodexPromptRenderer {
       this.inputController.focusChatInput();
     });
     container.append(form);
-    requestAnimationFrame(() => {
-      form.querySelector<HTMLInputElement>("input[type='radio']")?.focus();
-      this.history.scrollTop = this.history.scrollHeight;
-    });
+    requestAnimationFrame(() =>
+      form.querySelector<HTMLInputElement>("input[type='radio']")?.focus(),
+    );
   }
 
   /** Focuses the currently selected pending-question option. */

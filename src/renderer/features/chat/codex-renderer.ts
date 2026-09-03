@@ -72,7 +72,6 @@ export class CodexRenderer {
       () => this.inputController.renderCommandMode(),
     );
     this.historyRenderer = new CodexHistoryRenderer(this.history, () => this.state, {
-      scrollHistoryToBottom: () => this.scrollHistoryToBottom(),
       applySelectedMessage: () => this.applySelectedMessage(),
       setActivePlanConfirmation: (value) => {
         this.activePlanConfirmation = value;
@@ -104,11 +103,12 @@ export class CodexRenderer {
         openNewThreadPrompt: () =>
           void openProjectThreadPrompt(this.userInput ?? document.createElement("section")),
         renderUserInput: (force) => this.renderUserInput(force),
+        scrollHistoryToLatest: (force) => this.scrollHistoryToLatest(force),
+        isHistoryNearBottom: () => this.historyRenderer.isNearBottom(),
       },
     );
     this.promptRenderer = new CodexPromptRenderer(
       userInput,
-      this.history,
       form,
       this.fileSuggestions,
       input,
@@ -150,7 +150,6 @@ export class CodexRenderer {
   private setupHistoryControls(): void {
     this.history.addEventListener("scroll", () => {
       this.historyRenderer.handleHistoryScroll();
-      this.updateVirtualHistoryWindow();
       if (
         this.state.codex.hasOlderHistory &&
         !this.state.codex.historyLoading &&
@@ -160,7 +159,8 @@ export class CodexRenderer {
       }
     });
     this.history.addEventListener("wheel", () => this.historyRenderer.noteManualScroll());
-    this.history.addEventListener("touchstart", () => this.historyRenderer.noteManualScroll());
+    this.history.addEventListener("touchmove", () => this.historyRenderer.noteManualScroll());
+    this.history.addEventListener("pointerdown", () => this.historyRenderer.noteManualScroll());
   }
 
   /** Wires chat-level pointer handling and attachment input. */
@@ -357,11 +357,8 @@ export class CodexRenderer {
       (matchesShortcut(event, "historyTop") || matchesShortcut(event, "historyBottom"))
     ) {
       event.preventDefault();
-      this.historyRenderer.noteManualScroll();
-      this.history.scrollTo({
-        top: matchesShortcut(event, "historyTop") ? 0 : this.history.scrollHeight,
-        behavior: "smooth",
-      });
+      if (matchesShortcut(event, "historyTop")) this.historyRenderer.scrollToTop();
+      else this.historyRenderer.scrollToLatest(true);
       return;
     }
     if (
@@ -402,11 +399,7 @@ export class CodexRenderer {
         matchesShortcut(event, "scrollHistoryDown")
       ) {
         event.preventDefault();
-        this.historyRenderer.noteManualScroll();
-        this.history.scrollBy({
-          top: direction * 64,
-          behavior: "smooth",
-        });
+        this.historyRenderer.scrollBy(direction * 64);
         return;
       }
       if (
@@ -433,16 +426,10 @@ export class CodexRenderer {
     return true;
   }
 
-  /** Loads and anchors the next page of older history messages. */
+  /** Loads the next page of older history messages. */
   private async loadOlderHistory(): Promise<void> {
     if (!this.state.codex.hasOlderHistory || this.state.codex.historyLoading) return;
-    const previousHeight = this.history.scrollHeight;
-    const previousTop = this.history.scrollTop;
     await window.peskApi.loadOlderCodexHistory();
-    requestAnimationFrame(() => {
-      const heightDelta = this.history.scrollHeight - previousHeight;
-      this.history.scrollTop = previousTop + heightDelta;
-    });
   }
 
   private renderHistory(
@@ -459,21 +446,9 @@ export class CodexRenderer {
     );
   }
 
-  private updateVirtualHistoryWindow(): void {
-    this.historyRenderer.updateVirtualHistoryWindow();
-  }
-
-  /** Scrolls history to the bottom after the next layout pass. */
-  private scrollHistoryToBottom(): void {
-    const scroll = (): void => {
-      if (!this.historyRenderer.isAutoScrollAllowed()) return;
-      this.history.scrollTop = this.history.scrollHeight;
-      requestAnimationFrame(() => {
-        if (!this.historyRenderer.isAutoScrollAllowed()) return;
-        this.history.scrollTop = this.history.scrollHeight;
-      });
-    };
-    requestAnimationFrame(scroll);
+  /** Requests an explicit jump to the live bottom of chat history. */
+  scrollHistoryToLatest(force = true): void {
+    this.historyRenderer.scrollToLatest(force);
   }
 
   /** Moves message selection in the requested direction and scope. */
@@ -501,10 +476,7 @@ export class CodexRenderer {
         (direction < 0 ? candidateIndices[candidateIndices.length - 1] : candidateIndices[0]));
     this.selectedMessageIndex = nextIndex;
     this.applySelectedMessage();
-    messages[nextIndex]?.scrollIntoView({
-      block: "nearest",
-      behavior: "smooth",
-    });
+    if (messages[nextIndex]) this.historyRenderer.revealMessage(messages[nextIndex]);
   }
 
   /** Returns selectable history indices matching the requested scope. */

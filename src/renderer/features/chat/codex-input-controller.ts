@@ -9,6 +9,8 @@ interface CodexInputControllerCallbacks {
   openProjectManager(): void;
   openNewThreadPrompt(): void;
   renderUserInput(force: boolean): void;
+  scrollHistoryToLatest(force?: boolean): void;
+  isHistoryNearBottom(): boolean;
 }
 
 /**
@@ -87,16 +89,14 @@ export class CodexInputController {
   /** Resizes the textarea while preserving history bottom anchoring. */
   resize(): void {
     const maxHeight = 220;
-    const wasAtBottom =
-      this.history.scrollTop + this.history.clientHeight >= this.history.scrollHeight - 24;
+    const previousHistoryClientHeight = this.history.clientHeight;
+    const wasNearBottom = this.callbacks.isHistoryNearBottom();
     this.input.style.height = "auto";
     const height = Math.min(this.input.scrollHeight, maxHeight);
     this.input.style.height = `${height}px`;
     this.input.style.overflowY = this.input.scrollHeight > maxHeight ? "auto" : "hidden";
-    if (wasAtBottom) {
-      requestAnimationFrame(() => {
-        this.history.scrollTop = this.history.scrollHeight;
-      });
+    if (wasNearBottom && this.history.clientHeight !== previousHistoryClientHeight) {
+      this.callbacks.scrollHistoryToLatest(false);
     }
   }
 
@@ -180,8 +180,7 @@ export class CodexInputController {
       return;
     }
     this.rememberPrompt(prompt);
-    const keepInputFocused = this.webChat;
-    if (keepInputFocused) this.input.focus();
+    if (this.webChat) this.input.focus();
     const images = this.attachmentRenderer.images;
     const next = images.length
       ? await window.peskApi.submitCodexPrompt(prompt, images)
@@ -192,9 +191,7 @@ export class CodexInputController {
     this.resize();
     this.renderCommandMode();
     this.callbacks.updateState(next);
-    this.history.scrollTop = this.history.scrollHeight;
     this.input.focus();
-    if (keepInputFocused) this.keepWebChatFormVisible();
   }
 
   /** Handles textarea editing, submission, steering, and history shortcuts. */
@@ -341,7 +338,6 @@ export class CodexInputController {
           `${visualViewport.height}px`,
         );
       }
-      this.keepWebChatFormVisible();
     };
     this.input.addEventListener("focus", keepFormVisible);
     visualViewport?.addEventListener("resize", keepFormVisible);
@@ -352,13 +348,5 @@ export class CodexInputController {
       document.documentElement.style.removeProperty("--web-chat-viewport-height");
     };
     window.addEventListener("pagehide", removeListeners, { once: true });
-  }
-
-  /** Scrolls the browser chat history below the mobile composer. */
-  private keepWebChatFormVisible(): void {
-    if (!this.webChat) return;
-    requestAnimationFrame(() => {
-      this.history.scrollTop = this.history.scrollHeight;
-    });
   }
 }

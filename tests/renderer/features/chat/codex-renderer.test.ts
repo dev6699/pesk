@@ -4,6 +4,7 @@
 /// <reference path="../../../../src/renderer/shared/types.d.ts" />
 
 import { CodexRenderer } from "../../../../src/renderer/features/chat/codex-renderer";
+import { CodexHistoryRenderer } from "../../../../src/renderer/features/chat/codex-history-renderer";
 import { defaultRendererState } from "../../../../src/renderer/shared/default-settings";
 
 jest.mock(
@@ -258,7 +259,7 @@ test("renders session state, history, activities, approvals, and token usage", (
   expect(elements.history.querySelector(".codex-command-details")).not.toBeNull();
   expect(elements.history.querySelector(".codex-file-change-details")).not.toBeNull();
   expect(elements.history.querySelector(".codex-approval-pending")).not.toBeNull();
-  expect(elements.tokenUsage.textContent).toContain("12.5k");
+  expect(elements.tokenUsage.textContent).toContain("In 1.2k");
   expect(elements.tokenUsage.textContent).toContain("gpt-test");
 });
 
@@ -488,6 +489,7 @@ test("does not pull the reader to the bottom during assistant streaming", () => 
   renderer.updateState(state);
 
   elements.history.scrollTop = 120;
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
   renderer.applyStreamDelta({
     threadId: undefined,
     itemId: "assistant-reader",
@@ -661,7 +663,7 @@ test("keeps streamed assistant text when history is re-rendered before completio
   expect(elements.history.textContent).toContain("first partial response");
 });
 
-test("windows very long history without truncating renderer state", () => {
+test("renders very long history without changing the reader position", () => {
   const { renderer, elements } = makeRenderer();
   const history = Array.from({ length: 400 }, (_, index) => ({
     role: "user" as const,
@@ -674,15 +676,46 @@ test("windows very long history without truncating renderer state", () => {
   renderer.updateState(state);
 
   expect(state.codex.history).toHaveLength(400);
-  expect(elements.history.querySelectorAll(".codex-message")).toHaveLength(100);
-  expect(elements.history.querySelector("[data-message-item-id='message-0']")).toBeNull();
+  expect(elements.history.querySelectorAll(".codex-message")).toHaveLength(400);
+  expect(elements.history.querySelector("[data-message-item-id='message-0']")).not.toBeNull();
   expect(elements.history.querySelector("[data-message-item-id='message-399']")).not.toBeNull();
 
   elements.history.scrollTop = 2_000;
   elements.history.dispatchEvent(new Event("scroll"));
 
   expect(elements.history.querySelector("[data-message-item-id='message-7']")).not.toBeNull();
-  expect(elements.history.querySelectorAll(".codex-message")).toHaveLength(100);
+  expect(elements.history.querySelectorAll(".codex-message")).toHaveLength(400);
+});
+
+test("opens and switches long histories at the bottom", () => {
+  const { renderer, elements } = makeRenderer();
+  const firstHistory = Array.from({ length: 400 }, (_, index) => ({
+    role: "user" as const,
+    text: `first ${index}`,
+    itemId: `first-${index}`,
+  }));
+  const secondHistory = Array.from({ length: 400 }, (_, index) => ({
+    role: "user" as const,
+    text: `second ${index}`,
+    itemId: `second-${index}`,
+  }));
+
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "first", history: firstHistory },
+  });
+  expect(elements.history.scrollTop).toBeGreaterThanOrEqual(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
+
+  elements.history.scrollTop = 0;
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, threadId: "second", history: secondHistory },
+  });
+  expect(elements.history.scrollTop).toBeGreaterThanOrEqual(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
 });
 
 test("preserves scroll position when appending while reading older history", () => {
@@ -703,6 +736,79 @@ test("preserves scroll position when appending while reading older history", () 
   });
 
   expect(elements.history.scrollTop).toBe(120);
+});
+
+test("follows new messages from anywhere within the bottom five percent", () => {
+  const { renderer, elements } = makeRenderer();
+  const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, history: initialHistory },
+  });
+  elements.history.scrollTop = 490;
+
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [...initialHistory, { role: "assistant", text: "new", itemId: "assistant-1" }],
+    },
+  });
+
+  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+});
+
+test("does not scroll before the history has a measurable layout", () => {
+  const { renderer, elements } = makeRenderer();
+  Object.defineProperty(elements.history, "clientHeight", {
+    configurable: true,
+    value: 0,
+  });
+
+  renderer.scrollHistoryToLatest(false);
+
+  expect(elements.history.scrollTo).not.toHaveBeenCalled();
+  expect(elements.history.scrollTop).toBe(0);
+});
+
+test("covers direct history scroll controls and reset", () => {
+  const history = document.createElement("div");
+  Object.defineProperties(history, {
+    clientHeight: { configurable: true, value: 300 },
+    scrollHeight: { configurable: true, value: 800, writable: true },
+  });
+  history.scrollTo = jest.fn();
+  history.scrollBy = jest.fn();
+  const state = defaultRendererState();
+  const historyRenderer = new CodexHistoryRenderer(history, () => state, {
+    applySelectedMessage: jest.fn(),
+    setActivePlanConfirmation: jest.fn(),
+    isPlanConfirmationDismissed: jest.fn(() => false),
+  });
+
+  historyRenderer.scrollToTop();
+  historyRenderer.scrollBy(64);
+  historyRenderer.revealMessage(document.createElement("div"));
+  historyRenderer.reset();
+
+  expect(history.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+  expect(history.scrollBy).toHaveBeenCalledWith({ top: 64, behavior: "smooth" });
+});
+
+test("ignores layout scroll events without user scroll intent", () => {
+  const { renderer, elements } = makeRenderer();
+  elements.history.scrollTop = 120;
+
+  elements.history.dispatchEvent(new Event("scroll"));
+
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [{ role: "user", text: "new", itemId: "new-message" }],
+    },
+  });
+  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
 });
 
 test("renders readable keyboard-friendly user questions", () => {
@@ -1167,7 +1273,7 @@ test("opens new plan activities by default and preserves manual collapse", () =>
   );
 });
 
-test("scrolls when a plan appears, streams, and asks to implement", () => {
+test("preserves position while a plan streams away from the bottom", () => {
   jest.useFakeTimers();
   try {
     const { renderer, elements } = makeRenderer();
@@ -1204,7 +1310,7 @@ test("scrolls when a plan appears, streams, and asks to implement", () => {
     });
     expect(elements.history.scrollTop).toBe(120);
     jest.advanceTimersByTime(100);
-    expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+    expect(elements.history.scrollTop).toBe(120);
 
     elements.history.scrollTop = 120;
     renderer.updateState({
@@ -1224,7 +1330,7 @@ test("scrolls when a plan appears, streams, and asks to implement", () => {
       },
     });
     expect(elements.userInput.querySelector(".codex-plan-implementation-prompt")).not.toBeNull();
-    expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+    expect(elements.history.scrollTop).toBe(120);
 
     elements.history.scrollTop = 120;
     renderer.updateState({
@@ -2183,7 +2289,7 @@ test("keeps web chat input focused before and after an async submission", async 
 
   resolveSubmit(next);
   await Promise.resolve();
-  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+  expect(elements.history.scrollTop).toBe(0);
   expect(document.activeElement).toBe(elements.input);
 });
 
@@ -2224,7 +2330,7 @@ test("adjusts web chat form visibility on visual viewport resize", () => {
 
   for (const listener of resizeListeners) listener();
 
-  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+  expect(elements.history.scrollTop).toBe(0);
   expect(resizeListeners.size).toBe(1);
   window.dispatchEvent(new Event("pagehide"));
   expect(resizeListeners.size).toBe(0);

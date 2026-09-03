@@ -9,12 +9,9 @@ import {
 } from "./codex-renderer-helpers.js";
 import { CodexActivityRenderer } from "./codex-activity-renderer.js";
 
-const VIRTUAL_HISTORY_THRESHOLD = 300;
-const VIRTUAL_HISTORY_WINDOW = 100;
-const DEFAULT_HISTORY_ROW_HEIGHT = 72;
+const BOTTOM_FOLLOW_RATIO = 0.05;
 
 interface HistoryRendererCallbacks {
-  scrollHistoryToBottom(): void;
   applySelectedMessage(): void;
   setActivePlanConfirmation(value: { key: string; planText: string } | undefined): void;
   isPlanConfirmationDismissed(activityKey: string): boolean;
@@ -31,38 +28,131 @@ export class CodexHistoryRenderer {
   private readonly streamingPlainMessages = new Set<string>();
   private readonly streamedAssistantTexts = new Map<string, string>();
   private renderedHistoryKeys: string[] = [];
-  private virtualHistoryStart = 0;
-  private virtualHistoryAverageHeight = DEFAULT_HISTORY_ROW_HEIGHT;
+  private resizeObserver?: ResizeObserver;
+  private scrollFrame: number | undefined;
+  private followingLatest = true;
+  private userScrollPending = false;
   private renderedPlanDetails = new Map<string, string>();
   private planRenderTimer: number | undefined;
   private pendingPlanHistory: RendererState["codex"]["history"] | undefined;
-  private manualScrollSuppressed = false;
 
   constructor(
     private readonly history: HTMLElement,
     private readonly getState: () => RendererState,
     private readonly callbacks: HistoryRendererCallbacks,
-  ) {}
+  ) {
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => {
+        if (this.isAutoScrollAllowed()) this.scrollToLatest(false);
+      });
+      this.resizeObserver.observe(this.history);
+    }
+  }
 
   reset(): void {
+    if (this.scrollFrame !== undefined) cancelAnimationFrame(this.scrollFrame);
+    this.resizeObserver?.disconnect();
+    this.resizeObserver?.observe(this.history);
     this.historyInitialized = false;
     this.renderedHistoryStructureKey = "";
     this.renderedHistoryKeys = [];
-    this.manualScrollSuppressed = false;
+    this.followingLatest = true;
+    this.userScrollPending = false;
   }
 
   noteManualScroll(): void {
-    this.manualScrollSuppressed = true;
+    if (this.scrollFrame !== undefined) {
+      cancelAnimationFrame(this.scrollFrame);
+      this.scrollFrame = undefined;
+    }
+    this.history.scrollTo({ top: this.history.scrollTop, behavior: "auto" });
+    this.userScrollPending = true;
+    this.followingLatest = false;
   }
 
   handleHistoryScroll(): void {
-    if (this.history.scrollTop + this.history.clientHeight >= this.history.scrollHeight - 24) {
-      this.manualScrollSuppressed = false;
+    if (!this.userScrollPending) return;
+    this.userScrollPending = false;
+    if (this.isNearBottom()) {
+      this.followingLatest = true;
+    } else {
+      this.followingLatest = false;
     }
   }
 
   isAutoScrollAllowed(): boolean {
-    return !this.manualScrollSuppressed;
+    return this.followingLatest;
+  }
+
+  scrollToLatest(force = true): void {
+    if (force) {
+      this.followingLatest = true;
+      this.userScrollPending = false;
+    }
+    if (!this.isAutoScrollAllowed()) return;
+    if (this.history.clientHeight <= 0 || this.history.scrollHeight <= 0) {
+      return;
+    }
+    if (!force) {
+      this.history.scrollTop = this.history.scrollHeight;
+      return;
+    }
+    this.scheduleProgrammaticScroll(() => {
+      if (!this.isAutoScrollAllowed()) {
+        return;
+      }
+      if (force) {
+        this.history.scrollTo({ top: this.history.scrollHeight, behavior: "smooth" });
+        this.history.scrollTop = this.history.scrollHeight;
+      } else {
+        this.history.scrollTop = this.history.scrollHeight;
+      }
+    });
+  }
+
+  scrollToTop(): void {
+    this.noteManualScroll();
+    this.scheduleProgrammaticScroll(() => {
+      this.history.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  scrollBy(top: number): void {
+    this.noteManualScroll();
+    this.scheduleProgrammaticScroll(() => {
+      this.history.scrollBy({ top, behavior: "smooth" });
+    });
+  }
+
+  revealMessage(message: HTMLElement): void {
+    this.noteManualScroll();
+    this.scheduleProgrammaticScroll(() => {
+      message.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }
+
+  captureAnchor(): { key: string; offset: number } | undefined {
+    const historyBounds = this.history.getBoundingClientRect();
+    const messages = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message"));
+    const message = messages.find((candidate) => {
+      const bounds = candidate.getBoundingClientRect();
+      return bounds.bottom > historyBounds.top && bounds.top < historyBounds.bottom;
+    });
+    const key = message?.dataset.historyKey;
+    if (!message || !key) return undefined;
+    return { key, offset: message.getBoundingClientRect().top - historyBounds.top };
+  }
+
+  restoreAnchor(anchor: { key: string; offset: number } | undefined): void {
+    if (!anchor) return;
+    const message = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message")).find(
+      (candidate) => candidate.dataset.historyKey === anchor.key,
+    );
+    if (!message) return;
+    const historyBounds = this.history.getBoundingClientRect();
+    const delta = message.getBoundingClientRect().top - historyBounds.top - anchor.offset;
+    if (Math.abs(delta) < 1) return;
+    this.history.scrollTop += delta;
   }
 
   applyStreamDelta(delta: CodexStreamDelta): void {
@@ -74,8 +164,7 @@ export class CodexHistoryRenderer {
         .find((candidate) => this.renderedMessageContents.has(candidate));
     if (!key) return;
     if (delta.kind === "assistant") {
-      const wasAtBottom =
-        this.history.scrollTop + this.history.clientHeight >= this.history.scrollHeight - 24;
+      const wasAtBottom = this.isNearBottom();
       let content = this.renderedMessageContents.get(key);
       if (!content && delta.itemId) {
         const message = {
@@ -90,7 +179,7 @@ export class CodexHistoryRenderer {
           new Set(),
         );
         this.history.append(bubble);
-        this.renderedHistoryKeys.push(key);
+        if (!this.renderedHistoryKeys.includes(key)) this.renderedHistoryKeys.push(key);
         content = this.renderedMessageContents.get(key);
       }
       if (!content) return;
@@ -99,7 +188,7 @@ export class CodexHistoryRenderer {
       this.renderedMessageTexts.set(key, text);
       if (delta.itemId) this.streamedAssistantTexts.set(key, text);
       this.streamingPlainMessages.add(key);
-      if (wasAtBottom) this.callbacks.scrollHistoryToBottom();
+      if (wasAtBottom && this.isAutoScrollAllowed()) this.scrollToLatest(false);
       return;
     }
     const details = this.renderedActivityDetails.get(key);
@@ -115,6 +204,14 @@ export class CodexHistoryRenderer {
     this.renderedActivityOutputs.set(key, output);
   }
 
+  private scheduleProgrammaticScroll(action: () => void): void {
+    if (this.scrollFrame !== undefined) cancelAnimationFrame(this.scrollFrame);
+    this.scrollFrame = requestAnimationFrame(() => {
+      this.scrollFrame = undefined;
+      action();
+    });
+  }
+
   /** Renders chat history incrementally when possible, preserving message nodes,
    * expanded activities, and the user's scroll position while reading history.
    */
@@ -125,10 +222,6 @@ export class CodexHistoryRenderer {
     queuedSubmissions: RendererState["codex"]["queuedSubmissions"] = [],
   ): void {
     this.updateActivePlanConfirmation(history);
-    if ((history ?? []).length > VIRTUAL_HISTORY_THRESHOLD) {
-      this.renderVirtualHistory(history, sessionConnected, historyLoading, queuedSubmissions);
-      return;
-    }
     const structureKey = `${historyStructureKey(history)}|queue:${queuedSubmissions
       .map((submission) => `${submission.id}:${submission.text}`)
       .join("|")}|loading:${historyLoading}|connected:${sessionConnected}`;
@@ -141,11 +234,9 @@ export class CodexHistoryRenderer {
     const canIncrementallyAppend =
       this.historyInitialized &&
       !queuedSubmissions.length &&
-      !planContentChanged &&
       isPrefix(this.renderedHistoryKeys, historyKeys);
     if (canIncrementallyAppend && historyKeys.length > this.renderedHistoryKeys.length) {
-      const wasAtBottom =
-        this.history.scrollTop + this.history.clientHeight >= this.history.scrollHeight - 24;
+      const wasAtBottom = this.isNearBottom();
       this.history
         .querySelectorAll(".codex-empty-history, .codex-loading-history, .codex-session-connected")
         .forEach((placeholder) => placeholder.remove());
@@ -167,8 +258,10 @@ export class CodexHistoryRenderer {
       }
       this.renderedHistoryKeys = historyKeys;
       this.renderedHistoryStructureKey = structureKey;
+      this.schedulePlanUpdates(history);
+      this.updateRenderedMessageContent(history);
       this.callbacks.applySelectedMessage();
-      if (wasAtBottom) this.callbacks.scrollHistoryToBottom();
+      if (wasAtBottom) this.scrollToLatest(false);
       return;
     }
     const canIncrementallyPrepend =
@@ -177,8 +270,7 @@ export class CodexHistoryRenderer {
       !planContentChanged &&
       isSuffix(this.renderedHistoryKeys, historyKeys);
     if (canIncrementallyPrepend && historyKeys.length > this.renderedHistoryKeys.length) {
-      const previousHeight = this.history.scrollHeight;
-      const previousTop = this.history.scrollTop;
+      const anchor = this.captureAnchor();
       const openActivityKeys = new Set(
         Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
           .filter((details) => details.open)
@@ -204,12 +296,33 @@ export class CodexHistoryRenderer {
       this.renderedHistoryKeys = historyKeys;
       this.renderedHistoryStructureKey = structureKey;
       this.callbacks.applySelectedMessage();
-      this.history.scrollTop = previousTop + (this.history.scrollHeight - previousHeight);
+      this.restoreAnchor(anchor);
+      return;
+    }
+    const sameHistory =
+      this.historyInitialized &&
+      !queuedSubmissions.length &&
+      this.renderedHistoryStructureKey === structureKey &&
+      this.renderedHistoryKeys.length === historyKeys.length &&
+      this.renderedHistoryKeys.every((key, index) => key === historyKeys[index]);
+    if (sameHistory) {
+      const wasAtBottom = this.isNearBottom();
+      const previousScrollTop = this.history.scrollTop;
+      this.updateRenderedMessageContent(history);
+      this.renderedHistoryStructureKey = structureKey;
+      this.schedulePlanUpdates(history);
+      this.callbacks.applySelectedMessage();
+      if (wasAtBottom) this.scrollToLatest(false);
+      else {
+        this.followingLatest = false;
+        this.history.scrollTop = previousScrollTop;
+      }
       return;
     }
     if (
       this.renderedHistoryStructureKey &&
       structureKey === this.renderedHistoryStructureKey &&
+      planContentChanged &&
       this.schedulePlanUpdates(history)
     ) {
       this.updateRenderedMessageContent(history);
@@ -220,9 +333,9 @@ export class CodexHistoryRenderer {
       this.planRenderTimer = undefined;
       this.pendingPlanHistory = undefined;
     }
-    const wasAtBottom =
-      this.historyInitialized &&
-      this.history.scrollTop + this.history.clientHeight >= this.history.scrollHeight - 24;
+    const wasAtBottom = this.historyInitialized && this.isNearBottom();
+    const previousScrollTop = this.history.scrollTop;
+    if (this.historyInitialized && !wasAtBottom) this.followingLatest = false;
     const openActivityKeys = new Set(
       Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
         .filter((details) => details.open)
@@ -290,114 +403,24 @@ export class CodexHistoryRenderer {
       this.history.append(queue);
     }
     this.callbacks.applySelectedMessage();
-    if (!this.historyInitialized || wasAtBottom || planContentChanged) {
-      this.callbacks.scrollHistoryToBottom();
+    this.observeHistoryMessages();
+    if (!this.historyInitialized || wasAtBottom) {
+      this.scrollToLatest(false);
+    } else {
+      this.history.scrollTop = previousScrollTop;
     }
     this.historyInitialized = true;
   }
 
-  /** Maintains a bounded DOM window while retaining the complete history array. */
-  private renderVirtualHistory(
-    history: RendererState["codex"]["history"],
-    sessionConnected: boolean,
-    historyLoading: boolean,
-    queuedSubmissions: RendererState["codex"]["queuedSubmissions"],
-  ): void {
-    const historyKeys = (history ?? []).map(historyMessageKeyForRenderer);
-    const structureKey = `${historyStructureKey(history)}|queue:${queuedSubmissions
-      .map((submission) => `${submission.id}:${submission.text}`)
-      .join("|")}|loading:${historyLoading}|connected:${sessionConnected}`;
-    const maxStart = Math.max(0, historyKeys.length - VIRTUAL_HISTORY_WINDOW);
-    const desiredStart = !this.historyInitialized
-      ? maxStart
-      : Math.min(
-          maxStart,
-          Math.max(0, Math.floor(this.history.scrollTop / this.virtualHistoryAverageHeight) - 20),
-        );
-    const sameWindow =
-      this.historyInitialized &&
-      this.renderedHistoryStructureKey === structureKey &&
-      this.virtualHistoryStart === desiredStart;
-    if (sameWindow) {
-      this.updateRenderedMessageContent(history);
-      return;
-    }
-    const previousTop = this.history.scrollTop;
-    const openActivityKeys = new Set(
-      Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
-        .filter((details) => details.open)
-        .map((details) => details.dataset.activityKey)
-        .filter((key): key is string => Boolean(key)),
-    );
-    const renderedActivityKeys = new Set(
-      Array.from(this.history.querySelectorAll<HTMLElement>("details[data-activity-key]"))
-        .map((details) => details.dataset.activityKey)
-        .filter((key): key is string => Boolean(key)),
-    );
-    this.history.replaceChildren();
-    this.renderedMessageContents.clear();
-    this.renderedMessageTexts.clear();
-    this.renderedActivityDetails.clear();
-    this.renderedActivityOutputs.clear();
-    this.streamingPlainMessages.clear();
-    this.renderedPlanDetails.clear();
-    this.virtualHistoryStart = desiredStart;
-    const end = Math.min(historyKeys.length, desiredStart + VIRTUAL_HISTORY_WINDOW);
-    const topSpacer = document.createElement("div");
-    topSpacer.className = "codex-history-virtual-spacer";
-    topSpacer.style.height = `${desiredStart * this.virtualHistoryAverageHeight}px`;
-    const bottomSpacer = document.createElement("div");
-    bottomSpacer.className = "codex-history-virtual-spacer";
-    bottomSpacer.style.height = `${(historyKeys.length - end) * this.virtualHistoryAverageHeight}px`;
-    const fragment = document.createDocumentFragment();
-    for (let index = desiredStart; index < end; index += 1) {
-      fragment.append(
-        this.createMessageBubble(history[index], index, openActivityKeys, renderedActivityKeys),
-      );
-    }
-    this.history.append(topSpacer, fragment, bottomSpacer);
-    if (queuedSubmissions.length) {
-      const queue = document.createElement("section");
-      queue.className = "codex-queued-submissions";
-      const title = document.createElement("strong");
-      title.textContent = "Queued";
-      queue.append(title);
-      for (const submission of queuedSubmissions) {
-        const item = document.createElement("div");
-        item.className = "codex-queued-submission";
-        const text = document.createElement("span");
-        text.textContent = submission.text || "Image attachment";
-        item.append(text);
-        for (const image of submission.images ?? []) {
-          const preview = document.createElement("img");
-          preview.className = "codex-queued-submission-image";
-          preview.src = image.url;
-          preview.alt = image.name ? `Queued image: ${image.name}` : "Queued image";
-          item.append(preview);
-        }
-        queue.append(item);
-      }
-      this.history.append(queue);
-    }
-    this.renderedHistoryStructureKey = structureKey;
-    this.renderedHistoryKeys = historyKeys;
-    this.callbacks.applySelectedMessage();
-    this.history.scrollTop = this.historyInitialized
-      ? previousTop
-      : desiredStart * this.virtualHistoryAverageHeight;
-    this.historyInitialized = true;
+  private observeHistoryMessages(): void {
+    this.history.querySelectorAll<HTMLElement>(".codex-message").forEach((message) => {
+      this.resizeObserver?.observe(message);
+    });
   }
 
-  /** Re-renders only when scrolling enters a different history window. */
-  updateVirtualHistoryWindow(): void {
-    const history = this.getState().codex.history;
-    if (history.length <= VIRTUAL_HISTORY_THRESHOLD) return;
-    this.renderVirtualHistory(
-      history,
-      Boolean(this.getState().codex.threadId),
-      this.getState().codex.historyLoading,
-      this.getState().codex.queuedSubmissions,
-    );
+  isNearBottom(): boolean {
+    const maxScrollTop = Math.max(0, this.history.scrollHeight - this.history.clientHeight);
+    return maxScrollTop - this.history.scrollTop <= this.history.clientHeight * BOTTOM_FOLLOW_RATIO;
   }
 
   /** Creates a DOM bubble for one history message. */
@@ -422,6 +445,7 @@ export class CodexHistoryRenderer {
     }
     if (message.temporary) bubble.classList.add("codex-message-working");
     const activityKey = historyMessageKeyForRenderer(message, index);
+    bubble.dataset.historyKey = activityKey;
     if (message.itemId) bubble.dataset.messageItemId = message.itemId;
     if (message.activity?.kind === "plan") {
       this.renderedPlanDetails.set(activityKey, message.activity.details ?? "");
@@ -584,9 +608,7 @@ export class CodexHistoryRenderer {
           content.innerHTML = renderMarkdown(message.activity.details ?? "");
           this.renderedPlanDetails.set(activityKey, message.activity.details ?? "");
         }
-        requestAnimationFrame(() => {
-          this.history.scrollTop = this.history.scrollHeight;
-        });
+        if (this.isAutoScrollAllowed()) this.scrollToLatest(false);
       }, 100);
     }
     return true;
