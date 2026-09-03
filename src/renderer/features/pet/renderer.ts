@@ -1,5 +1,6 @@
 import { defaultRendererState } from "../../shared/default-settings.js";
 import { PetRenderer } from "./pet-renderer.js";
+import { applyRendererTheme } from "../../shared/theme.js";
 
 const image = document.getElementById("pet-image") as HTMLImageElement;
 const petElement = document.getElementById("pet") as HTMLElement;
@@ -18,12 +19,16 @@ const pet = new PetRenderer({
   state: defaultRendererState(),
 });
 
-window.peskApi.onSettingsChanged((state) => pet.updateState(state));
+window.peskApi.onSettingsChanged((state) => {
+  applyRendererTheme(state.assets.theme);
+  pet.updateState(state);
+});
 window.peskApi.onPetFocusChanged((focused) => pet.updateFocus(focused));
 window.peskApi.onPetCodexUpdateChanged((active) => pet.updateCodexUpdate(active));
 window.peskApi.onPetCodexStatusSound(() => pet.playAttentionSound());
 
 void window.peskApi.getSettings().then(async (state) => {
+  applyRendererTheme(state.assets.theme);
   pet.updateState(state);
   await pet.loadAnimations();
 });

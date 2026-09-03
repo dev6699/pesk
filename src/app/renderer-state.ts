@@ -5,6 +5,7 @@ import type { ChatWebServer } from "../services/chat-web-server";
 import type { CodexController } from "../codex";
 import type { PeskSettings as AppSettings } from "../config/config";
 import type { CodexStreamDelta } from "../codex/types";
+import { themeNames, type RendererTheme } from "../config/themes";
 
 /** The renderer payload is defined once in renderer/shared/types.d.ts. */
 export type RendererState = globalThis.RendererState;
@@ -16,6 +17,8 @@ export class RendererStatePublisher {
     private readonly getSettings: () => AppSettings,
     private readonly codex: CodexController,
     private readonly getStatusSoundUrl: () => string,
+    private readonly getTheme: () => RendererTheme,
+    private readonly getThemeName: () => string,
     private readonly getPetWindow: () => BrowserWindow | null,
     private readonly getChatWindow: () => BrowserWindow | null,
     private readonly webServer: ChatWebServer,
@@ -26,7 +29,12 @@ export class RendererStatePublisher {
     return {
       settings: this.getSettings(),
       codex: state,
-      assets: { codexStatusSoundUrl: this.getStatusSoundUrl() },
+      assets: {
+        codexStatusSoundUrl: this.getStatusSoundUrl(),
+        theme: this.getTheme(),
+        themeName: this.getThemeName(),
+        themeNames,
+      },
     };
   }
 

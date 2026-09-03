@@ -1,6 +1,7 @@
 import { app } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { defaultTheme, themes, type RendererTheme } from "./themes";
 
 export interface SavedMonitor {
   id?: number;
@@ -31,6 +32,8 @@ export interface AppConfig {
   webPort: number;
   webTlsKey: string;
   webTlsCert: string;
+  theme: RendererTheme;
+  themeName: string;
 }
 
 export function loadRawConfig(): Record<string, any> {
@@ -57,7 +60,18 @@ export function loadRawConfig(): Record<string, any> {
 
 export function getConfigDirectory(): string {
   const userConfigPath = path.join(app.getPath("userData"), "config.json");
-  return fs.existsSync(userConfigPath) ? app.getPath("userData") : app.getAppPath();
+  try {
+    const user = JSON.parse(fs.readFileSync(userConfigPath, "utf8")) as Record<string, any>;
+    const hasUserPathOverride = [
+      "animationsDir",
+      "codexStatusSound",
+      "webTlsKey",
+      "webTlsCert",
+    ].some((key) => typeof user[key] === "string" && user[key].trim());
+    return hasUserPathOverride ? app.getPath("userData") : app.getAppPath();
+  } catch {
+    return app.getAppPath();
+  }
 }
 
 const defaultSettings: PeskSettings = {
@@ -77,6 +91,8 @@ const defaultConfig: AppConfig = {
   webPort: 4587,
   webTlsKey: "",
   webTlsCert: "",
+  theme: defaultTheme,
+  themeName: "amber",
 };
 
 function settingsPath(): string {
@@ -127,8 +143,29 @@ export function loadConfig(): AppConfig {
         typeof config.webTlsCert === "string" && config.webTlsCert.trim()
           ? path.resolve(getConfigDirectory(), config.webTlsCert.trim())
           : defaultConfig.webTlsCert,
+      theme:
+        typeof config.theme === "string" && config.theme in themes
+          ? themes[config.theme]
+          : defaultConfig.theme,
+      themeName:
+        typeof config.theme === "string" && config.theme in themes
+          ? config.theme
+          : defaultConfig.themeName,
     };
   } catch {
     return { ...defaultConfig };
   }
+}
+
+export function saveTheme(themeName: string): void {
+  const userPath = path.join(app.getPath("userData"), "config.json");
+  let user: Record<string, any> = {};
+  try {
+    user = JSON.parse(fs.readFileSync(userPath, "utf8"));
+  } catch {
+    // A user configuration is optional and can be created on first change.
+  }
+  user.theme = themeName;
+  fs.mkdirSync(path.dirname(userPath), { recursive: true });
+  fs.writeFileSync(userPath, JSON.stringify(user, null, 2));
 }

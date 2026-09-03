@@ -74,6 +74,7 @@ export interface PeskApi {
   deleteCodexProject: (id: string) => Promise<RendererState>;
   chooseCodexProjectRoot: () => Promise<string | undefined>;
   getPresets: () => Promise<{ name: string }[]>;
+  setTheme: (themeName: string) => Promise<RendererState>;
   runPreset: (name: string) => void;
   closeMenuWindow: () => void;
   onMenuUpdated: (callback: () => void) => void;

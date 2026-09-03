@@ -194,6 +194,9 @@ interface CodexRuntimeState {
 
 interface RendererAssets {
   codexStatusSoundUrl: string;
+  theme?: Record<string, string>;
+  themeName?: string;
+  themeNames?: ReadonlyArray<string>;
 }
 
 interface RendererState {

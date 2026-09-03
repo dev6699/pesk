@@ -1,6 +1,7 @@
 import { CodexRenderer } from "./codex-renderer.js";
 import { defaultRendererState } from "../../shared/default-settings.js";
 import { matchesShortcut } from "../../shared/shortcuts.js";
+import { applyRendererTheme } from "../../shared/theme.js";
 
 const codex = new CodexRenderer(
   document.getElementById("codex-chat") as HTMLElement,
@@ -53,6 +54,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 window.peskApi.onSettingsChanged((next) => {
+  applyRendererTheme(next.assets.theme);
   codex.updateState(next);
   updateInterruptButton(next);
   if (next.codex.connected && !next.codex.rateLimits) {
@@ -69,6 +71,7 @@ void window.peskApi.getChatSize().then(({ width, height }) => {
 });
 
 void window.peskApi.getSettings().then((next) => {
+  applyRendererTheme(next.assets.theme);
   codex.updateState(next);
   updateInterruptButton(next);
   if (next.codex.connected && !next.codex.rateLimits) {

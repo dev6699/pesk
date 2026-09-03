@@ -87,6 +87,7 @@ const api: PeskApi = {
   deleteCodexProject: invokeChannel("delete-codex-project"),
   chooseCodexProjectRoot: invokeChannel("choose-codex-project-root"),
   getPresets: invokeChannel("get-presets"),
+  setTheme: invokeChannel("set-theme"),
   runPreset: sendChannel("run-preset"),
   closeMenuWindow: sendChannel("close-menu-window"),
   onMenuUpdated: listenChannel("menu-updated"),

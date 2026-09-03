@@ -13,6 +13,10 @@ export function registerIpcHandlers(context: ApplicationContext): void {
   registerInvoke("get-animations", () => pet.getAnimations());
   registerInvoke("get-chat-size", () => chat.getSize());
   registerInvoke("get-presets", () => presets.getPresets());
+  registerInvoke("set-theme", (_event, themeName) => {
+    if (typeof themeName === "string") context.setTheme(themeName);
+    return state.getState();
+  });
   registerEvent("refresh-codex-rate-limits", () => codex.refreshRateLimits());
   registerEvent("open-config-folder", () => void shell.openPath(context.userDataPath));
 

@@ -29,6 +29,7 @@ export interface IpcInvokeContract {
   "get-animations": { args: []; result: AnimationFrames[] };
   "get-chat-size": { args: []; result: ChatSize };
   "get-presets": { args: []; result: PresetInfo[] };
+  "set-theme": { args: [themeName: string]; result: RendererState };
   "create-pairing": { args: [name: string]; result: PairingInfo | undefined };
   "get-pairing-status": { args: []; result: PairingStatus };
   "get-pairing-devices": { args: []; result: PairingDevice[] };

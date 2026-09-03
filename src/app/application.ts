@@ -4,7 +4,8 @@ import { ChatWindowController } from "../windows/chat";
 import { FocusController } from "./focus";
 import { ChatWebServer } from "../services/chat-web-server";
 import { CodexController } from "../codex";
-import { loadConfig, loadSettings, saveSettings } from "../config/config";
+import { loadConfig, loadSettings, saveSettings, saveTheme } from "../config/config";
+import { themes, type RendererTheme } from "../config/themes";
 import type { PeskSettings } from "../config/config";
 import { registerIpcHandlers } from "./ipc";
 import { MenuController } from "../windows/menu";
@@ -26,6 +27,7 @@ export interface ApplicationContext {
   focus: FocusController;
   userDataPath: string;
   quit: () => void;
+  setTheme: (themeName: string) => void;
 }
 
 export class PeskApplication implements ApplicationContext {
@@ -41,6 +43,8 @@ export class PeskApplication implements ApplicationContext {
   private _menu!: MenuController;
   private _state!: RendererStatePublisher;
   private _focus!: FocusController;
+  private theme!: RendererTheme;
+  private themeName!: string;
 
   get codex() {
     return this._codex;
@@ -70,9 +74,19 @@ export class PeskApplication implements ApplicationContext {
     return app.getPath("userData");
   }
 
+  setTheme(themeName: string): void {
+    if (!(themeName in themes)) return;
+    this.themeName = themeName;
+    this.theme = themes[this.themeName];
+    saveTheme(this.themeName);
+    this.state.publish();
+  }
+
   start(): void {
     this.settings = loadSettings();
     const config = loadConfig();
+    this.theme = config.theme;
+    this.themeName = config.themeName;
     this.statusSoundUrl = config.codexStatusSound;
     const debug = (...values: unknown[]): void => {
       if (!app.isPackaged) console.log("[pesk]", ...values);
@@ -141,6 +155,8 @@ export class PeskApplication implements ApplicationContext {
       () => this.settings,
       this.codex,
       () => this.statusSoundUrl,
+      () => this.theme,
+      () => this.themeName,
       () => this.pet.window,
       () => this.chat.window,
       this.webServer,

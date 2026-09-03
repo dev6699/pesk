@@ -1,3 +1,133 @@
+:root {
+  /* Shared bases. */
+  --foreground-base: #fff;
+  --surface-base: #000;
+  /* Text. */
+  --text-primary: var(--foreground-base);
+  --text-on-bright-surface: #000;
+  --text-contrast: #222;
+  --text-secondary: rgb(from var(--foreground-base) r g b / 73.3333%);
+  --text-secondary-strong: rgb(from var(--foreground-base) r g b / 80%);
+  --text-muted: rgb(from var(--foreground-base) r g b / 60%);
+  --text-neutral: #d8dedb;
+  --text-muted-fallback: #888;
+  --text-shadow: rgb(from var(--foreground-base) r g b / 53.3333%);
+  /* Borders and dividers. */
+  --border-strong: rgb(from var(--foreground-base) r g b / 66.6667%);
+  --border-bright: rgb(from var(--foreground-base) r g b / 73.3333%);
+  --border-subtle: rgb(from var(--foreground-base) r g b / 53.3333%);
+  --border-faint: rgb(from var(--foreground-base) r g b / 33.3333%);
+  --border-very-faint: rgb(from var(--foreground-base) r g b / 20%);
+  --divider: rgb(from var(--foreground-base) r g b / 13.3333%);
+  /* Surfaces and overlays. */
+  --permission-surface: rgb(from var(--foreground-base) r g b / 93.3333%);
+  --surface-input: rgb(from var(--surface-base) r g b / 80%);
+  --surface-panel: rgb(from var(--surface-base) r g b / 87%);
+  --surface-muted: rgb(from var(--surface-base) r g b / 60%);
+  --surface-code: rgb(from var(--surface-base) r g b / 67%);
+  --surface-focus: rgb(from var(--surface-base) r g b / 93%);
+  --suggestion-surface: #111;
+  --message-user-surface: var(--action-primary-muted);
+  --message-user-text: var(--text-primary);
+  --message-user-time: var(--text-muted);
+  --surface-glint: rgb(from var(--foreground-base) r g b / 3.9216%);
+  --border-overlay: rgb(from var(--foreground-base) r g b / 40%);
+  --overlay-faint: rgb(from var(--foreground-base) r g b / 26.6667%);
+  /* Shadows. */
+  --surface-shadow-soft: rgb(from var(--surface-base) r g b / 26.6667%);
+  --shadow-medium: rgb(from var(--surface-base) r g b / 40%);
+  --shadow-heavy: rgb(from var(--surface-base) r g b / 53.3333%);
+  /* Statuses. */
+  --status-success: #b9f6c5;
+  --status-success-muted: rgb(from var(--status-success) r g b / 60%);
+  --status-success-secondary: #9fe3b1;
+  --status-success-pale: #e5ffe9;
+  --status-success-action: #16874f;
+  --status-error: #ff8c8c;
+  --status-error-strong: #ff4d4f;
+  --status-error-pale: #ffd6d6;
+  --status-error-soft: #ffc1c1;
+  --status-error-border: #ff5c5c;
+  --status-warning: #ffd166;
+  --status-warning-strong: #ffc15a;
+  --status-warning-pale: #ffe0b2;
+  --plan-border: var(--status-warning-strong);
+  --approval-border: var(--status-warning-strong);
+  --approval-text: var(--status-warning-strong);
+  --status-info: #9ecbff;
+  --status-info-strong: #7db7ff;
+  --status-info-muted: rgb(from var(--status-info-strong) r g b / 60%);
+  --status-info-border: rgb(from var(--status-info-strong) r g b / 66.6667%);
+  --status-review: #d6a7ff;
+  --status-review-muted: rgb(from var(--status-review) r g b / 60%);
+  --status-danger: #d92d20;
+  --status-default-start: #315fbd;
+  --status-default-end: #183777;
+  --status-working-start: #3478e5;
+  --status-working-end: #1749a1;
+  --status-waiting-start: #d8892e;
+  --status-waiting-end: #9b4b0f;
+  --status-idle-start: #34a853;
+  --status-idle-end: #176b35;
+  /* Actions and permissions. */
+  --action-primary: #1687d9;
+  --action-primary-muted: rgb(from var(--action-primary) r g b / 80%);
+  --action-secondary: #2458a8;
+  --action-hover: #2563eb;
+  --text-on-action: #fff;
+  --action-focus-glow: rgb(from var(--action-hover) r g b / 53.3333%);
+  --button-secondary: #555;
+  --permission-deny: #64748b;
+  /* Command and shell. */
+  --command-text: #fff3bf;
+  --command-border: #ffe08a;
+  --command-surface: #17120a;
+  --read-only-text: #ffd9a3;
+  --shell-text: #ffd9dc;
+  --shell-border: #f0a35b;
+  --shell-surface: #24160b;
+  --shell-error-border: #ff9f9f;
+  /* Activity and diff. */
+  --activity-command: #ffb347;
+  --activity-command-strong: rgb(from var(--activity-command) r g b / 86.6667%);
+  --activity-warning: #ffd28a;
+  --activity-warning-strong: #ffcf7a;
+  --activity-warning-soft: #ffd8a8;
+  --file-change-path: var(--status-success-pale);
+  --diff-surface: #050b08;
+  --diff-added-surface: #164b2a66;
+  --diff-removed-surface: #5c181866;
+  --error-surface: #5c0000dd;
+  --failed-surface: #210d10;
+  --review-surface: #2b1d08cc;
+  --review-accent: #ffb4a2aa;
+  /* Panels and suggestions. */
+  --panel-surface: #c98a5edd;
+  --panel-surface-end: #d9854fcc;
+  --panel-surface-end-soft: rgb(from var(--panel-surface-end) r g b / 60%);
+  --notice-surface-start: #252525ee;
+  --notice-surface-end: #111c2bee;
+  --attachment-surface: #111827dd;
+  --suggestion-hover-surface: #d97706e6;
+  --failed-border: #ff6b6b;
+  /* Focus effects. */
+  --focus-ring: #b9dcff;
+  --focus-warm-core: #fff7ed;
+  --focus-warm: #fde68a;
+  --focus-warm-glow: rgb(from var(--focus-warm) r g b / 40%);
+  --focus-warm-ray: #fed7aa55;
+  --focus-warm-ray-core: rgb(from var(--focus-warm-core) r g b / 40%);
+  --focus-warm-shadow: rgb(from var(--focus-warm) r g b / 80%);
+  --focus-warm-shadow-soft: #fb923c88;
+  --focus-cool-core: #dbeafe;
+  --focus-cool: #60a5fa;
+  --focus-cool-accent: #38bdf6;
+  --focus-cool-glow: rgb(from var(--focus-cool-accent) r g b / 40%);
+  --focus-cool-ray: rgb(from var(--focus-cool-core) r g b / 40%);
+  --focus-cool-ray-alt: #67e8f955;
+  --focus-cool-shadow: rgb(from var(--focus-cool-accent) r g b / 80%);
+}
+
 html,
 body {
   width: 100%;
@@ -27,26 +157,32 @@ body {
   z-index: 0;
   border-radius: 50%;
   background:
-    radial-gradient(ellipse at 50% 76%, #fff7ed 0 8%, #fde68a 18%, #fbbf2466 38%, transparent 70%),
+    radial-gradient(
+      ellipse at 50% 76%,
+      var(--focus-warm-core) 0 8%,
+      var(--focus-warm) 18%,
+      var(--focus-warm-glow) 38%,
+      transparent 70%
+    ),
     conic-gradient(
       from 180deg at 50% 76%,
       transparent 0deg 10deg,
-      #fff7ed66 10deg 17deg,
+      var(--focus-warm-ray-core) 10deg 17deg,
       transparent 17deg 29deg,
-      #fed7aa55 29deg 36deg,
+      var(--focus-warm-ray) 29deg 36deg,
       transparent 36deg 52deg,
-      #fff7ed66 52deg 59deg,
+      var(--focus-warm-ray-core) 52deg 59deg,
       transparent 59deg 121deg,
-      #fff7ed66 121deg 128deg,
+      var(--focus-warm-ray-core) 121deg 128deg,
       transparent 128deg 144deg,
-      #fed7aa55 144deg 151deg,
+      var(--focus-warm-ray) 144deg 151deg,
       transparent 151deg 163deg,
-      #fff7ed66 163deg 170deg,
+      var(--focus-warm-ray-core) 163deg 170deg,
       transparent 170deg 180deg
     );
   box-shadow:
-    0 0 18px #fbbf24cc,
-    0 0 38px #fb923c88;
+    0 0 18px var(--focus-warm-shadow),
+    0 0 38px var(--focus-warm-shadow-soft);
   filter: blur(1px);
   opacity: 0;
   pointer-events: none;
@@ -60,20 +196,26 @@ body {
 
 #pet.codex-update::after {
   background:
-    radial-gradient(ellipse at 50% 76%, #dbeafe 0 8%, #60a5fa 18%, #38bdf866 38%, transparent 70%),
+    radial-gradient(
+      ellipse at 50% 76%,
+      var(--focus-cool-core) 0 8%,
+      var(--focus-cool) 18%,
+      var(--focus-cool-glow) 38%,
+      transparent 70%
+    ),
     conic-gradient(
       from 180deg at 50% 76%,
       transparent 0deg 10deg,
-      #dbeafe66 10deg 17deg,
+      var(--focus-cool-ray) 10deg 17deg,
       transparent 17deg 29deg,
-      #67e8f955 29deg 36deg,
+      var(--focus-cool-ray-alt) 29deg 36deg,
       transparent 36deg 144deg,
-      #dbeafe66 144deg 151deg,
+      var(--focus-cool-ray) 144deg 151deg,
       transparent 151deg 180deg
     );
   box-shadow:
-    0 0 18px #38bdf6cc,
-    0 0 38px #2563eb88;
+    0 0 18px var(--focus-cool-shadow),
+    0 0 38px var(--action-focus-glow);
 }
 
 body:not(.chat-only) #codex-chat {
@@ -138,31 +280,31 @@ body.chat-only #codex-chat {
   box-sizing: border-box;
   max-width: 220px;
   padding: 6px 9px;
-  border: 1px solid #ffffffaa;
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  background: linear-gradient(135deg, #315fbd, #183777);
-  color: #ffffff;
+  background: linear-gradient(135deg, var(--status-default-start), var(--status-default-end));
+  color: var(--text-primary);
   font:
     700 12px/1.25 system-ui,
     sans-serif;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-shadow: 0 1px 2px #000;
+  text-shadow: 0 1px 2px var(--text-on-bright-surface);
   pointer-events: none;
   transform: none;
 }
 
 #codex-status.status-working {
-  background: linear-gradient(135deg, #3478e5, #1749a1);
+  background: linear-gradient(135deg, var(--status-working-start), var(--status-working-end));
 }
 
 #codex-status.status-waiting {
-  background: linear-gradient(135deg, #d8892e, #9b4b0f);
+  background: linear-gradient(135deg, var(--status-waiting-start), var(--status-waiting-end));
 }
 
 #codex-status.status-idle {
-  background: linear-gradient(135deg, #34a853, #176b35);
+  background: linear-gradient(135deg, var(--status-idle-start), var(--status-idle-end));
 }
 
 #codex-aggregate-status-label {
@@ -170,7 +312,7 @@ body.chat-only #codex-chat {
   align-items: center;
   margin-left: 0;
   padding-left: 0;
-  color: #ffffff;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -179,12 +321,12 @@ body.chat-only #codex-chat {
 #codex-aggregate-status-label::before {
   content: "|";
   margin: 0 6px;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 #codex-aggregate-status-label .aggregate-status-separator {
   margin: 0 6px;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 #codex-chat {
@@ -200,13 +342,19 @@ body.chat-only #codex-chat {
   flex-direction: column;
   box-sizing: border-box;
   padding: 10px;
-  border: 1px solid #ffffffaa;
+  border: 1px solid var(--border-strong);
   border-radius: 14px;
   background:
-    linear-gradient(325deg, #ffffff66, transparent 42%),
-    linear-gradient(325deg, #ffb347dd, #d9854fcc 55%, #ffffff55), #c98a5edd;
-  box-shadow: 0 6px 20px #0008;
-  color: #fff;
+    linear-gradient(325deg, var(--border-overlay), transparent 42%),
+    linear-gradient(
+      325deg,
+      var(--activity-command-strong),
+      var(--panel-surface-end) 55%,
+      var(--border-faint)
+    ),
+    var(--panel-surface);
+  box-shadow: 0 6px 20px var(--shadow-heavy);
+  color: var(--text-primary);
   font:
     12px/1.35 system-ui,
     sans-serif;
@@ -233,11 +381,11 @@ body.chat-only #codex-chat {
   min-height: 29px;
   overflow: visible;
   padding: 0 2px 7px;
-  color: #fff;
+  color: var(--text-primary);
   font:
     700 12px/1.2 system-ui,
     sans-serif;
-  text-shadow: 0 1px 2px #000;
+  text-shadow: 0 1px 2px var(--text-on-bright-surface);
 }
 
 #codex-session-select {
@@ -252,10 +400,10 @@ body.chat-only #codex-chat {
   height: 24px;
   line-height: 16px;
   padding: 3px 5px;
-  border: 1px solid #ffffff88;
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  background: #000000cc;
-  color: #fff;
+  background: var(--surface-input);
+  color: var(--text-primary);
   font:
     10px/1.2 system-ui,
     sans-serif;
@@ -264,7 +412,7 @@ body.chat-only #codex-chat {
 #web-connection-status {
   flex: 0 0 auto;
   margin-left: auto;
-  color: #b9f6c5;
+  color: var(--status-success);
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
@@ -279,7 +427,7 @@ body.chat-only #codex-chat {
 
 #web-notification-status {
   flex: 0 0 auto;
-  color: #ff8c8c;
+  color: var(--status-error);
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
@@ -288,16 +436,16 @@ body.chat-only #codex-chat {
 }
 
 .web-notification-ready {
-  color: #b9f6c5 !important;
+  color: var(--status-success) !important;
 }
 
 .web-connection-connecting,
 .web-connection-reconnecting {
-  color: #ffd166 !important;
+  color: var(--status-warning) !important;
 }
 
 .web-connection-failed {
-  color: #ff8c8c !important;
+  color: var(--status-error) !important;
 }
 
 #codex-session-copy {
@@ -306,10 +454,10 @@ body.chat-only #codex-chat {
   min-width: 0;
   max-width: 100%;
   padding: 4px 7px;
-  border: 1px solid #ffffff88;
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  background: #000000cc;
-  color: #fff;
+  background: var(--surface-input);
+  color: var(--text-primary);
   cursor: pointer;
   white-space: nowrap;
   height: 24px;
@@ -347,7 +495,7 @@ body.chat-only #codex-chat {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: #1687d9;
+  color: var(--action-primary);
   font:
     700 10px/1.2 system-ui,
     sans-serif;
@@ -380,9 +528,9 @@ body.chat-only #codex-chat {
   flex: 0 0 auto;
   margin-top: 6px;
   padding: 7px;
-  border: 1px solid #ffffff88;
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  background: #000000dd;
+  background: var(--surface-panel);
   display: block;
   overflow: visible;
 }
@@ -418,17 +566,17 @@ body.chat-only #codex-chat {
 .codex-user-input-instructions {
   display: block;
   margin: 3px 0 5px;
-  color: #ffffffbb;
+  color: var(--text-secondary);
   font-size: 9px;
 }
 
 .codex-project-roots {
   margin: 6px 0;
   padding: 5px 7px;
-  border: 1px solid #ffffff44;
+  border: 1px solid var(--overlay-faint);
   border-radius: 5px;
-  background: #ffffff0a;
-  color: #ffffffcc;
+  background: var(--surface-glint);
+  color: var(--text-secondary-strong);
   font-size: 10px;
 }
 
@@ -439,7 +587,7 @@ body.chat-only #codex-chat {
 .codex-project-roots strong {
   display: block;
   margin-bottom: 3px;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 10px;
 }
 
@@ -456,7 +604,7 @@ body.chat-only #codex-chat {
 .codex-user-input-form fieldset {
   margin: 5px 0;
   padding: 4px 6px;
-  border: 1px solid #ffffff55;
+  border: 1px solid var(--border-faint);
   border-radius: 5px;
 }
 
@@ -497,23 +645,23 @@ body.chat-only #codex-chat {
 }
 
 .codex-user-input-note-label {
-  color: #ffffffbb;
+  color: var(--text-secondary);
   font-size: 9px;
 }
 
 .codex-user-input-note-label input {
-  background: #00000099;
-  color: #fff;
+  background: var(--surface-muted);
+  color: var(--text-primary);
 }
 
 .codex-user-input-note-label input::placeholder {
-  color: #ffffff88;
+  color: var(--border-subtle);
 }
 
 .codex-user-input-option-description {
   display: block;
   margin-left: 20px;
-  color: #ffffffbb;
+  color: var(--text-secondary);
   font-size: 9px;
   overflow-wrap: anywhere;
 }
@@ -524,10 +672,10 @@ body.chat-only #codex-chat {
   box-sizing: border-box;
   width: 100%;
   padding: 3px 5px;
-  border: 1px solid #ffffff88;
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
-  background: #00000099;
-  color: #fff;
+  background: var(--surface-muted);
+  color: var(--text-primary);
   resize: vertical;
 }
 
@@ -536,24 +684,24 @@ body.chat-only #codex-chat {
   bottom: 0;
   flex: 0 0 auto;
   padding: 3px 8px;
-  border: 1px solid #ffffff88;
+  border: 1px solid var(--border-subtle);
   border-radius: 5px;
-  background: #2458a8;
-  color: #fff;
+  background: var(--action-secondary);
+  color: var(--text-on-action);
   cursor: pointer;
 }
 
 .codex-user-input-form button + button {
   margin-left: 4px;
-  background: #555;
+  background: var(--button-secondary);
 }
 
 .codex-plan-implementation-prompt {
   margin: 6px 0 2px;
   padding: 6px;
-  border: 1px solid #ffffff55;
+  border: 1px solid var(--border-faint);
   border-radius: 6px;
-  background: #00000099;
+  background: var(--surface-muted);
 }
 
 .codex-plan-implementation-prompt > strong {
@@ -570,7 +718,7 @@ body.chat-only #codex-chat {
 .codex-plan-implementation-prompt small {
   display: block;
   margin-left: 20px;
-  color: #ffffffbb;
+  color: var(--text-secondary);
   font-size: 9px;
 }
 
@@ -583,7 +731,7 @@ body.chat-only #codex-chat {
 #codex-session-copy:focus-visible,
 #codex-session-select:focus-visible,
 #codex-chat-input:focus-visible {
-  outline: 2px solid #b9dcff;
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -597,25 +745,25 @@ body.chat-only #codex-chat {
   min-height: 18px;
   margin: -2px 2px 6px;
   padding: 2px 4px;
-  border: 1px solid #ffffff88;
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  background: #000000cc;
-  color: #fff;
+  background: var(--surface-input);
+  color: var(--text-primary);
   font:
     700 10px/14px system-ui,
     sans-serif;
   white-space: normal;
-  text-shadow: 0 1px 2px #000;
+  text-shadow: 0 1px 2px var(--text-on-bright-surface);
 }
 
 .codex-rate-limit-ok {
-  color: #b9f6c5 !important;
+  color: var(--status-success) !important;
 }
 .codex-rate-limit-warning {
-  color: #ffd166 !important;
+  color: var(--status-warning) !important;
 }
 .codex-rate-limit-reached {
-  color: #ff8c8c !important;
+  color: var(--status-error) !important;
 }
 .codex-rate-limit-unavailable {
   opacity: 0.65;
@@ -627,17 +775,17 @@ body.chat-only #codex-chat {
 }
 
 .codex-connection-active {
-  color: #b9f6c5;
+  color: var(--status-success);
 }
 
 .codex-connection-inactive {
-  color: #ffe0b2;
+  color: var(--status-warning-pale);
 }
 
 .codex-message-time {
   display: block;
   margin-top: 0;
-  color: #ffffff99;
+  color: var(--text-muted);
   font-size: 9px;
   text-align: right;
 }
@@ -656,9 +804,9 @@ body.chat-only #codex-chat {
   max-width: 100%;
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #ffffff55;
+  border: 1px solid var(--border-faint);
   border-radius: 10px;
-  background: #000000dd;
+  background: var(--surface-panel);
   overflow: hidden;
 }
 
@@ -666,11 +814,11 @@ body.chat-only #codex-chat {
   flex: 0 0 auto;
   min-width: 0;
   padding: 5px 8px;
-  border: 1px solid #ffffff33;
+  border: 1px solid var(--border-very-faint);
   border-radius: 0;
-  background: linear-gradient(135deg, #252525ee, #111c2bee);
-  box-shadow: 0 4px 14px #0006;
-  color: #ffffffcc;
+  background: linear-gradient(135deg, var(--notice-surface-start), var(--notice-surface-end));
+  box-shadow: 0 4px 14px var(--shadow-medium);
+  color: var(--text-secondary-strong);
   font:
     10px/1.3 system-ui,
     sans-serif;
@@ -682,19 +830,19 @@ body.chat-only #codex-chat {
 }
 
 #codex-goal[data-goal-status="active"] {
-  color: #9ecbff;
+  color: var(--status-info);
 }
 
 #codex-goal[data-goal-status="paused"] {
-  color: #ffd28a;
+  color: var(--activity-warning);
 }
 
 #codex-goal[data-goal-status="blocked"] {
-  color: #ff8c8c;
+  color: var(--status-error);
 }
 
 #codex-goal[data-goal-status="complete"] {
-  color: #9fe3b1;
+  color: var(--status-success-secondary);
 }
 
 #codex-history {
@@ -706,7 +854,7 @@ body.chat-only #codex-chat {
   padding: 8px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #ffffff88 transparent;
+  scrollbar-color: var(--border-subtle) transparent;
   scroll-padding-bottom: 28px;
   padding-bottom: 0;
 }
@@ -734,7 +882,7 @@ body.chat-only #codex-chat {
   padding: 2px 4px;
   border-radius: 4px;
   background: transparent;
-  color: #9ecbff;
+  color: var(--status-info);
   font-size: 10px;
   font-style: italic;
 }
@@ -745,41 +893,41 @@ body.chat-only #codex-chat {
 
 #codex-working-status.codex-working-status-complete {
   background: transparent;
-  color: #9ecbff;
+  color: var(--status-info);
 }
 
 #codex-working-elapsed {
-  color: #9ecbff;
+  color: var(--status-info);
   font-variant-numeric: tabular-nums;
 }
 
 #codex-working-status.codex-working-status-complete #codex-working-elapsed {
-  color: #9ecbff;
+  color: var(--status-info);
 }
 
 #codex-working-status.codex-working-status-interrupted {
-  color: #ff4d4f;
+  color: var(--status-error-strong);
 }
 
 #codex-working-status.codex-working-status-interrupted #codex-working-elapsed {
-  color: #ff4d4f;
+  color: var(--status-error-strong);
 }
 
 .codex-empty-history {
   padding: 12px 4px;
-  color: #ffffffaa;
+  color: var(--border-strong);
   text-align: center;
   font-style: italic;
 }
 
 .codex-loading-history {
   padding: 12px 4px;
-  color: #ffffffaa;
+  color: var(--border-strong);
   text-align: center;
 }
 
 .codex-session-connected {
-  color: #b9f6c5;
+  color: var(--status-success);
   text-align: center;
 }
 
@@ -797,7 +945,7 @@ body.chat-only #codex-chat {
 }
 
 .codex-message-selected {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--text-primary);
   outline-offset: 2px;
 }
 
@@ -806,8 +954,8 @@ body.chat-only #codex-chat {
   max-width: 100%;
   padding: 1px 3px;
   border-radius: 3px;
-  background: #00000099;
-  color: #ffb347;
+  background: var(--surface-muted);
+  color: var(--activity-command);
   font-family: ui-monospace, monospace;
   font-size: 0.92em;
   overflow-wrap: anywhere;
@@ -861,14 +1009,14 @@ body.chat-only #codex-chat {
 .codex-markdown th,
 .codex-markdown td {
   padding: 4px 6px;
-  border: 1px solid #ffffff33;
+  border: 1px solid var(--border-very-faint);
   text-align: left;
   vertical-align: top;
 }
 
 .codex-markdown th {
-  background: #00000044;
-  color: #ffcf8a;
+  background: var(--surface-shadow-soft);
+  color: var(--activity-warning);
 }
 
 .codex-markdown pre {
@@ -878,10 +1026,10 @@ body.chat-only #codex-chat {
 .codex-markdown-code {
   margin: 0;
   padding: 7px;
-  border: 1px solid #ffffff33;
+  border: 1px solid var(--border-very-faint);
   border-radius: 5px;
   overflow-x: auto;
-  background: #000000aa;
+  background: var(--surface-code);
   white-space: pre;
 }
 
@@ -896,7 +1044,7 @@ body.chat-only #codex-chat {
 }
 
 .codex-markdown a {
-  color: #9ecbff;
+  color: var(--status-info);
   text-decoration: underline;
 }
 
@@ -911,28 +1059,33 @@ body.chat-only #codex-chat {
 .codex-message-user {
   margin-left: auto;
   margin-right: 0;
-  border: 1px solid #1687d9cc;
-  background: #1687d9cc;
+  border: 1px solid var(--action-primary-muted);
+  background: var(--message-user-surface);
+  color: var(--message-user-text);
+}
+
+.codex-message-user .codex-message-time {
+  color: var(--message-user-time);
 }
 
 .codex-message-assistant {
   margin-left: 0;
   margin-right: auto;
-  border: 1px solid #ffffff66;
-  background: #00000099;
+  border: 1px solid var(--border-overlay);
+  background: var(--surface-muted);
 }
 
 .codex-message-working {
-  color: #ffffffcc;
+  color: var(--text-secondary-strong);
   font-style: italic;
 }
 
 .codex-queued-submissions {
   margin: 0.5rem 0;
   padding: 0.45rem 0.65rem;
-  border: 1px dashed var(--codex-muted, #888);
+  border: 1px dashed var(--codex-muted, var(--text-muted-fallback));
   border-radius: 0.4rem;
-  color: var(--codex-muted, #888);
+  color: var(--codex-muted, var(--text-muted-fallback));
 }
 
 .codex-queued-submission {
@@ -941,8 +1094,14 @@ body.chat-only #codex-chat {
 }
 
 .codex-message-system {
-  border: 1px solid #ffc15a;
-  background: #000000cc;
+  border: 1px solid var(--plan-border);
+  background: var(--surface-input);
+}
+
+.codex-message-system.codex-approval-pending,
+.codex-message-system.codex-approval-approved,
+.codex-message-system.codex-approval-denied {
+  border-color: var(--approval-border);
 }
 
 .codex-message-system.codex-activity-command,
@@ -954,29 +1113,29 @@ body.chat-only #codex-chat {
 }
 
 .codex-activity-command {
-  border-color: #7db7ff99;
+  border-color: var(--status-info-muted);
 }
 
 .codex-activity-fileChange {
-  border-color: #b9f6c599;
+  border-color: var(--status-success-muted);
 }
 
 .codex-activity-webSearch {
-  border-color: #d6a7ff99;
+  border-color: var(--status-review-muted);
 }
 
 .codex-activity-tool,
 .codex-activity-other {
-  border-color: #ffffff55;
+  border-color: var(--border-faint);
 }
 
 .codex-activity-review {
-  border-color: #ffb347;
-  background: #2b1d08cc;
+  border-color: var(--activity-command);
+  background: var(--review-surface);
 }
 
 .codex-activity-review .codex-activity-details-block summary {
-  color: #ffcf7a;
+  color: var(--activity-warning-strong);
 }
 
 .codex-activity-output {
@@ -990,22 +1149,22 @@ body.chat-only #codex-chat {
 .codex-command-details summary {
   display: block;
   cursor: pointer;
-  color: #ffb347;
+  color: var(--activity-command);
   font-weight: 700;
 }
 
 .codex-activity-command-failed {
-  border-color: #ff6b6b;
-  background: #210d10;
-  color: #ffd6d6;
+  border-color: var(--failed-border);
+  background: var(--failed-surface);
+  color: var(--status-error-pale);
 }
 
 .codex-activity-command-failed .codex-command-details summary {
-  color: #ff8f8f;
+  color: var(--status-error);
 }
 
 .codex-activity-command-failed .codex-command-summary-command {
-  color: #ffd6d6;
+  color: var(--status-error-pale);
 }
 
 .codex-command-summary-command {
@@ -1013,7 +1172,7 @@ body.chat-only #codex-chat {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #fff;
+  color: var(--text-primary);
   font:
     10px/1.35 ui-monospace,
     monospace;
@@ -1026,7 +1185,7 @@ body.chat-only #codex-chat {
 
 .codex-file-change-details summary {
   cursor: pointer;
-  color: #b9f6c5;
+  color: var(--status-success);
   font-weight: 700;
 }
 
@@ -1037,7 +1196,7 @@ body.chat-only #codex-chat {
 .codex-activity-details-block summary {
   display: block;
   cursor: pointer;
-  color: #d6a7ff;
+  color: var(--status-review);
   font-weight: 700;
 }
 
@@ -1046,7 +1205,7 @@ body.chat-only #codex-chat {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #fff;
+  color: var(--text-primary);
   font:
     10px/1.35 ui-monospace,
     monospace;
@@ -1056,8 +1215,8 @@ body.chat-only #codex-chat {
 .codex-file-change-path {
   margin-top: 7px;
   padding: 4px 6px;
-  border-left: 3px solid #b9f6c5;
-  color: #e5ffe9;
+  border-left: 3px solid var(--status-success);
+  color: var(--file-change-path);
   font:
     700 11px/1.3 ui-monospace,
     monospace;
@@ -1069,9 +1228,9 @@ body.chat-only #codex-chat {
   box-sizing: border-box;
   margin: 0;
   padding: 6px;
-  border: 1px solid #ffffff33;
+  border: 1px solid var(--border-very-faint);
   border-radius: 5px;
-  background: #050b08;
+  background: var(--diff-surface);
   overflow-x: auto;
   white-space: pre;
   font:
@@ -1085,21 +1244,21 @@ body.chat-only #codex-chat {
 }
 
 .codex-file-change-added {
-  color: #b9f6c5;
-  background: #164b2a66;
+  color: var(--status-success);
+  background: var(--diff-added-surface);
 }
 
 .codex-file-change-removed {
-  color: #ffc1c1;
-  background: #5c181866;
+  color: var(--status-error-soft);
+  background: var(--diff-removed-surface);
 }
 
 .codex-file-change-hunk {
-  color: #9ecbff;
+  color: var(--status-info);
 }
 
 .codex-file-change-context {
-  color: #d8dedb;
+  color: var(--text-neutral);
 }
 
 .codex-activity-details {
@@ -1107,7 +1266,7 @@ body.chat-only #codex-chat {
   box-sizing: border-box;
   margin: 7px 0 0;
   padding: 6px;
-  border: 1px solid #ffffff33;
+  border: 1px solid var(--border-very-faint);
   border-radius: 5px;
   overflow-x: auto;
   white-space: pre-wrap;
@@ -1118,10 +1277,10 @@ body.chat-only #codex-chat {
   flex: 0 0 auto;
   margin: 0 0 7px;
   padding: 6px 8px;
-  border: 1px solid #ff5c5c;
+  border: 1px solid var(--status-error-border);
   border-radius: 8px;
-  background: #5c0000dd;
-  color: #ffd6d6;
+  background: var(--error-surface);
+  color: var(--status-error-pale);
   font:
     11px/1.3 system-ui,
     sans-serif;
@@ -1136,11 +1295,11 @@ body.chat-only #codex-chat {
   display: block;
   margin: 0 0 4px;
   padding: 6px 8px;
-  border: 1px solid #ffffff33;
+  border: 1px solid var(--border-very-faint);
   border-radius: 10px;
-  background: linear-gradient(135deg, #252525ee, #111c2bee);
-  box-shadow: 0 4px 14px #0006;
-  color: #ffffffcc;
+  background: linear-gradient(135deg, var(--notice-surface-start), var(--notice-surface-end));
+  box-shadow: 0 4px 14px var(--shadow-medium);
+  color: var(--text-secondary-strong);
   font:
     11px/1.3 system-ui,
     sans-serif;
@@ -1153,7 +1312,7 @@ body.chat-only #codex-chat {
 
 .codex-command-notice-title {
   margin-bottom: 2px;
-  color: #ffd28a;
+  color: var(--activity-warning);
   font-size: 12px;
   font-weight: 700;
 }
@@ -1165,8 +1324,8 @@ body.chat-only #codex-chat {
 .codex-command-notice-commands {
   margin-top: 4px;
   padding-top: 4px;
-  border-top: 1px solid #ffffff22;
-  color: #9ecbff;
+  border-top: 1px solid var(--divider);
+  color: var(--status-info);
 }
 
 .codex-approval-actions {
@@ -1178,10 +1337,10 @@ body.chat-only #codex-chat {
 .codex-approval-actions button {
   width: auto;
   padding: 6px 9px;
-  border: 1px solid #ffffff66;
+  border: 1px solid var(--border-overlay);
   border-radius: 8px;
-  background: #1687d9cc;
-  color: #fff;
+  background: var(--action-primary-muted);
+  color: var(--text-on-action);
   cursor: pointer;
   font:
     700 11px/1 system-ui,
@@ -1190,14 +1349,14 @@ body.chat-only #codex-chat {
 
 .codex-approval-actions button:hover,
 .codex-approval-actions button:focus-visible {
-  border-color: #7db7ff;
-  background: #2563eb;
+  border-color: var(--status-info-strong);
+  background: var(--action-hover);
   outline: none;
 }
 
 .codex-approval-result {
   margin-top: 7px;
-  color: #ffc15a;
+  color: var(--approval-text);
   font-weight: 700;
 }
 
@@ -1227,10 +1386,10 @@ body.chat-only #codex-chat {
   box-sizing: border-box;
   margin: 0 0 1px 2px;
   padding: 4px 8px;
-  border: 1px solid #ffe08a;
+  border: 1px solid var(--command-border);
   border-radius: 999px;
-  background: #17120a;
-  color: #fff3bf;
+  background: var(--command-surface);
+  color: var(--command-text);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.2;
@@ -1255,10 +1414,10 @@ body.chat-only #codex-chat {
   gap: 5px;
   max-width: 100%;
   padding: 3px 6px 3px 3px;
-  border: 1px solid #7db7ff99;
+  border: 1px solid var(--status-info-muted);
   border-radius: 7px;
-  background: #111827dd;
-  color: #fff;
+  background: var(--attachment-surface);
+  color: var(--text-primary);
   font-size: 11px;
 }
 
@@ -1298,19 +1457,19 @@ body.chat-only #codex-chat {
   padding: 1px 4px;
   border: 0;
   background: transparent;
-  color: #fff;
+  color: var(--text-primary);
   cursor: pointer;
 }
 
 #codex-chat-form.codex-drop-active {
-  outline: 2px dashed #7db7ff;
+  outline: 2px dashed var(--status-info-strong);
   outline-offset: 4px;
 }
 
 #codex-command-mode[data-mode="shell"] {
-  border-color: #ff9f9f;
-  background: #210d10;
-  color: #ffd9dc;
+  border-color: var(--shell-error-border);
+  background: var(--failed-surface);
+  color: var(--shell-text);
 }
 
 #codex-read-only {
@@ -1318,10 +1477,10 @@ body.chat-only #codex-chat {
   justify-self: start;
   margin: 0 0 1px 2px;
   padding: 4px 8px;
-  border: 1px solid #f0a35b;
+  border: 1px solid var(--shell-border);
   border-radius: 999px;
-  background: #24160b;
-  color: #ffd9a3;
+  background: var(--shell-surface);
+  color: var(--read-only-text);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.2;
@@ -1332,7 +1491,7 @@ body.chat-only #codex-chat {
   display: block;
   height: 30px;
   margin: 6px 4px 0;
-  color: #000;
+  color: var(--text-on-bright-surface);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
@@ -1342,7 +1501,7 @@ body.chat-only #codex-chat {
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: left;
-  text-shadow: 0 1px 2px #fff8;
+  text-shadow: 0 1px 2px var(--text-shadow);
 }
 
 .codex-model-line {
@@ -1365,7 +1524,7 @@ body.chat-only #codex-chat {
 
 .codex-context {
   flex: 0 1 auto;
-  color: #222;
+  color: var(--text-on-bright-surface);
   text-align: center;
 }
 
@@ -1386,14 +1545,14 @@ body.chat-only #codex-chat {
 
 .codex-project-name {
   flex: 0 1 auto;
-  color: #222;
+  color: var(--text-contrast);
   font-weight: 600;
 }
 
 .codex-cwd {
   flex: 0 1 auto;
   margin-left: 0;
-  color: #222;
+  color: var(--text-contrast);
   font-weight: 600;
   text-align: right;
 }
@@ -1411,21 +1570,21 @@ body.chat-only #codex-chat {
   resize: none;
   box-sizing: border-box;
   padding: 7px 39px 7px 7px;
-  border: 1px solid #ffffff66;
+  border: 1px solid var(--border-overlay);
   border-radius: 10px;
-  background: #000000dd;
-  color: #fff;
+  background: var(--surface-panel);
+  color: var(--text-primary);
   font: inherit;
 }
 
 #codex-chat-input::placeholder {
-  color: #ffffffcc;
+  color: var(--text-secondary-strong);
 }
 
 #codex-chat-input:focus {
-  border-color: #7db7ff;
+  border-color: var(--status-info-strong);
   outline: none;
-  background: #000000ee;
+  background: var(--surface-focus);
 }
 
 #codex-file-suggestions {
@@ -1438,10 +1597,10 @@ body.chat-only #codex-chat {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 4px;
-  border: 1px solid #ffffff55;
+  border: 1px solid var(--border-faint);
   border-radius: 8px;
-  background: #111;
-  box-shadow: 0 4px 16px #0008;
+  background: var(--suggestion-surface);
+  box-shadow: 0 4px 16px var(--shadow-heavy);
 }
 
 #codex-file-suggestions[hidden] {
@@ -1462,7 +1621,7 @@ body.chat-only #codex-chat {
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: #fff;
+  color: var(--text-primary);
   font: inherit;
   text-align: left;
 }
@@ -1483,7 +1642,7 @@ body.chat-only #codex-chat {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: #ffffffaa;
+  color: var(--border-strong);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1497,7 +1656,7 @@ body.chat-only #codex-chat {
 
 .codex-file-suggestion-type {
   min-width: 0;
-  color: #ffd8a8;
+  color: var(--activity-warning-soft);
   font-size: 10px;
   text-align: right;
   text-transform: uppercase;
@@ -1505,7 +1664,7 @@ body.chat-only #codex-chat {
 
 .codex-file-suggestion[aria-selected="true"],
 .codex-file-suggestion:hover {
-  background: #d97706e6;
+  background: var(--suggestion-hover-surface);
 }
 
 .codex-user-input-form .codex-file-suggestion {
@@ -1523,18 +1682,18 @@ body.chat-only #codex-chat {
 
 .codex-review-prompt .codex-file-suggestion[aria-selected="true"],
 .codex-review-prompt .codex-file-suggestion:hover {
-  background: #d97706e6;
+  background: var(--suggestion-hover-surface);
 }
 
 #codex-chat-send,
 #codex-chat-steer {
   align-self: flex-end;
   border: 0;
-  border: 1px solid #ffffff66;
+  border: 1px solid var(--border-overlay);
   border-radius: 10px;
   padding: 8px 10px;
-  background: #1687d9;
-  color: #ffffff;
+  background: var(--action-primary);
+  color: var(--text-on-action);
   cursor: pointer;
   font:
     700 12px/1 system-ui,
@@ -1546,7 +1705,7 @@ body.chat-only #codex-chat {
 }
 
 #codex-chat-steer {
-  background: #16874f;
+  background: var(--status-success-action);
 }
 
 #codex-chat-actions {
@@ -1588,11 +1747,11 @@ body.chat-only #codex-chat {
 }
 
 #codex-chat-interrupt {
-  border: 1px solid #ff4d4f;
+  border: 1px solid var(--status-error-strong);
   border-radius: 10px;
   padding: 8px 10px;
-  background: #d92d20;
-  color: #fff;
+  background: var(--status-danger);
+  color: var(--text-primary);
   cursor: pointer;
   font:
     700 12px/1 system-ui,
@@ -1601,21 +1760,21 @@ body.chat-only #codex-chat {
 
 #codex-chat-interrupt:hover,
 #codex-chat-interrupt:focus-visible {
-  border-color: #ff4d4f;
-  outline: 2px solid #ffb4a2aa;
+  border-color: var(--status-error-strong);
+  outline: 2px solid var(--review-accent);
   outline-offset: 2px;
 }
 
 #codex-chat-interrupt:disabled {
   background: transparent;
-  color: #ff4d4f;
+  color: var(--status-error-strong);
   cursor: default;
 }
 
 #codex-chat-send:focus-visible {
-  border-color: #7db7ff;
-  background: #2563eb;
-  outline: 2px solid #7db7ffaa;
+  border-color: var(--status-info-strong);
+  background: var(--action-hover);
+  outline: 2px solid var(--status-info-border);
   outline-offset: 2px;
 }
 
@@ -1634,16 +1793,16 @@ body.chat-only #codex-chat {
   flex-direction: column;
   box-sizing: border-box;
   padding: 7px 8px;
-  border: 1px solid #ffffffbb;
+  border: 1px solid var(--border-bright);
   border-radius: 12px;
-  background: #ffffffee;
-  color: #222;
+  background: var(--permission-surface);
+  color: var(--text-contrast);
   font:
     700 12px/1.3 system-ui,
     sans-serif;
   white-space: pre-line;
   overflow: visible;
-  box-shadow: 0 3px 10px #0006;
+  box-shadow: 0 3px 10px var(--shadow-medium);
   pointer-events: auto;
   transform: translateX(-50%);
 }
@@ -1676,7 +1835,7 @@ body.chat-only #codex-chat {
   border: 0;
   border-radius: 7px;
   padding: 8px 14px;
-  color: #ffffff;
+  color: var(--text-on-action);
   cursor: pointer;
   font:
     700 12px/1 system-ui,
@@ -1684,11 +1843,11 @@ body.chat-only #codex-chat {
 }
 
 #codex-deny {
-  background: #64748b;
+  background: var(--permission-deny);
 }
 
 #codex-allow {
-  background: #2563eb;
+  background: var(--action-hover);
 }
 
 #codex-permission::after {
@@ -1698,8 +1857,8 @@ body.chat-only #codex-chat {
   width: 10px;
   height: 10px;
   content: "";
-  border-left: 1px solid #ffffffbb;
-  border-top: 1px solid #ffffffbb;
-  background: #ffffffee;
+  border-left: 1px solid var(--border-bright);
+  border-top: 1px solid var(--border-bright);
+  background: var(--permission-surface);
   transform: translateX(-50%) rotate(45deg);
 }

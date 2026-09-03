@@ -1,4 +1,5 @@
 import { matchesShortcut } from "../../shared/shortcuts.js";
+import { applyRendererTheme } from "../../shared/theme.js";
 
 type MenuSettings = SavedPeskSettings;
 
@@ -97,8 +98,36 @@ function addAction(label: string, action: () => void): void {
   controls.append(button);
 }
 
-function renderControls(settings: MenuSettings): void {
+function titleCaseThemeName(themeName: string): string {
+  return themeName.charAt(0).toUpperCase() + themeName.slice(1);
+}
+
+function renderControls(
+  settings: MenuSettings,
+  themeName?: RendererState["assets"]["themeName"],
+  themeNames: RendererState["assets"]["themeNames"] = [],
+): void {
   controls.replaceChildren();
+  const themeLabel = document.createElement("label");
+  themeLabel.className = "theme-selector";
+  themeLabel.textContent = "Theme";
+  const themeSelect = document.createElement("select");
+  themeSelect.setAttribute("aria-label", "Theme");
+  for (const value of themeNames) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = titleCaseThemeName(value);
+    themeSelect.append(option);
+  }
+  themeSelect.value = themeName ?? themeNames[0] ?? "";
+  themeSelect.addEventListener("change", () => {
+    void window.peskApi.setTheme(themeSelect.value).then((next) => {
+      applyRendererTheme(next.assets.theme);
+      renderControls(next.settings, next.assets.themeName, next.assets.themeNames);
+    });
+  });
+  themeLabel.append(themeSelect);
+  controls.append(themeLabel);
   addAction(settings.paused ? "Resume animation" : "Pause animation", window.peskApi.togglePaused);
   addAction(settings.locked ? "Unlock position" : "Lock position", window.peskApi.toggleLocked);
   addAction(settings.visible ? "Hide Pesk" : "Show Pesk", window.peskApi.togglePetVisibility);
@@ -336,7 +365,8 @@ async function loadMenu(): Promise<void> {
     window.peskApi.getAnimations(),
     window.peskApi.getPresets(),
   ]);
-  renderControls(state.settings);
+  applyRendererTheme(state.assets.theme);
+  renderControls(state.settings, state.assets.themeName, state.assets.themeNames);
   renderAnimations(animations, state.settings.animation, state.settings.animationMode);
   await renderPairing();
   allPresets = presets;
