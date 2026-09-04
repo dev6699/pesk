@@ -11,6 +11,7 @@ export interface PeskApi {
   focusPet: () => void;
   unfocusPesk: () => void;
   zoomPet: (scale: number) => void;
+  resizePetContent: (width: number, height: number) => void;
   showPetMenu: () => void;
   togglePaused: () => void;
   toggleLocked: () => void;

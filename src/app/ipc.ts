@@ -38,6 +38,9 @@ export function registerIpcHandlers(context: ApplicationContext): void {
   registerEvent("zoom-pet", (_event, scale) => {
     if (typeof scale === "number") pet.resize(scale);
   });
+  registerEvent("resize-pet-content", (_event, width, height) => {
+    if (typeof width === "number" && typeof height === "number") pet.resizeContent(width, height);
+  });
   registerEvent("drag-start", () => pet.startDragging());
   registerEvent("drag-end", () => pet.stopDragging());
   registerEvent("focus-pet", () => pet.focus());

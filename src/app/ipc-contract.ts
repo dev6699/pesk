@@ -82,6 +82,7 @@ export interface IpcEventContract {
   "set-animation-mode": [mode: "selected" | "shuffle"];
   "move-pet": [dx: number, dy: number];
   "zoom-pet": [scale: number];
+  "resize-pet-content": [width: number, height: number];
   "drag-start": [];
   "drag-end": [];
   "focus-pet": [];

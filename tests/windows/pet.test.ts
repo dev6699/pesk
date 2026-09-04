@@ -98,4 +98,26 @@ describe("PetWindowController", () => {
     expect(options.focusChat).toHaveBeenCalled();
     expect(windows[0].setPosition).not.toHaveBeenCalled();
   });
+
+  test("expands the native window for status content and clamps it to the display", () => {
+    const { windows } = createWindowFactory();
+    const controller = new PetWindowController(petOptions());
+    controller.create();
+
+    controller.resizeContent(1200, 180);
+
+    expect(windows[0].setSize).toHaveBeenLastCalledWith(1200, 180, false);
+    expect(windows[0].setPosition).toHaveBeenLastCalledWith(0, 0, false);
+  });
+
+  test("keeps oversized status content anchored on-screen during movement", () => {
+    const { windows } = createWindowFactory();
+    const controller = new PetWindowController(petOptions());
+    controller.create();
+
+    controller.resizeContent(1200, 900);
+    controller.move(0, 0);
+
+    expect(windows[0].setPosition).toHaveBeenLastCalledWith(0, 0, false);
+  });
 });

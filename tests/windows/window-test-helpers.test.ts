@@ -14,7 +14,11 @@ export class FakeWindow extends EventEmitter {
   setSkipTaskbar = jest.fn();
   setAlwaysOnTop = jest.fn();
   loadFile = jest.fn();
-  setSize = jest.fn();
+  setSize = jest.fn((width: number, height: number) => {
+    this.bounds.width = width;
+    this.bounds.height = height;
+  });
+  setResizable = jest.fn();
   moveTop = jest.fn();
   show = jest.fn(() => void (this.visible = true));
   showInactive = jest.fn(() => void (this.visible = true));
@@ -24,6 +28,7 @@ export class FakeWindow extends EventEmitter {
   isVisible = jest.fn(() => this.visible);
   isFocused = jest.fn(() => this.focused);
   getPosition = jest.fn(() => this.position);
+  getSize = jest.fn(() => [this.bounds.width, this.bounds.height]);
   setPosition = jest.fn((x: number, y: number) => void (this.position = [x, y]));
   getBounds = jest.fn(() => this.bounds);
   setFocusable = jest.fn();

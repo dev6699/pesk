@@ -26,6 +26,7 @@ export class PetRenderer {
   private focused = false;
   private statusTimer: number | undefined;
   private statusSoundUrl = "";
+  private lastReportedSize = "";
 
   constructor(private readonly options: PetRendererOptions) {
     this.state = options.state;
@@ -141,8 +142,18 @@ export class PetRenderer {
 
   private resizeElement(): void {
     if (this.options.chatOnly) return;
-    this.options.pet.style.width = `${this.configuredPetSize * this.state.settings.scale}px`;
-    this.options.pet.style.height = `${this.configuredPetSize * this.state.settings.scale}px`;
+    const artSize = this.configuredPetSize * this.state.settings.scale;
+    this.options.pet.style.setProperty("--pet-art-size", `${artSize}px`);
+    const statusBounds = this.options.status.getBoundingClientRect?.() ?? { width: 0, height: 0 };
+    const width = Math.ceil(Math.max(artSize, statusBounds.width + 8));
+    const height = Math.ceil(Math.max(artSize, statusBounds.height + 8));
+    this.options.pet.style.width = `${width}px`;
+    this.options.pet.style.height = `${height}px`;
+    const measuredSize = `${width}x${height}`;
+    if (this.lastReportedSize !== measuredSize) {
+      this.lastReportedSize = measuredSize;
+      window.peskApi.resizePetContent(width, height);
+    }
   }
 
   private updateStatus(next: RendererState): void {
@@ -161,6 +172,7 @@ export class PetRenderer {
       this.options.status.title = next.codex.threadId
         ? `Selected thread: ${next.codex.threadId}`
         : "Selected thread";
+      this.resizeElement();
     };
     render();
     if (next.codex.status === "working" && next.codex.workingSince !== undefined) {

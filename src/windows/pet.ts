@@ -34,6 +34,7 @@ export class PetWindowController {
   private dragTick = 0;
   private wanderDirection = 1;
   private wanderVerticalDirection = 1;
+  private contentSize = { width: 0, height: 0 };
 
   constructor(private readonly options: PetWindowOptions) {
     this.animationFrames = loadAnimations();
@@ -98,13 +99,13 @@ export class PetWindowController {
   create(): void {
     const settings = this.options.getSettings();
     const position = this.initialPosition();
-    const size = Math.round(this.getSize() * settings.scale);
+    const { width, height } = this.windowSize(settings.scale);
     this.petWindow = new BrowserWindow({
       type: "toolbar",
       x: position.x,
       y: position.y,
-      width: size,
-      height: size,
+      width,
+      height,
       frame: false,
       thickFrame: false,
       roundedCorners: false,
@@ -253,9 +254,12 @@ export class PetWindowController {
     const area = screen.getDisplayMatching(this.petWindow.getBounds()).workArea;
     const bounds = this.petWindow.getBounds();
     const minX = area.x;
-    const maxX = area.x + area.width - bounds.width;
+    // Keep the bounds valid even when status content is wider than the work area.
+    // In that case the window is anchored at the work-area edge instead of being
+    // moved to a negative coordinate by the inverted range.
+    const maxX = Math.max(minX, area.x + area.width - bounds.width);
     const minY = area.y;
-    const maxY = area.y + area.height - bounds.height;
+    const maxY = Math.max(minY, area.y + area.height - bounds.height);
     let nextX = x + Math.abs(dx) * this.wanderDirection;
     let nextY = y + Math.abs(dy) * this.wanderVerticalDirection;
     if (nextX >= maxX) {
@@ -317,21 +321,59 @@ export class PetWindowController {
     const nextScale = Math.min(this.maxScale(display), Math.max(0.25, scale));
     const [oldWidth, oldHeight] = this.petWindow.getSize();
     const [oldX, oldY] = this.petWindow.getPosition();
-    const newSize = Math.round(this.getSize() * nextScale);
+    const { width: newWidth, height: newHeight } = this.windowSize(nextScale);
     const centerX = oldX + oldWidth / 2;
     const centerY = oldY + oldHeight / 2;
     settings.scale = nextScale;
     this.petWindow.setResizable(true);
-    this.petWindow.setSize(newSize, newSize, false);
+    this.petWindow.setSize(newWidth, newHeight, false);
     this.petWindow.setResizable(false);
     this.petWindow.setPosition(
-      Math.round(centerX - newSize / 2),
-      Math.round(centerY - newSize / 2),
+      Math.round(centerX - newWidth / 2),
+      Math.round(centerY - newHeight / 2),
       false,
     );
     this.options.positionChat();
     this.options.saveSettings();
     this.options.publishRendererState();
+  }
+
+  /** Resizes the transparent window to contain renderer-reported status content. */
+  resizeContent(width: number, height: number): void {
+    if (!this.petWindow || !Number.isFinite(width) || !Number.isFinite(height)) return;
+    this.contentSize = {
+      width: Math.max(0, Math.ceil(width)),
+      height: Math.max(0, Math.ceil(height)),
+    };
+    const { width: newWidth, height: newHeight } = this.windowSize(
+      this.options.getSettings().scale,
+    );
+    const [oldWidth, oldHeight] = this.petWindow.getSize();
+    if (oldWidth === newWidth && oldHeight === newHeight) return;
+
+    const [oldX, oldY] = this.petWindow.getPosition();
+    const centerX = oldX + oldWidth / 2;
+    const centerY = oldY + oldHeight / 2;
+    const area = screen.getDisplayMatching(this.petWindow.getBounds()).workArea;
+    this.petWindow.setResizable(true);
+    this.petWindow.setSize(newWidth, newHeight, false);
+    this.petWindow.setResizable(false);
+    this.petWindow.setPosition(
+      Math.round(
+        Math.min(
+          area.x + Math.max(0, area.width - newWidth),
+          Math.max(area.x, centerX - newWidth / 2),
+        ),
+      ),
+      Math.round(
+        Math.min(
+          area.y + Math.max(0, area.height - newHeight),
+          Math.max(area.y, centerY - newHeight / 2),
+        ),
+      ),
+      false,
+    );
+    this.options.positionChat();
   }
 
   /** Stops movement and closes the pet window during shutdown. */
@@ -361,6 +403,14 @@ export class PetWindowController {
   private maxScale(display = screen.getPrimaryDisplay()): number {
     const area = display.workArea;
     return Math.max(0.25, Math.min(area.width / this.getSize(), area.height / this.getSize()));
+  }
+
+  private windowSize(scale: number): { width: number; height: number } {
+    const artSize = Math.round(this.getSize() * scale);
+    return {
+      width: Math.max(artSize, this.contentSize.width),
+      height: Math.max(artSize, this.contentSize.height),
+    };
   }
 
   private initialPosition(): { x: number; y: number } {

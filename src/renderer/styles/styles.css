@@ -146,7 +146,7 @@ body {
   width: 180px;
   height: 180px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   cursor: pointer;
 }
 
@@ -247,9 +247,12 @@ body.chat-only #codex-chat {
 }
 
 #pet-image {
-  width: 100%;
-  height: 100%;
-  position: relative;
+  width: var(--pet-art-size, 180px);
+  height: var(--pet-art-size, 180px);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   z-index: 1;
   object-fit: contain;
   pointer-events: none;
@@ -278,7 +281,6 @@ body.chat-only #codex-chat {
   gap: 0;
   width: fit-content;
   box-sizing: border-box;
-  max-width: 220px;
   padding: 6px 9px;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
@@ -288,8 +290,7 @@ body.chat-only #codex-chat {
     700 12px/1.25 system-ui,
     sans-serif;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
   text-shadow: 0 1px 2px var(--text-on-bright-surface);
   pointer-events: none;
   transform: none;

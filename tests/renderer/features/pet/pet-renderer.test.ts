@@ -19,7 +19,10 @@ class FakeClassList {
 class FakeElement {
   classList = new FakeClassList();
   attributes = new Map<string, string>();
-  style = {} as Record<string, string>;
+  style = {
+    setProperty: jest.fn(),
+  } as unknown as CSSStyleDeclaration;
+  getBoundingClientRect = jest.fn(() => ({ width: 0, height: 0 }));
   addEventListener(): void {}
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, value);
@@ -51,6 +54,9 @@ function createRenderer(sound = createStatusSound()) {
 
 beforeEach(() => {
   (globalThis as unknown as { window: typeof globalThis }).window = globalThis;
+  (globalThis as unknown as { peskApi: { resizePetContent: jest.Mock } }).peskApi = {
+    resizePetContent: jest.fn(),
+  };
 });
 
 describe("PetRenderer", () => {
@@ -178,6 +184,27 @@ describe("PetRenderer", () => {
     renderer.updateState(defaultRendererState());
     expect(statusLabel.textContent).toBe("Idle");
     jest.useRealTimers();
+  });
+
+  test("reports the full measured status size to the native window", () => {
+    const status = new FakeElement();
+    status.getBoundingClientRect.mockReturnValue({ width: 276, height: 28 } as DOMRect);
+    const renderer = new PetRenderer({
+      image: new FakeElement() as never,
+      pet: new FakeElement() as never,
+      status: status as never,
+      statusLabel: { textContent: "" } as never,
+      statusSound: createStatusSound(),
+      chatOnly: false,
+      state: defaultRendererState(),
+    });
+
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: { ...defaultRendererState().codex, status: "working", workingSince: Date.now() },
+    });
+
+    expect(window.peskApi.resizePetContent).toHaveBeenCalledWith(284, 180);
   });
 
   test("uses one focused class and accessible label for pet focus", () => {

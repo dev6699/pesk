@@ -50,6 +50,7 @@ const api: PeskApi = {
   focusPet: sendChannel("focus-pet"),
   unfocusPesk: sendChannel("unfocus-pesk"),
   zoomPet: sendChannel("zoom-pet"),
+  resizePetContent: sendChannel("resize-pet-content"),
   showPetMenu: sendChannel("show-pet-menu"),
   togglePaused: sendChannel("toggle-paused"),
   toggleLocked: sendChannel("toggle-locked"),
