@@ -51,6 +51,7 @@ function state(): RendererState {
       readOnly: false,
       threads: [],
       threadActivities: [],
+      backgroundWork: { completed: 0, total: 0 },
       history: [],
       hasOlderHistory: false,
       historyLoading: false,

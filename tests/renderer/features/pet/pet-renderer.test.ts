@@ -186,6 +186,42 @@ describe("PetRenderer", () => {
     jest.useRealTimers();
   });
 
+  test("shows completed over total background work", () => {
+    const aggregateStatusLabel = document.createElement("span");
+    const renderer = new PetRenderer({
+      image: new FakeElement() as never,
+      pet: new FakeElement() as never,
+      status: new FakeElement() as never,
+      statusLabel: { textContent: "" } as unknown as HTMLElement,
+      aggregateStatusLabel,
+      statusSound: createStatusSound(),
+      chatOnly: false,
+      state: defaultRendererState(),
+    });
+
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: {
+        ...defaultRendererState().codex,
+        threadId: "selected",
+        threadActivities: [{ threadId: "background", preview: "Background", status: "working" }],
+        backgroundWork: { completed: 0, total: 1 },
+      },
+    });
+    expect(aggregateStatusLabel.textContent).toBe("Wait 0|Work 0/1");
+
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: {
+        ...defaultRendererState().codex,
+        threadId: "selected",
+        threadActivities: [{ threadId: "background", preview: "Background", status: "idle" }],
+        backgroundWork: { completed: 1, total: 1 },
+      },
+    });
+    expect(aggregateStatusLabel.textContent).toBe("Wait 0|Work 1/1");
+  });
+
   test("reports the full measured status size to the native window", () => {
     const status = new FakeElement();
     status.getBoundingClientRect.mockReturnValue({ width: 276, height: 28 } as DOMRect);

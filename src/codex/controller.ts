@@ -184,6 +184,8 @@ export class CodexController {
   private suppressedPublication = 0;
   /** Pending background requests, retained in first-arrival order. */
   private readonly attentionQueue = new Map<string, "approval" | "userInput">();
+  /** One background-work entry per thread until that thread is selected. */
+  private readonly backgroundWork = new Map<string, "working" | "completed">();
   private readonly historyPagination = new Map<string, HistoryPaginationState>();
   private readonly pendingHistoryLoads = new Set<string>();
 
@@ -266,6 +268,7 @@ export class CodexController {
     const thread = this.threadRuntime().snapshot();
     const pagination = this.threadId ? this.historyState(this.threadId) : undefined;
     const threadActivities = this.getThreadActivities();
+    const backgroundWork = [...this.backgroundWork.values()];
     const aggregateStatus: CodexState["status"] = threadActivities.some(
       (activity) => activity.status === "waiting",
     )
@@ -287,6 +290,10 @@ export class CodexController {
       threads: this.threads,
       projects: this.projects,
       threadActivities,
+      backgroundWork: {
+        completed: backgroundWork.filter((status) => status === "completed").length,
+        total: backgroundWork.length,
+      },
       workingSince: thread.workingSince,
       workedElapsed: thread.workedElapsed,
       interrupted: thread.interrupted,
@@ -312,6 +319,19 @@ export class CodexController {
       this.historyPagination.set(threadId, state);
     }
     return state;
+  }
+
+  /** Records one background work unit for a thread until it is selected. */
+  private trackBackgroundWork(threadId: string): void {
+    if (!this.backgroundWork.has(threadId)) this.backgroundWork.set(threadId, "working");
+  }
+
+  /** Retains a background work unit as completed until its thread is selected. */
+  private completeBackgroundWork(threadId: string): void {
+    if (threadId !== this.threadId) {
+      this.trackBackgroundWork(threadId);
+      this.backgroundWork.set(threadId, "completed");
+    }
   }
 
   /** Loads the next older persisted history page for the selected thread. */
@@ -1585,6 +1605,7 @@ export class CodexController {
     this.pendingThreadResumeId = undefined;
     this.locallyStartedThreads.clear();
     this.threadControllers.clear();
+    this.backgroundWork.clear();
     this.runtimeAccess.clear();
     this.historyPagination.clear();
     this.pendingHistoryLoads.clear();
@@ -1612,6 +1633,7 @@ export class CodexController {
         const runtime = this.runtime(thread.id);
         runtime.syncServerThread(thread);
         runtime.applyServerStatus(thread.status ?? {});
+        if (runtime.state.status !== "idle") this.trackBackgroundWork(thread.id);
       }
       if (!threads.length) {
         this.threadId = undefined;
@@ -1639,6 +1661,14 @@ export class CodexController {
     if (!id || (this.threads.length > 0 && !this.threads.some((thread) => thread.id === id))) {
       return;
     }
+    const previousThreadId = this.threadId;
+    if (previousThreadId && previousThreadId !== id) {
+      const previousRuntime = this.runtime(previousThreadId);
+      if (previousRuntime.state.status !== "idle" && !this.backgroundWork.has(previousThreadId)) {
+        this.backgroundWork.set(previousThreadId, "working");
+      }
+    }
+    this.backgroundWork.delete(id);
     if (this.threadId === id) {
       if (resume && !this.threadRuntime().state.connected) {
         this.pendingHistoryLoads.add(id);
@@ -1854,6 +1884,7 @@ export class CodexController {
         });
       }
       if (wasBackgroundThread && message.method === "turn/completed") {
+        this.completeBackgroundWork(threadId);
         if (!this.options.isChatVisible()) this.switchThread(threadId, false);
       }
       if (message.method === "turn/completed") {
@@ -2005,6 +2036,7 @@ export class CodexController {
   private handleThreadRemoved(threadId: string): void {
     this.threads = this.threads.filter((thread) => thread.id !== threadId);
     this.threadControllers.delete(threadId);
+    this.backgroundWork.delete(threadId);
     this.runtimeAccess.delete(threadId);
     this.readonlyThreadIds.delete(threadId);
     this.attentionQueue.delete(threadId);
@@ -2031,6 +2063,7 @@ export class CodexController {
       const runtime = this.runtime(thread.id);
       runtime.syncServerThread(thread);
       runtime.applyServerStatus(thread.status ?? {});
+      if (runtime.state.status !== "idle") this.trackBackgroundWork(thread.id);
       this.options.publishRendererState();
       return;
     }
@@ -2156,6 +2189,9 @@ export class CodexController {
     const isSelected = threadId === this.threadId;
     const previous = this.threadRuntime().state.status;
     this.threadRuntime().applyServerStatus(status ?? {});
+    if (!isSelected && this.threadRuntime().state.status !== "idle") {
+      this.trackBackgroundWork(threadId);
+    }
     this.options.publishRendererState();
     if (
       isSelected &&
@@ -2375,6 +2411,7 @@ export class CodexController {
       id,
       params,
     } satisfies TurnStartRequest);
+    if (threadId !== this.threadId) this.trackBackgroundWork(threadId);
     this.withRuntime(threadId, () => {
       runtime.setStatus("working");
       this.options.publishRendererState();

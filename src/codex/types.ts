@@ -119,6 +119,10 @@ export interface CodexState {
   threads: Thread[];
   projects: Project[];
   threadActivities: CodexThreadActivity[];
+  backgroundWork: {
+    completed: number;
+    total: number;
+  };
   workingSince?: number;
   workedElapsed?: number;
   interrupted?: boolean;

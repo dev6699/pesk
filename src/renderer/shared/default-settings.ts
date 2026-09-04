@@ -20,6 +20,7 @@ export function defaultCodexRuntimeState(): CodexRuntimeState {
     threads: [],
     projects: [],
     threadActivities: [],
+    backgroundWork: { completed: 0, total: 0 },
     queuedSubmissions: [],
     collaborationMode: "default",
     hasOlderHistory: false,

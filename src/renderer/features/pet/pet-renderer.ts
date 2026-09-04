@@ -188,11 +188,11 @@ export class PetRenderer {
       (activity) => activity.threadId !== next.codex.threadId && activity.status !== "idle",
     );
     const waitingCount = otherThreads.filter((activity) => activity.status === "waiting").length;
-    const workingCount = otherThreads.filter((activity) => activity.status === "working").length;
+    const { completed, total } = next.codex.backgroundWork;
     const separator = document.createElement("span");
     separator.className = "aggregate-status-separator";
     separator.textContent = "|";
-    label.replaceChildren(`Wait ${waitingCount}`, separator, `Work ${workingCount}`);
+    label.replaceChildren(`Wait ${waitingCount}`, separator, `Work ${completed}/${total}`);
     label.className = "";
     label.hidden = false;
     label.style.display = "inline-flex";

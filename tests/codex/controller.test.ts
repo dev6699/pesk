@@ -1932,6 +1932,31 @@ describe("CodexController", () => {
     });
   });
 
+  test("counts an active discovered session as background work until selected", () => {
+    const controller = new CodexController(options());
+    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
+    (controller as unknown as { connect: () => void }).connect();
+    const socket = FakeWebSocket.instances.at(-1) as FakeWebSocket;
+
+    socket.emit("open");
+    socket.emit("message", JSON.stringify({ id: 1, result: {} }));
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: 2,
+        result: {
+          data: [
+            { id: "selected", status: { type: "idle" } },
+            { id: "already-active", status: { type: "active" } },
+          ],
+        },
+      }),
+    );
+
+    expect(controller.getState().threadId).toBe("selected");
+    expect(controller.getState().backgroundWork).toEqual({ completed: 0, total: 1 });
+  });
+
   test("keeps a session rejected by an active writer", () => {
     const { controller, socket } = connectedController();
 
@@ -2508,6 +2533,27 @@ describe("CodexController", () => {
     expect(controller.getState().cwd).toBe("/workspace/external");
   });
 
+  test("counts an active thread started by another client as background work", () => {
+    const { controller, socket } = connectedController();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/started",
+        params: {
+          thread: {
+            id: "active-external-thread",
+            cwd: "/workspace/external",
+            status: { type: "active" },
+          },
+        },
+      }),
+    );
+
+    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().backgroundWork).toEqual({ completed: 0, total: 1 });
+  });
+
   test("refreshes the queue for a background thread without selecting it", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
@@ -2937,6 +2983,72 @@ describe("CodexController", () => {
         }),
       ]),
     );
+  });
+
+  test("retains completed background work until its thread is selected", () => {
+    const { controller, socket, options: controllerOptions } = connectedController();
+    const internal = controller as unknown as {
+      threads: Array<{ id: string; status: { type: string } }>;
+    };
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    controllerOptions.isChatVisible.mockReturnValue(true);
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "other-thread", status: { type: "active", activeFlags: [] } },
+      }),
+    );
+    expect(controller.getState().backgroundWork).toEqual({ completed: 0, total: 1 });
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "turn/completed",
+        params: { threadId: "other-thread", turn: { status: "completed" } },
+      }),
+    );
+    expect(controller.getState().backgroundWork).toEqual({ completed: 1, total: 1 });
+
+    controller.selectThread("other-thread");
+    expect(controller.getState().backgroundWork).toEqual({ completed: 0, total: 0 });
+  });
+
+  test("counts one background work entry per thread until selection", () => {
+    const { controller, socket, options: controllerOptions } = connectedController();
+    const internal = controller as unknown as {
+      threads: Array<{ id: string; status: { type: string } }>;
+    };
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    controllerOptions.isChatVisible.mockReturnValue(true);
+
+    const statusChanged = () =>
+      socket.emit(
+        "message",
+        JSON.stringify({
+          method: "thread/status/changed",
+          params: { threadId: "other-thread", status: { type: "active", activeFlags: [] } },
+        }),
+      );
+    const completed = () =>
+      socket.emit(
+        "message",
+        JSON.stringify({
+          method: "turn/completed",
+          params: { threadId: "other-thread", turn: { status: "completed" } },
+        }),
+      );
+
+    statusChanged();
+    completed();
+    statusChanged();
+    expect(controller.getState().backgroundWork).toEqual({ completed: 1, total: 1 });
+
+    controller.selectThread("other-thread");
+    controller.selectThread("thread-1");
+    statusChanged();
+    expect(controller.getState().backgroundWork).toEqual({ completed: 0, total: 1 });
   });
 
   test("switches to and focuses a background thread after turn completion", () => {
@@ -3595,12 +3707,16 @@ describe("CodexController", () => {
     const internal = controller as unknown as {
       runtime: (threadId: string) => CodexThread;
       threadControllers: Map<string, CodexThread>;
+      backgroundWork: Map<string, "working" | "completed">;
     };
+    internal.backgroundWork.set("completed-thread", "completed");
+    internal.runtime("completed-thread");
     for (let index = 0; index < 32; index += 1) {
       internal.runtime(`inactive-${index}`);
     }
 
     expect(internal.threadControllers.size).toBeLessThanOrEqual(16);
     expect(internal.threadControllers.has("thread-1")).toBe(true);
+    expect(controller.getState().backgroundWork).toEqual({ completed: 1, total: 1 });
   });
 });
