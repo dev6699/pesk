@@ -21,10 +21,14 @@ function run(command, args, options = {}) {
       cwd: root,
       encoding: "utf8",
       stdio: options.stdio ?? "inherit",
+      shell: options.shell ?? false,
     });
-  } catch {
+  } catch (error) {
     process.exitCode = 1;
-    throw new Error(`Failed: ${command} ${args.join(" ")}`);
+    const detail = error instanceof Error ? `: ${error.message}` : "";
+    throw new Error(`Failed: ${command} ${args.join(" ")}${detail}`, {
+      cause: error,
+    });
   }
 }
 
@@ -77,8 +81,8 @@ async function main() {
   if (remoteTags) fail(`remote tag ${tag} already exists.`);
   if (output("git", ["tag", "--list", tag])) fail(`local tag ${tag} already exists.`);
 
-  run(npmCommand, ["run", "format:check"]);
-  run(npmCommand, ["test"]);
+  run(npmCommand, ["run", "format:check"], { shell: process.platform === "win32" });
+  run(npmCommand, ["test"], { shell: process.platform === "win32" });
 
   if (!(await confirmRelease(tag))) {
     console.log("Release cancelled.");
