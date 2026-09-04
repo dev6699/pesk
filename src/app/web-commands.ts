@@ -32,6 +32,16 @@ export function handleWebCommand(
           context.codex.submitPromptWithImages(command.prompt, validImageInputs(command.images)),
       );
       break;
+    case "selectModel":
+      if (typeof command.model === "string" && typeof command.effort === "string") {
+        context.codex.selectModel(command.model, command.effort);
+        replyCommand(true);
+      }
+      break;
+    case "cancelModel":
+      context.codex.cancelModelPicker();
+      replyCommand(true);
+      break;
     case "startProjectThread":
       if (typeof command.projectId === "string" && typeof command.cwd === "string")
         replyCommand(context.codex.startProjectThread(command.projectId, command.cwd));

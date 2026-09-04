@@ -67,7 +67,7 @@ import type {
   ThreadCompactStartResponse,
 } from "../codex-schema/v2";
 import type { UserInput } from "../codex-schema/v2/UserInput";
-import type { CodexState, CodexStreamDelta, CodexThreadActivity } from "./types";
+import type { CodexState, CodexStreamDelta, CodexThreadActivity, CodexModelPicker } from "./types";
 import type {
   AccountRateLimitsRequest,
   CommandExecRequest,
@@ -95,6 +95,9 @@ import type {
   TurnInterruptRequest,
   TurnStartRequest,
   TurnSteerRequest,
+  ModelListRequest,
+  ModelListResponse,
+  ThreadSettingsUpdateRequest,
 } from "./protocol";
 
 const STEER_INSTRUCTIONS = `Treat this message as a steer to the currently active request.
@@ -188,6 +191,9 @@ export class CodexController {
   private readonly backgroundWork = new Map<string, "working" | "completed">();
   private readonly historyPagination = new Map<string, HistoryPaginationState>();
   private readonly pendingHistoryLoads = new Set<string>();
+  private modelPicker: CodexModelPicker | undefined;
+  /** Identifies the currently active model picker request, if any. */
+  private modelPickerRequest = 0;
 
   /** Creates a controller with callbacks for renderer and window updates. */
   constructor(options: Options) {
@@ -305,6 +311,7 @@ export class CodexController {
       pendingApproval: thread.pendingApproval,
       queuedSubmissions: thread.queuedSubmissions,
       goal: thread.goal,
+      modelPicker: this.modelPicker,
       hasOlderHistory: pagination?.hasOlderHistory ?? false,
       historyLoading: Boolean(
         pagination?.loading || (this.threadId && this.pendingHistoryLoads.has(this.threadId)),
@@ -889,6 +896,79 @@ export class CodexController {
   }
 
   /** Starts a turn while idle or persists a follow-up while a turn is active. */
+  private beginModelPicker(): boolean {
+    const threadId = this.threadId;
+    if (!threadId) {
+      this.threadRuntime().setCommandNotice("No active thread to change model.");
+      this.options.publishRendererState();
+      return false;
+    }
+    const pickerRequest = ++this.modelPickerRequest;
+    const models: ModelListResponse["data"] = [];
+    const loadModels = (cursor: string | null): void => {
+      const id = ++this.nextId;
+      this.setRequest<ModelListResponse>(id, (message) => {
+        if (pickerRequest !== this.modelPickerRequest || threadId !== this.threadId) return;
+        const page = message.result?.data;
+        if (message.error || !Array.isArray(page)) {
+          this.threadRuntime().setCommandNotice("Unable to load available models.");
+          this.options.publishRendererState();
+          return;
+        }
+        models.push(...page);
+        const nextCursor = message.result?.nextCursor;
+        if (typeof nextCursor === "string" && nextCursor) {
+          loadModels(nextCursor);
+          return;
+        }
+        this.modelPicker = models.length ? { stage: "model", models } : undefined;
+        if (!models.length) {
+          this.threadRuntime().setCommandNotice("Unable to load available models.");
+        }
+        this.options.publishRendererState();
+      });
+      this.send({
+        method: "model/list",
+        id,
+        params: { cursor, includeHidden: false },
+      } satisfies ModelListRequest);
+    };
+    loadModels(null);
+    return true;
+  }
+
+  selectModel(model: string, effort: string): void {
+    const picker = this.modelPicker;
+    if (!picker || !this.threadId) return;
+    const selectedModel = picker.models.find((candidate) => candidate.model === model);
+    if (!selectedModel) return;
+    if (!effort) {
+      this.modelPicker = { stage: "effort", models: picker.models, selectedModel };
+      this.options.publishRendererState();
+      return;
+    }
+    if (!selectedModel.supportedReasoningEfforts.some((item) => item.reasoningEffort === effort))
+      return;
+    const id = ++this.nextId;
+    const threadId = this.threadId;
+    this.setRequest(id, (message) => {
+      this.modelPicker = undefined;
+      if (message.error) this.threadRuntime().setCommandNotice("Unable to change the model.");
+      this.options.publishRendererState();
+    });
+    this.send({
+      method: "thread/settings/update",
+      id,
+      params: { threadId, model, effort },
+    } satisfies ThreadSettingsUpdateRequest);
+  }
+
+  cancelModelPicker(): void {
+    this.modelPickerRequest += 1;
+    this.modelPicker = undefined;
+    this.options.publishRendererState();
+  }
+
   submitPrompt(value: string): boolean {
     return this.submitPromptWithImages(value, []);
   }
@@ -900,6 +980,7 @@ export class CodexController {
 
     const prompt = value.trim();
     this.threadRuntime().setCommandNotice(undefined);
+    if (/^\/model$/i.test(prompt)) return this.beginModelPicker();
     const goalCommand = prompt.match(/^\/goal(?:\s+(.+))?$/is);
     if (goalCommand) return this.manageGoal(goalCommand[1] ?? "");
     const projectCommand = prompt.match(/^\/project(?:\s+(.+))?$/is);
@@ -1662,6 +1743,10 @@ export class CodexController {
       return;
     }
     const previousThreadId = this.threadId;
+    if (previousThreadId !== id) {
+      this.modelPickerRequest += 1;
+      this.modelPicker = undefined;
+    }
     if (previousThreadId && previousThreadId !== id) {
       const previousRuntime = this.runtime(previousThreadId);
       if (previousRuntime.state.status !== "idle" && !this.backgroundWork.has(previousThreadId)) {

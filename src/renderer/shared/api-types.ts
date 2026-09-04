@@ -51,6 +51,8 @@ export interface PeskApi {
     prompt: string,
     images?: Array<{ url: string; name: string }>,
   ) => Promise<RendererState>;
+  selectCodexModel: (model: string, effort: string) => Promise<RendererState>;
+  cancelCodexModel: () => Promise<RendererState>;
   startCodexProjectThread: (projectId: string, cwd: string) => Promise<RendererState>;
   startCodexReview: (instructions: string) => Promise<RendererState>;
   fuzzyFileSearch: (query: string, roots: string[]) => Promise<FuzzyFileSearchResult[]>;

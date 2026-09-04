@@ -2215,6 +2215,7 @@ test("shows and selects slash commands", () => {
     "/deletePermanently delete the current session",
     "/reviewReview current changes",
     "/execRun a sandboxed command",
+    "/modelSelect model and reasoning level",
   ]);
 
   elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));

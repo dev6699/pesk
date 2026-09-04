@@ -1,5 +1,5 @@
 import type { RequestId } from "../codex-schema";
-import type { Project } from "../codex-schema/v2";
+import type { Model, Project } from "../codex-schema/v2";
 import type {
   CommandExecutionApprovalDecision,
   FileChangeApprovalDecision,
@@ -85,6 +85,12 @@ export interface CodexModelInfo {
   serviceTier?: string;
 }
 
+export interface CodexModelPicker {
+  stage: "model" | "effort";
+  models: Model[];
+  selectedModel?: Model;
+}
+
 /** Renderer-facing state owned by one thread runtime. */
 export interface CodexThreadSnapshot {
   projectId?: string | null;
@@ -103,6 +109,7 @@ export interface CodexThreadSnapshot {
   queuedSubmissions: CodexQueuedSubmission[];
   goal?: ThreadGoal;
   commandNotice?: string;
+  modelPicker?: CodexModelPicker;
 }
 
 /** Complete state published by the Codex controller to renderer clients. */
@@ -135,6 +142,7 @@ export interface CodexState {
   queuedSubmissions: CodexQueuedSubmission[];
   goal?: ThreadGoal;
   commandNotice?: string;
+  modelPicker?: CodexModelPicker;
   hasOlderHistory: boolean;
   historyLoading: boolean;
 }

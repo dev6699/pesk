@@ -100,6 +100,16 @@ export type TurnInterruptRequest = RequestOf<"turn/interrupt">;
 export type ThreadShellCommandRequest = RequestOf<"thread/shellCommand">;
 export type CommandExecRequest = RequestOf<"command/exec">;
 export type FuzzyFileSearchRequest = RequestOf<"fuzzyFileSearch">;
+export type ModelListRequest = RequestOf<"model/list">;
+export type ModelListResponse = {
+  data: import("../codex-schema/v2").Model[];
+  nextCursor: string | null;
+};
+export type ThreadSettingsUpdateRequest = {
+  method: "thread/settings/update";
+  id: number;
+  params: { threadId: string; model?: string; effort?: string };
+};
 
 type LocalTextInput = { type: "text"; text: string; text_elements: [] };
 export type TurnSteerRequest = {

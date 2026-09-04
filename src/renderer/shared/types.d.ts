@@ -90,6 +90,21 @@ interface CodexModelInfo {
   serviceTier?: string;
 }
 
+interface CodexModelOption {
+  model: string;
+  displayName: string;
+  description: string;
+  supportedReasoningEfforts: Array<{ reasoningEffort: string; description: string }>;
+  defaultReasoningEffort: string;
+  isDefault: boolean;
+}
+
+interface CodexModelPicker {
+  stage: "model" | "effort";
+  models: CodexModelOption[];
+  selectedModel?: CodexModelOption;
+}
+
 interface RateLimitWindow {
   usedPercent: number;
   windowDurationMins: number | null;
@@ -192,6 +207,7 @@ interface CodexRuntimeState {
   queuedSubmissions: CodexQueuedSubmission[];
   goal?: CodexGoal;
   commandNotice?: string;
+  modelPicker?: CodexModelPicker;
   hasOlderHistory: boolean;
   historyLoading: boolean;
 }

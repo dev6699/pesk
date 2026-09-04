@@ -42,6 +42,7 @@ export class CodexPromptRenderer {
     const container = this.userInput;
     const pending = this.getState().codex.pendingUserInput;
     const pendingApproval = this.getState().codex.pendingApproval;
+    if (this.getState().codex.modelPicker) return;
     const planConfirmation = this.getPlanConfirmation();
     if (!container) return;
     if (container.dataset.projectManager === "true" || container.dataset.projectThread === "true")

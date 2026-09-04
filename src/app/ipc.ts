@@ -59,6 +59,14 @@ export function registerIpcHandlers(context: ApplicationContext): void {
     if (typeof prompt === "string") codex.submitPromptWithImages(prompt, validImageInputs(images));
     return state.getState();
   });
+  registerInvoke("select-codex-model", (_event, model, effort) => {
+    if (typeof model === "string" && typeof effort === "string") codex.selectModel(model, effort);
+    return state.getState();
+  });
+  registerInvoke("cancel-codex-model", () => {
+    codex.cancelModelPicker();
+    return state.getState();
+  });
   registerInvoke("start-codex-project-thread", (_event, projectId, cwd) => {
     if (typeof projectId === "string" && typeof cwd === "string")
       codex.startProjectThread(projectId, cwd);

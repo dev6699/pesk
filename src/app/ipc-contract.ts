@@ -36,6 +36,8 @@ export interface IpcInvokeContract {
   "revoke-pairing-device": { args: [id: string]; result: void };
   "set-pairing-device-push": { args: [id: string, enabled: boolean]; result: void };
   "submit-codex-prompt": { args: [prompt: string, images?: ImageInput[]]; result: RendererState };
+  "select-codex-model": { args: [model: string, effort: string]; result: RendererState };
+  "cancel-codex-model": { args: []; result: RendererState };
   "start-codex-project-thread": {
     args: [projectId: string, cwd: string];
     result: RendererState;

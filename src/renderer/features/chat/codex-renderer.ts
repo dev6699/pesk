@@ -3,6 +3,7 @@ import { CodexAttachmentRenderer } from "./codex-attachments-renderer.js";
 import { CodexHistoryRenderer } from "./codex-history-renderer.js";
 import { CodexInputController } from "./codex-input-controller.js";
 import { CodexPromptRenderer } from "./codex-prompt-renderer.js";
+import { CodexModelRenderer } from "./codex-model-renderer.js";
 import { CodexStatusRenderer } from "./codex-status-renderer.js";
 import { CodexSuggestionRenderer } from "./codex-suggestions-renderer.js";
 import { formatElapsed, formatRateLimitDetails, formatTokens } from "./codex-renderer-helpers.js";
@@ -20,6 +21,7 @@ export class CodexRenderer {
   private readonly fileSuggestions: HTMLElement;
   private readonly suggestionRenderer: CodexSuggestionRenderer;
   private readonly promptRenderer: CodexPromptRenderer;
+  private readonly modelRenderer: CodexModelRenderer;
   private sessionNavigationIds: string[] = [];
   private renderedSessionOptionsKey = "";
   private pendingSessionId: string | undefined;
@@ -121,6 +123,11 @@ export class CodexRenderer {
         renderPlanImplementationPrompt: (activityKey, planText) =>
           this.renderPlanImplementationPrompt(activityKey, planText),
       },
+    );
+    this.modelRenderer = new CodexModelRenderer(
+      userInput,
+      () => this.state,
+      (next) => this.updateState(next),
     );
     this.statusRenderer = new CodexStatusRenderer(
       workingStatus,
@@ -278,6 +285,7 @@ export class CodexRenderer {
       next.codex.pendingApproval ||
       this.activePlanConfirmation ||
       this.promptRenderer.isReviewPromptOpen ||
+      next.codex.modelPicker ||
       document.body.dataset.projectManager === "true" ||
       document.body.dataset.projectThread === "true",
     );
@@ -308,6 +316,13 @@ export class CodexRenderer {
 
   /** Handles global chat shortcuts and keyboard navigation. */
   handleKeydown(event: KeyboardEvent): void {
+    if (this.state.codex.modelPicker && matchesShortcut(event, "dismissSuggestions")) {
+      event.preventDefault();
+      this.modelRenderer.cancel();
+      this.form.hidden = false;
+      this.inputController.focusChatInput();
+      return;
+    }
     if (
       matchesShortcut(event, "closeProjectManager") &&
       (document.body.dataset.projectManager === "true" ||
@@ -596,6 +611,8 @@ export class CodexRenderer {
   }
 
   private renderUserInput(force = false): void {
+    this.modelRenderer.render();
+    if (this.state.codex.modelPicker) return;
     this.promptRenderer.render(force);
   }
 

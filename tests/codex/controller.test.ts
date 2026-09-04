@@ -582,6 +582,128 @@ describe("CodexController", () => {
     });
   });
 
+  test("loads models and updates the selected thread after the two-step picker", () => {
+    const { controller, socket } = connectedController();
+    expect(controller.submitPrompt("/model")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "model/list",
+      params: { includeHidden: false },
+    });
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: lastMessage(socket).id,
+        result: {
+          data: [
+            {
+              model: "gpt-test",
+              displayName: "GPT Test",
+              description: "Test model",
+              supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "Balanced" }],
+              defaultReasoningEffort: "medium",
+              isDefault: true,
+            },
+          ],
+        },
+      }),
+    );
+    expect(controller.getState().modelPicker?.stage).toBe("model");
+    expect(controller.selectModel("gpt-test", "")).toBeUndefined();
+    expect(controller.getState().modelPicker?.stage).toBe("effort");
+    controller.selectModel("gpt-test", "medium");
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/settings/update",
+      params: { threadId: "thread-1", model: "gpt-test", effort: "medium" },
+    });
+    socket.emit("message", JSON.stringify({ id: lastMessage(socket).id, result: {} }));
+    expect(controller.getState().modelPicker).toBeUndefined();
+  });
+
+  test("loads all pages of models before showing the picker", () => {
+    const { controller, socket } = connectedController();
+    expect(controller.submitPrompt("/model")).toBe(true);
+    const firstRequest = lastMessage(socket);
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: firstRequest.id,
+        result: {
+          data: [
+            {
+              model: "gpt-first",
+              displayName: "First",
+              description: "First model",
+              supportedReasoningEfforts: [],
+              defaultReasoningEffort: "medium",
+              isDefault: true,
+            },
+          ],
+          nextCursor: "page-2",
+        },
+      }),
+    );
+    expect(controller.getState().modelPicker).toBeUndefined();
+    expect(lastMessage(socket)).toMatchObject({
+      method: "model/list",
+      params: { cursor: "page-2", includeHidden: false },
+    });
+
+    const secondRequest = lastMessage(socket);
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: secondRequest.id,
+        result: {
+          data: [
+            {
+              model: "gpt-second",
+              displayName: "Second",
+              description: "Second model",
+              supportedReasoningEfforts: [],
+              defaultReasoningEffort: "medium",
+              isDefault: false,
+            },
+          ],
+          nextCursor: null,
+        },
+      }),
+    );
+
+    expect(controller.getState().modelPicker?.models.map((model) => model.model)).toEqual([
+      "gpt-first",
+      "gpt-second",
+    ]);
+  });
+
+  test("ignores a model response after the picker is cancelled", () => {
+    const { controller, socket } = connectedController();
+    expect(controller.submitPrompt("/model")).toBe(true);
+    const request = lastMessage(socket);
+    controller.cancelModelPicker();
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: request.id,
+        result: {
+          data: [
+            {
+              model: "gpt-stale",
+              displayName: "Stale",
+              description: "Stale model",
+              supportedReasoningEfforts: [],
+              defaultReasoningEffort: "medium",
+              isDefault: false,
+            },
+          ],
+          nextCursor: null,
+        },
+      }),
+    );
+
+    expect(controller.getState().modelPicker).toBeUndefined();
+  });
+
   test("sets a native goal without echoing the objective as a user message", () => {
     const { controller, socket } = connectedController();
     const objective = "Prepare a verified weekend itinerary with a complete budget";

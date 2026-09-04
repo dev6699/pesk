@@ -12,6 +12,7 @@ const slashCommands = [
   { command: "/delete", description: "Permanently delete the current session" },
   { command: "/review", description: "Review current changes" },
   { command: "/exec", description: "Run a sandboxed command" },
+  { command: "/model", description: "Select model and reasoning level" },
 ];
 
 export class CodexSuggestionRenderer {
