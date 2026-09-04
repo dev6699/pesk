@@ -6,6 +6,10 @@
 
 Pesk is a lightweight Windows desktop pet built with Electron and TypeScript. It combines an animated, always-on-top companion with a dedicated Codex chat window, keyboard-driven controls, configurable presets, and a system-tray menu.
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="Pesk desktop companion and Codex chat window" width="720" />
+</p>
+
 ## Features
 
 - Animated desktop companion with customizable visual themes
