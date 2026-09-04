@@ -64,6 +64,7 @@ import type {
   ThreadGoalGetResponse,
   ThreadGoalSetResponse,
   ThreadTurnsListResponse,
+  ThreadCompactStartResponse,
 } from "../codex-schema/v2";
 import type { UserInput } from "../codex-schema/v2/UserInput";
 import type { CodexState, CodexStreamDelta, CodexThreadActivity } from "./types";
@@ -90,6 +91,7 @@ import type {
   ThreadGoalGetRequest,
   ThreadGoalClearRequest,
   ThreadGoalSetRequest,
+  ThreadCompactStartRequest,
   TurnInterruptRequest,
   TurnStartRequest,
   TurnSteerRequest,
@@ -882,6 +884,9 @@ export class CodexController {
     if (goalCommand) return this.manageGoal(goalCommand[1] ?? "");
     const projectCommand = prompt.match(/^\/project(?:\s+(.+))?$/is);
     if (projectCommand) return this.manageProject(projectCommand[1] ?? "");
+    if (/^\/compact$/i.test(prompt)) {
+      return this.compactThread();
+    }
     const modeCommand = prompt.match(/^\/(plan|default)$/i);
     if (modeCommand) {
       this.setCollaborationMode(modeCommand[1].toLowerCase() as "plan" | "default");
@@ -963,6 +968,42 @@ export class CodexController {
         });
       }
     });
+    return true;
+  }
+
+  /** Starts manual history compaction for the selected idle thread. */
+  private compactThread(): boolean {
+    if (!this.initialized || this.socket?.readyState !== WebSocket.OPEN) return false;
+    if (!this.threadId) {
+      this.threadRuntime().setCommandNotice("No active thread to compact.");
+      this.options.publishRendererState();
+      return false;
+    }
+    const runtime = this.threadRuntime();
+    if (runtime.state.status !== "idle") {
+      runtime.setCommandNotice("Wait for the current turn to finish before compacting.");
+      this.options.publishRendererState();
+      return false;
+    }
+
+    const threadId = this.threadId;
+    const id = ++this.nextId;
+    this.setRequest<ThreadCompactStartResponse>(id, (message) => {
+      if (message.error) {
+        this.withRuntime(threadId, () => {
+          this.threadRuntime().setStatus("idle");
+          this.threadRuntime().setCommandNotice("Unable to compact the current thread.");
+        });
+        this.options.publishRendererState();
+      }
+    });
+    this.send({
+      method: "thread/compact/start",
+      id,
+      params: { threadId },
+    } satisfies ThreadCompactStartRequest);
+    runtime.setStatus("working");
+    this.options.publishRendererState();
     return true;
   }
 

@@ -782,7 +782,16 @@ export class CodexRenderer {
       if (contextLabel) {
         const contextLabelElement = document.createElement("span");
         contextLabelElement.className = "codex-context";
-        contextLabelElement.textContent = contextLabel;
+        if (contextPercent !== undefined) {
+          contextLabelElement.classList.add(
+            contextPercent < 50
+              ? "codex-context-low"
+              : contextPercent <= 75
+                ? "codex-context-medium"
+                : "codex-context-high",
+          );
+        }
+        contextLabelElement.append(document.createTextNode(contextLabel));
         contextLabelElement.title = contextLabel;
         usageLine.append(contextLabelElement);
       }

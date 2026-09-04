@@ -2207,6 +2207,7 @@ test("shows and selects slash commands", () => {
     "/planSwitch to Plan mode",
     "/goalUsage: /goal [<objective>|clear|edit|pause|resume]",
     "/projectManage projects",
+    "/compactCompact the current conversation",
     "/defaultSwitch to Default mode",
     "/newStart a new Codex session",
     "/forkFork the current session",
@@ -3019,7 +3020,34 @@ test("renders complete usage, rate-limit, and goal details", () => {
   expect(usageLine?.textContent?.indexOf("Context")).toBeLessThan(
     usageLine?.textContent?.indexOf("In") ?? -1,
   );
+  expect(elements.tokenUsage.querySelector(".codex-context")?.classList).toContain(
+    "codex-context-high",
+  );
   expect((renderer as any).goal.textContent).toContain("Improve coverage");
+});
+
+test("colors the context usage indicator by threshold", () => {
+  const { renderer, elements } = makeRenderer();
+  const updateContext = (inputTokens: number) => {
+    renderer.updateState({
+      ...defaultRendererState(),
+      codex: {
+        ...defaultRendererState().codex,
+        threadId: "thread-1",
+        tokenUsage: {
+          total: { totalTokens: inputTokens, inputTokens: inputTokens, outputTokens: 0 },
+          last: { totalTokens: inputTokens, inputTokens },
+          modelContextWindow: 1_000,
+        },
+      },
+    });
+    return elements.tokenUsage.querySelector(".codex-context") as HTMLElement;
+  };
+
+  expect(updateContext(499).classList).toContain("codex-context-low");
+  expect(updateContext(500).classList).toContain("codex-context-medium");
+  expect(updateContext(750).classList).toContain("codex-context-medium");
+  expect(updateContext(751).classList).toContain("codex-context-high");
 });
 
 test("keeps the project name when the thread list entry has no project field", () => {

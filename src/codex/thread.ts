@@ -251,7 +251,7 @@ export class CodexThread {
     timestamp = Date.now(),
   ): void {
     const message = this.activityMessage(
-      statusOverride && item.type === "plan" ? { ...item, status: statusOverride } : item,
+      statusOverride ? { ...item, status: statusOverride } : item,
       timestamp,
     );
     this.updateActivity(message, itemId);
@@ -459,7 +459,11 @@ export class CodexThread {
               .join("");
       this.completeAssistant(text, stringValue(item.id));
     } else if (isActivityItem(item)) {
-      this.addActivity(item, stringValue(item.id), item.type === "plan" ? "completed" : undefined);
+      this.addActivity(
+        item,
+        stringValue(item.id),
+        item.type === "plan" || item.type === "contextCompaction" ? "completed" : undefined,
+      );
     }
   }
 

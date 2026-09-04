@@ -1527,9 +1527,29 @@ body.chat-only #codex-chat {
 }
 
 .codex-context {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-bottom: 2px solid transparent;
   flex: 0 1 auto;
   color: var(--text-on-bright-surface);
   text-align: center;
+}
+
+.codex-context-low {
+  border-bottom-color: var(--status-success);
+  box-shadow: 0 2px 5px -3px var(--status-success);
+}
+
+.codex-context-medium {
+  border-bottom-color: var(--status-warning);
+  box-shadow: 0 2px 5px -3px var(--status-warning);
+}
+
+.codex-context-high {
+  border-bottom-color: var(--status-error-strong);
+  box-shadow: 0 2px 5px -3px var(--status-error-strong);
 }
 
 .codex-location {

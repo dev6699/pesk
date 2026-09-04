@@ -87,6 +87,7 @@ export type ThreadTurnsListRequest = RequestOf<"thread/turns/list">;
 export type ThreadGoalSetRequest = RequestOf<"thread/goal/set">;
 export type ThreadGoalGetRequest = RequestOf<"thread/goal/get">;
 export type ThreadGoalClearRequest = RequestOf<"thread/goal/clear">;
+export type ThreadCompactStartRequest = RequestOf<"thread/compact/start">;
 export type ThreadArchiveRequest = RequestOf<"thread/archive">;
 export type ThreadDeleteRequest = RequestOf<"thread/delete">;
 export type TurnStartRequest = RequestOf<"turn/start">;

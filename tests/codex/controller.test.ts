@@ -636,6 +636,89 @@ describe("CodexController", () => {
     });
   });
 
+  test("starts manual compaction for the selected idle thread", () => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.submitPrompt("/compact")).toBe(true);
+    expect(lastMessage(socket)).toMatchObject({
+      method: "thread/compact/start",
+      params: { threadId: "thread-1" },
+    });
+    expect(threadState(controller).status).toBe("working");
+
+    socket.emit("message", JSON.stringify({ id: lastMessage(socket).id, result: {} }));
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          threadId: "thread-1",
+          turnId: "compact-turn",
+          item: { id: "compact-item", type: "contextCompaction" },
+        },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          threadId: "thread-1",
+          turnId: "compact-turn",
+          item: { id: "compact-item", type: "contextCompaction" },
+        },
+      }),
+    );
+    const compactedItem = threadState(controller).history.find(
+      (item) => (item as { itemId?: string }).itemId === "compact-item",
+    ) as { activity?: { status?: string } } | undefined;
+    expect(compactedItem?.activity?.status).toBe("completed");
+    socket.emit(
+      "message",
+      JSON.stringify({
+        method: "turn/completed",
+        params: { threadId: "thread-1", turn: { id: "compact-turn", status: "completed" } },
+      }),
+    );
+    expect(threadState(controller).status).toBe("idle");
+  });
+
+  test("rejects manual compaction without an idle selected thread", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as { threadId: string | undefined };
+    internal.threadId = undefined;
+
+    expect(controller.submitPrompt("/compact")).toBe(false);
+    expect(controller.getState().commandNotice).toBe("No active thread to compact.");
+    expect(socket.sent.map((entry) => JSON.parse(entry).method)).not.toContain(
+      "thread/compact/start",
+    );
+
+    internal.threadId = "thread-1";
+    threadRuntime(controller).setStatus("working");
+    expect(controller.submitPrompt("/compact")).toBe(false);
+    expect(controller.getState().commandNotice).toBe(
+      "Wait for the current turn to finish before compacting.",
+    );
+    expect(socket.sent.map((entry) => JSON.parse(entry).method)).not.toContain(
+      "thread/compact/start",
+    );
+  });
+
+  test("reports a manual compaction request failure", () => {
+    const { controller, socket } = connectedController();
+
+    expect(controller.submitPrompt("/compact")).toBe(true);
+    const requestId = lastMessage(socket).id;
+    socket.emit(
+      "message",
+      JSON.stringify({ id: requestId, error: { message: "compaction unavailable" } }),
+    );
+
+    expect(threadState(controller).status).toBe("idle");
+    expect(controller.getState().commandNotice).toBe("Unable to compact the current thread.");
+  });
+
   test("routes background goal notifications to the owning thread", () => {
     const { controller, socket } = connectedController();
 
