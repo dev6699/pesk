@@ -2319,7 +2319,13 @@ export class CodexController {
 
   private routeAttention(threadId: string): void {
     const nextThreadId = this.attentionQueue.keys().next().value;
-    if (typeof nextThreadId !== "string" || this.threadId === nextThreadId) return;
+    if (
+      typeof nextThreadId !== "string" ||
+      this.threadId === nextThreadId ||
+      this.options.isChatVisible()
+    ) {
+      return;
+    }
     this.switchThread(nextThreadId, false);
   }
 

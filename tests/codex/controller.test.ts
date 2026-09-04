@@ -2825,6 +2825,89 @@ describe("CodexController", () => {
     });
   });
 
+  test("keeps the selected thread for a background approval while chat is visible", () => {
+    const { controller, socket, options: controllerOptions } = connectedController();
+    const internal = controller as unknown as {
+      threads: Array<{ id: string; status: { type: string } }>;
+    };
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    controllerOptions.isChatVisible.mockReturnValue(true);
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: "background-approval",
+        method: "item/commandExecution/requestApproval",
+        params: {
+          threadId: "other-thread",
+          command: "npm test",
+          reason: "Run the tests",
+        },
+      }),
+    );
+
+    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controllerOptions.handleNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "approvalRequested",
+        threadId: "other-thread",
+        selectedThreadId: "thread-1",
+      }),
+    );
+  });
+
+  test("switches to a background approval when chat is hidden", () => {
+    const { controller, socket } = connectedController();
+    const internal = controller as unknown as {
+      threads: Array<{ id: string; status: { type: string } }>;
+    };
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: "background-approval",
+        method: "item/commandExecution/requestApproval",
+        params: {
+          threadId: "other-thread",
+          command: "npm test",
+          reason: "Run the tests",
+        },
+      }),
+    );
+
+    expect(controller.getState().threadId).toBe("other-thread");
+    expect(controller.getState().pendingApproval).toMatchObject({
+      requestId: "background-approval",
+    });
+  });
+
+  test("keeps the selected thread for background user input while chat is visible", () => {
+    const { controller, socket, options: controllerOptions } = connectedController();
+    const internal = controller as unknown as {
+      threads: Array<{ id: string; status: { type: string } }>;
+    };
+    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    controllerOptions.isChatVisible.mockReturnValue(true);
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        id: "background-input",
+        method: "item/tool/requestUserInput",
+        params: {
+          threadId: "other-thread",
+          turnId: "other-turn",
+          itemId: "question-2",
+          isBlocking: true,
+          questions: [],
+        },
+      }),
+    );
+
+    expect(controller.getState().threadId).toBe("thread-1");
+  });
+
   test("aggregates background thread activity without changing selected chat context", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
