@@ -263,6 +263,31 @@ test("renders session state, history, activities, approvals, and token usage", (
   expect(elements.tokenUsage.textContent).toContain("gpt-test");
 });
 
+test("does not replace rendered history with a stale shorter snapshot", () => {
+  const { renderer, elements } = makeRenderer();
+  const base = defaultRendererState();
+  const completeHistory = [
+    { role: "user" as const, text: "file edit", itemId: "file-edit" },
+    { role: "assistant" as const, text: "latest reply", itemId: "latest-reply" },
+  ];
+  renderer.updateState({
+    ...base,
+    codex: { ...base.codex, threadId: "thread-1", history: completeHistory },
+  });
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      threadId: "thread-1",
+      history: [completeHistory[0]],
+    },
+  });
+
+  expect(elements.history.querySelectorAll(".codex-message")).toHaveLength(2);
+  expect(elements.history.querySelector("[data-message-item-id='latest-reply']")).not.toBeNull();
+});
+
 test("appends new history without recreating existing message nodes", () => {
   const { renderer, elements } = makeRenderer();
   const firstState: Settings = {
@@ -478,7 +503,9 @@ test("keeps the history pinned while an assistant response streams", () => {
     delta: " output",
   });
 
-  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
 });
 
 test("does not pull the reader to the bottom during assistant streaming", () => {
@@ -536,7 +563,9 @@ test("resumes autoscroll after the reader returns to the bottom", () => {
     delta: " output",
   });
 
-  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
 });
 
 test("blocks autoscroll after Shift+Up or Shift+Down history scrolling", () => {
@@ -586,7 +615,7 @@ test("Alt+Home blocks autoscroll and Alt+End resumes it at the bottom", () => {
   renderer.handleKeydown(
     new KeyboardEvent("keydown", { key: "End", altKey: true, cancelable: true }),
   );
-  elements.history.scrollTop = elements.history.scrollHeight;
+  elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
   elements.history.dispatchEvent(new Event("scroll"));
   renderer.applyStreamDelta({
     threadId: undefined,
@@ -594,7 +623,9 @@ test("Alt+Home blocks autoscroll and Alt+End resumes it at the bottom", () => {
     kind: "assistant",
     delta: " again",
   });
-  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
 });
 
 test("parses streamed assistant Markdown when the turn completes", () => {
@@ -857,6 +888,9 @@ test("opens and switches long histories at the bottom", () => {
   expect(elements.history.scrollTop).toBeGreaterThanOrEqual(
     elements.history.scrollHeight - elements.history.clientHeight,
   );
+  expect(
+    elements.history.querySelector<HTMLElement>("#codex-history-content")?.style.minHeight,
+  ).toBe("");
 });
 
 test("preserves scroll position when appending while reading older history", () => {
@@ -866,6 +900,7 @@ test("preserves scroll position when appending while reading older history", () 
     ...defaultRendererState(),
     codex: { ...defaultRendererState().codex, history: initialHistory },
   });
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
   elements.history.scrollTop = 120;
 
   renderer.updateState({
@@ -877,6 +912,259 @@ test("preserves scroll position when appending while reading older history", () 
   });
 
   expect(elements.history.scrollTop).toBe(120);
+});
+
+test("preserves position while sending a message away from the bottom", () => {
+  const { renderer, elements } = makeRenderer();
+  const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
+  const base = defaultRendererState();
+  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+  const originalMessage = elements.history.querySelector(".codex-message");
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
+  elements.history.scrollTop = 120;
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: initialHistory,
+      queuedSubmissions: [{ id: "queued-1", text: "follow-up", clientUserMessageId: "client-1" }],
+    },
+  });
+  expect(elements.history.scrollTop).toBe(120);
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+    },
+  });
+  expect(elements.history.scrollTop).toBe(120);
+  expect(elements.history.querySelector(".codex-message")).toBe(originalMessage);
+});
+
+test("does not pass through the middle while rebuilding at the bottom", () => {
+  const { renderer, elements } = makeRenderer();
+  const base = defaultRendererState();
+  const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
+  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+  elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
+  const frames: FrameRequestCallback[] = [];
+  window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  }) as typeof window.requestAnimationFrame;
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: initialHistory,
+      queuedSubmissions: [{ id: "queued-1", text: "message", clientUserMessageId: "client-1" }],
+    },
+  });
+
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
+  while (frames.length) frames.shift()?.(0);
+});
+
+test("keeps the scroll viewport stable during a full history render", () => {
+  const { renderer, elements } = makeRenderer();
+  const base = defaultRendererState();
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: [{ role: "user", text: "first", itemId: "first-1" }],
+    },
+  });
+  const viewport = elements.history;
+  const stableContent = viewport.firstElementChild;
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: [{ role: "assistant", text: "replacement", itemId: "second-1" }],
+    },
+  });
+
+  expect(viewport.firstElementChild).toBe(stableContent);
+});
+
+test("locks the previous content extent while restoring a non-bottom full render", () => {
+  const { renderer, elements } = makeRenderer();
+  const base = defaultRendererState();
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: [{ role: "user", text: "first", itemId: "first-1" }],
+    },
+  });
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
+  elements.history.scrollTop = 240;
+  const frames: FrameRequestCallback[] = [];
+  window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  }) as typeof window.requestAnimationFrame;
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: [{ role: "assistant", text: "replacement", itemId: "second-1" }],
+    },
+  });
+
+  const content = elements.history.querySelector<HTMLElement>("#codex-history-content");
+  expect(content?.style.minHeight).toBe("800px");
+  frames.shift()?.(0);
+  expect(content?.style.minHeight).toBe("");
+});
+
+test("settles the real bottom after replacing content at the bottom", () => {
+  const { renderer, elements } = makeRenderer();
+  const base = defaultRendererState();
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: [{ role: "assistant", text: "original", itemId: "first-1" }],
+    },
+  });
+  elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: [{ role: "assistant", text: "replacement", itemId: "second-1" }],
+    },
+  });
+
+  const content = elements.history.querySelector<HTMLElement>("#codex-history-content");
+  expect(content?.style.minHeight).toBe("");
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
+});
+
+test("restores the reader position after late reflow during send", () => {
+  const { renderer, elements } = makeRenderer();
+  const base = defaultRendererState();
+  const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
+  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
+  elements.history.scrollTop = 120;
+  const frames: FrameRequestCallback[] = [];
+  window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  }) as typeof window.requestAnimationFrame;
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: initialHistory,
+      queuedSubmissions: [{ id: "queued-1", text: "message", clientUserMessageId: "client-1" }],
+    },
+  });
+  elements.history.scrollTop = 400;
+  while (frames.length) frames.shift()?.(0);
+
+  expect(elements.history.scrollTop).toBe(120);
+});
+
+test("ignores an already queued restore from an older render operation", () => {
+  const { renderer, elements } = makeRenderer();
+  const base = defaultRendererState();
+  const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
+  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
+  elements.history.scrollTop = 120;
+
+  const frames: FrameRequestCallback[] = [];
+  window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  }) as typeof window.requestAnimationFrame;
+  window.cancelAnimationFrame = jest.fn();
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: initialHistory,
+      queuedSubmissions: [{ id: "queued-1", text: "message", clientUserMessageId: "client-1" }],
+    },
+  });
+  frames.shift()?.(0);
+  elements.history.scrollTop = 400;
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+    },
+  });
+
+  frames.shift()?.(0);
+  expect(elements.history.scrollTop).toBe(400);
+});
+
+test("keeps following the bottom when a message arrives at the bottom", () => {
+  const { renderer, elements } = makeRenderer();
+  const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, history: initialHistory },
+  });
+  elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
+
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [...initialHistory, { role: "assistant", text: "new", itemId: "assistant-1" }],
+    },
+  });
+
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
+});
+
+test("preserves position when an update starts at a measurable non-bottom position", () => {
+  const { renderer, elements } = makeRenderer();
+  const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: { ...defaultRendererState().codex, history: initialHistory },
+  });
+  elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
+  Object.defineProperty(elements.history, "scrollHeight", {
+    configurable: true,
+    value: 1_000,
+    writable: true,
+  });
+
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      history: [{ ...initialHistory[0], text: "updated" }],
+    },
+  });
+
+  expect(elements.history.scrollTop).toBe(500);
 });
 
 test("follows new messages from anywhere within the bottom five percent", () => {
@@ -896,7 +1184,72 @@ test("follows new messages from anywhere within the bottom five percent", () => 
     },
   });
 
-  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
+});
+
+test("keeps following the bottom after scrolling up and returning before sending", () => {
+  const { renderer, elements } = makeRenderer();
+  const base = defaultRendererState();
+  const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
+  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
+  elements.history.scrollTop = 120;
+  elements.history.dispatchEvent(new Event("scroll"));
+  elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
+  elements.history.dispatchEvent(new Event("scroll"));
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: initialHistory,
+      queuedSubmissions: [{ id: "queued-1", text: "message", clientUserMessageId: "client-1" }],
+    },
+  });
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+    },
+  });
+
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
+});
+
+test("follows the bottom when sending immediately after returning there", () => {
+  const { renderer, elements } = makeRenderer();
+  const base = defaultRendererState();
+  const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
+  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
+  elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
+
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: initialHistory,
+      queuedSubmissions: [{ id: "queued-1", text: "message", clientUserMessageId: "client-1" }],
+    },
+  });
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      history: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+    },
+  });
+
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
 });
 
 test("does not scroll before the history has a measurable layout", () => {
@@ -949,7 +1302,9 @@ test("ignores layout scroll events without user scroll intent", () => {
       history: [{ role: "user", text: "new", itemId: "new-message" }],
     },
   });
-  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
 });
 
 test("renders readable keyboard-friendly user questions", () => {
@@ -1377,9 +1732,12 @@ test("scrolls to a new user question without repeating for the same request", ()
   elements.history.scrollTop = 120;
   renderer.updateState(settings);
 
-  expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+  expect(elements.history.scrollTop).toBe(
+    elements.history.scrollHeight - elements.history.clientHeight,
+  );
   expect(document.activeElement).toBe(elements.userInput.querySelector("input[type='radio']"));
 
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
   elements.history.scrollTop = 120;
   renderer.updateState({ ...settings });
 
@@ -1434,8 +1792,11 @@ test("preserves position while a plan streams away from the bottom", () => {
       ...defaultRendererState(),
       codex: { ...defaultRendererState().codex, history: [plan] },
     });
-    expect(elements.history.scrollTop).toBe(elements.history.scrollHeight);
+    expect(elements.history.scrollTop).toBe(
+      elements.history.scrollHeight - elements.history.clientHeight,
+    );
 
+    elements.history.dispatchEvent(new WheelEvent("wheel"));
     elements.history.scrollTop = 120;
     renderer.updateState({
       ...defaultRendererState(),
@@ -2417,6 +2778,7 @@ test("keeps web chat input focused before and after an async submission", async 
   };
   const { renderer, elements } = makeRenderer(next, true);
   renderer.updateState(next);
+  elements.history.dispatchEvent(new WheelEvent("wheel"));
   elements.history.scrollTop = 0;
   let resolveSubmit!: (settings: Settings) => void;
   const submit = window.peskApi.submitCodexPrompt as jest.Mock;
@@ -2858,7 +3220,7 @@ test("handles global history shortcuts and selected-message actions", async () =
   const bottom = new KeyboardEvent("keydown", { key: "End", altKey: true, cancelable: true });
   renderer.handleKeydown(bottom);
   expect(elements.history.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
-  expect(elements.history.scrollTo).toHaveBeenCalledWith({ top: 800, behavior: "smooth" });
+  expect(elements.history.scrollTo).toHaveBeenCalledWith({ top: 500, behavior: "smooth" });
 
   const selectUser = new KeyboardEvent("keydown", {
     key: "ArrowDown",

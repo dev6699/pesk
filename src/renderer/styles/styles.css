@@ -853,10 +853,16 @@ body.chat-only #codex-chat {
   box-sizing: border-box;
   padding: 8px;
   overflow-y: auto;
+  overflow-anchor: none;
   scrollbar-width: thin;
   scrollbar-color: var(--border-subtle) transparent;
   scroll-padding-bottom: 28px;
   padding-bottom: 0;
+}
+
+#codex-history-content {
+  min-width: 0;
+  max-width: 100%;
 }
 
 #codex-status-dock {
@@ -937,8 +943,6 @@ body.chat-only #codex-chat {
   box-sizing: border-box;
   margin: 0 0 7px;
   padding: 6px 8px;
-  content-visibility: auto;
-  contain-intrinsic-size: 0 80px;
   border-radius: 9px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

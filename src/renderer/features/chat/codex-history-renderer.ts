@@ -8,8 +8,7 @@ import {
   renderMarkdown,
 } from "./codex-renderer-helpers.js";
 import { CodexActivityRenderer } from "./codex-activity-renderer.js";
-
-const BOTTOM_FOLLOW_RATIO = 0.05;
+import { CodexHistoryScrollController } from "./codex-history-scroll-controller.js";
 
 interface HistoryRendererCallbacks {
   applySelectedMessage(): void;
@@ -19,8 +18,13 @@ interface HistoryRendererCallbacks {
 
 export class CodexHistoryRenderer {
   private readonly activityRenderer = new CodexActivityRenderer();
+  private readonly content: HTMLElement;
+  private readonly scrollController: CodexHistoryScrollController;
   private historyInitialized = false;
   private renderedHistoryStructureKey = "";
+  private renderedHistoryBaseKey = "";
+  private renderedHistoryLoading = false;
+  private renderedSessionConnected = false;
   private readonly renderedMessageContents = new Map<string, HTMLElement>();
   private readonly renderedMessageTexts = new Map<string, string>();
   private readonly renderedActivityDetails = new Map<string, HTMLElement>();
@@ -29,9 +33,6 @@ export class CodexHistoryRenderer {
   private readonly streamedAssistantTexts = new Map<string, string>();
   private renderedHistoryKeys: string[] = [];
   private resizeObserver?: ResizeObserver;
-  private scrollFrame: number | undefined;
-  private followingLatest = true;
-  private userScrollPending = false;
   private renderedPlanDetails = new Map<string, string>();
   private planRenderTimer: number | undefined;
   private pendingPlanHistory: RendererState["codex"]["history"] | undefined;
@@ -41,99 +42,69 @@ export class CodexHistoryRenderer {
     private readonly getState: () => RendererState,
     private readonly callbacks: HistoryRendererCallbacks,
   ) {
+    this.content =
+      history.querySelector<HTMLElement>("#codex-history-content") ??
+      (() => {
+        const content = document.createElement("div");
+        content.id = "codex-history-content";
+        while (history.firstChild) content.append(history.firstChild);
+        history.append(content);
+        return content;
+      })();
+    this.scrollController = new CodexHistoryScrollController(this.history, this.content);
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => {
-        if (this.isAutoScrollAllowed()) this.scrollToLatest(false);
+        this.scrollController.handleResize();
       });
       this.resizeObserver.observe(this.history);
+      this.resizeObserver.observe(this.content);
     }
   }
 
   reset(): void {
-    if (this.scrollFrame !== undefined) cancelAnimationFrame(this.scrollFrame);
+    this.scrollController.reset();
     this.resizeObserver?.disconnect();
     this.resizeObserver?.observe(this.history);
+    this.resizeObserver?.observe(this.content);
     this.historyInitialized = false;
     this.renderedHistoryStructureKey = "";
+    this.renderedHistoryBaseKey = "";
+    this.renderedHistoryLoading = false;
+    this.renderedSessionConnected = false;
     this.renderedHistoryKeys = [];
-    this.followingLatest = true;
-    this.userScrollPending = false;
   }
 
   noteManualScroll(): void {
-    if (this.scrollFrame !== undefined) {
-      cancelAnimationFrame(this.scrollFrame);
-      this.scrollFrame = undefined;
-    }
-    this.history.scrollTo({ top: this.history.scrollTop, behavior: "auto" });
-    this.userScrollPending = true;
-    this.followingLatest = false;
+    this.scrollController.noteManualScroll();
   }
 
   handleHistoryScroll(): void {
-    if (!this.userScrollPending) return;
-    this.userScrollPending = false;
-    if (this.isNearBottom()) {
-      this.followingLatest = true;
-    } else {
-      this.followingLatest = false;
-    }
+    this.scrollController.handleScroll();
   }
 
   isAutoScrollAllowed(): boolean {
-    return this.followingLatest;
+    return this.scrollController.isFollowing();
   }
 
   scrollToLatest(force = true): void {
-    if (force) {
-      this.followingLatest = true;
-      this.userScrollPending = false;
-    }
-    if (!this.isAutoScrollAllowed()) return;
-    if (this.history.clientHeight <= 0 || this.history.scrollHeight <= 0) {
-      return;
-    }
-    if (!force) {
-      this.history.scrollTop = this.history.scrollHeight;
-      return;
-    }
-    this.scheduleProgrammaticScroll(() => {
-      if (!this.isAutoScrollAllowed()) {
-        return;
-      }
-      if (force) {
-        this.history.scrollTo({ top: this.history.scrollHeight, behavior: "smooth" });
-        this.history.scrollTop = this.history.scrollHeight;
-      } else {
-        this.history.scrollTop = this.history.scrollHeight;
-      }
-    });
+    this.scrollController.scrollToLatest(force);
   }
 
   scrollToTop(): void {
-    this.noteManualScroll();
-    this.scheduleProgrammaticScroll(() => {
-      this.history.scrollTo({ top: 0, behavior: "smooth" });
-    });
+    this.scrollController.scrollToTop();
   }
 
   scrollBy(top: number): void {
-    this.noteManualScroll();
-    this.scheduleProgrammaticScroll(() => {
-      this.history.scrollBy({ top, behavior: "smooth" });
-    });
+    this.scrollController.scrollBy(top);
   }
 
   revealMessage(message: HTMLElement): void {
-    this.noteManualScroll();
-    this.scheduleProgrammaticScroll(() => {
-      message.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    });
+    this.scrollController.revealMessage(message);
   }
 
   captureAnchor(): { key: string; offset: number } | undefined {
     const historyBounds = this.history.getBoundingClientRect();
-    const messages = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message"));
+    const messages = Array.from(this.content.querySelectorAll<HTMLElement>(".codex-message"));
     const message = messages.find((candidate) => {
       const bounds = candidate.getBoundingClientRect();
       return bounds.bottom > historyBounds.top && bounds.top < historyBounds.bottom;
@@ -145,7 +116,7 @@ export class CodexHistoryRenderer {
 
   restoreAnchor(anchor: { key: string; offset: number } | undefined): void {
     if (!anchor) return;
-    const message = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message")).find(
+    const message = Array.from(this.content.querySelectorAll<HTMLElement>(".codex-message")).find(
       (candidate) => candidate.dataset.historyKey === anchor.key,
     );
     if (!message) return;
@@ -164,7 +135,7 @@ export class CodexHistoryRenderer {
         .find((candidate) => this.renderedMessageContents.has(candidate));
     if (!key) return;
     if (delta.kind === "assistant") {
-      const wasAtBottom = this.isNearBottom();
+      const shouldFollowLatest = this.scrollController.shouldFollowUpdate();
       let content = this.renderedMessageContents.get(key);
       if (!content && delta.itemId) {
         const message = {
@@ -178,7 +149,7 @@ export class CodexHistoryRenderer {
           new Set(),
           new Set(),
         );
-        this.history.append(bubble);
+        this.content.append(bubble);
         if (!this.renderedHistoryKeys.includes(key)) this.renderedHistoryKeys.push(key);
         content = this.renderedMessageContents.get(key);
       }
@@ -197,7 +168,7 @@ export class CodexHistoryRenderer {
       this.renderedMessageTexts.set(key, text);
       if (delta.itemId) this.streamedAssistantTexts.set(key, text);
       this.streamingPlainMessages.add(key);
-      if (wasAtBottom && this.isAutoScrollAllowed()) this.scrollToLatest(false);
+      if (shouldFollowLatest) this.scrollController.scrollToLatest(false);
       return;
     }
     const details = this.renderedActivityDetails.get(key);
@@ -213,14 +184,6 @@ export class CodexHistoryRenderer {
     this.renderedActivityOutputs.set(key, output);
   }
 
-  private scheduleProgrammaticScroll(action: () => void): void {
-    if (this.scrollFrame !== undefined) cancelAnimationFrame(this.scrollFrame);
-    this.scrollFrame = requestAnimationFrame(() => {
-      this.scrollFrame = undefined;
-      action();
-    });
-  }
-
   /** Renders chat history incrementally when possible, preserving message nodes,
    * expanded activities, and the user's scroll position while reading history.
    */
@@ -234,43 +197,79 @@ export class CodexHistoryRenderer {
     const structureKey = `${historyStructureKey(history)}|queue:${queuedSubmissions
       .map((submission) => `${submission.id}:${submission.text}`)
       .join("|")}|loading:${historyLoading}|connected:${sessionConnected}`;
+    const baseHistoryKey = historyStructureKey(history);
     const planContentChanged = (history ?? []).some((message, index) => {
       if (message.activity?.kind !== "plan") return false;
       const activityKey = historyMessageKeyForRenderer(message, index);
       return this.renderedPlanDetails.get(activityKey) !== (message.activity.details ?? "");
     });
     const historyKeys = (history ?? []).map(historyMessageKeyForRenderer);
-    const canIncrementallyAppend =
+    if (
       this.historyInitialized &&
-      !queuedSubmissions.length &&
-      isPrefix(this.renderedHistoryKeys, historyKeys);
+      !historyLoading &&
+      historyKeys.length < this.renderedHistoryKeys.length &&
+      isPrefix(historyKeys, this.renderedHistoryKeys)
+    ) {
+      return;
+    }
+    const sameRenderedHistory =
+      this.historyInitialized &&
+      !planContentChanged &&
+      this.renderedHistoryBaseKey === baseHistoryKey &&
+      this.renderedHistoryLoading === historyLoading &&
+      this.renderedSessionConnected === sessionConnected &&
+      this.renderedHistoryKeys.length === historyKeys.length &&
+      this.renderedHistoryKeys.every((key, index) => key === historyKeys[index]);
+    if (sameRenderedHistory && this.renderedHistoryStructureKey !== structureKey) {
+      const previousScrollTop = this.history.scrollTop;
+      const shouldFollowLatest = this.scrollController.shouldFollowUpdate();
+      this.renderQueuedSubmissions(queuedSubmissions);
+      this.renderedHistoryStructureKey = structureKey;
+      this.updateRenderedMessageContent(history);
+      this.callbacks.applySelectedMessage();
+      if (shouldFollowLatest) this.scrollToLatest(false);
+      else {
+        this.scrollController.restoreReaderPosition(previousScrollTop);
+      }
+      return;
+    }
+    const canIncrementallyAppend =
+      this.historyInitialized && isPrefix(this.renderedHistoryKeys, historyKeys);
     if (canIncrementallyAppend && historyKeys.length > this.renderedHistoryKeys.length) {
-      const wasAtBottom = this.isNearBottom();
-      this.history
+      const previousScrollTop = this.history.scrollTop;
+      const shouldFollowLatest = this.scrollController.shouldFollowUpdate();
+      this.content
         .querySelectorAll(".codex-empty-history, .codex-loading-history, .codex-session-connected")
         .forEach((placeholder) => placeholder.remove());
       const openActivityKeys = new Set(
-        Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
+        Array.from(this.content.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
           .filter((details) => details.open)
           .map((details) => details.dataset.activityKey)
           .filter((key): key is string => Boolean(key)),
       );
       const renderedActivityKeys = new Set(
-        Array.from(this.history.querySelectorAll<HTMLElement>("details[data-activity-key]"))
+        Array.from(this.content.querySelectorAll<HTMLElement>("details[data-activity-key]"))
           .map((details) => details.dataset.activityKey)
           .filter((key): key is string => Boolean(key)),
       );
       for (let index = this.renderedHistoryKeys.length; index < historyKeys.length; index += 1) {
-        this.history.append(
+        this.content.append(
           this.createMessageBubble(history[index], index, openActivityKeys, renderedActivityKeys),
         );
       }
+      this.renderQueuedSubmissions(queuedSubmissions);
       this.renderedHistoryKeys = historyKeys;
       this.renderedHistoryStructureKey = structureKey;
+      this.renderedHistoryBaseKey = baseHistoryKey;
+      this.renderedHistoryLoading = historyLoading;
+      this.renderedSessionConnected = sessionConnected;
       this.schedulePlanUpdates(history);
       this.updateRenderedMessageContent(history);
       this.callbacks.applySelectedMessage();
-      if (wasAtBottom) this.scrollToLatest(false);
+      if (shouldFollowLatest) this.scrollToLatest(false);
+      else {
+        this.scrollController.restoreReaderPosition(previousScrollTop);
+      }
       return;
     }
     const canIncrementallyPrepend =
@@ -281,13 +280,13 @@ export class CodexHistoryRenderer {
     if (canIncrementallyPrepend && historyKeys.length > this.renderedHistoryKeys.length) {
       const anchor = this.captureAnchor();
       const openActivityKeys = new Set(
-        Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
+        Array.from(this.content.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
           .filter((details) => details.open)
           .map((details) => details.dataset.activityKey)
           .filter((key): key is string => Boolean(key)),
       );
       const renderedActivityKeys = new Set(
-        Array.from(this.history.querySelectorAll<HTMLElement>("details[data-activity-key]"))
+        Array.from(this.content.querySelectorAll<HTMLElement>("details[data-activity-key]"))
           .map((details) => details.dataset.activityKey)
           .filter((key): key is string => Boolean(key)),
       );
@@ -301,9 +300,12 @@ export class CodexHistoryRenderer {
           this.createMessageBubble(history[index], index, openActivityKeys, renderedActivityKeys),
         );
       }
-      this.history.prepend(fragment);
+      this.content.prepend(fragment);
       this.renderedHistoryKeys = historyKeys;
       this.renderedHistoryStructureKey = structureKey;
+      this.renderedHistoryBaseKey = baseHistoryKey;
+      this.renderedHistoryLoading = historyLoading;
+      this.renderedSessionConnected = sessionConnected;
       this.callbacks.applySelectedMessage();
       this.restoreAnchor(anchor);
       return;
@@ -315,16 +317,15 @@ export class CodexHistoryRenderer {
       this.renderedHistoryKeys.length === historyKeys.length &&
       this.renderedHistoryKeys.every((key, index) => key === historyKeys[index]);
     if (sameHistory) {
-      const wasAtBottom = this.isNearBottom();
       const previousScrollTop = this.history.scrollTop;
+      const shouldFollowLatest = this.scrollController.shouldFollowUpdate();
       this.updateRenderedMessageContent(history);
       this.renderedHistoryStructureKey = structureKey;
       this.schedulePlanUpdates(history);
       this.callbacks.applySelectedMessage();
-      if (wasAtBottom) this.scrollToLatest(false);
+      if (shouldFollowLatest) this.scrollToLatest(false);
       else {
-        this.followingLatest = false;
-        this.history.scrollTop = previousScrollTop;
+        this.scrollController.restoreReaderPosition(previousScrollTop);
       }
       return;
     }
@@ -342,21 +343,25 @@ export class CodexHistoryRenderer {
       this.planRenderTimer = undefined;
       this.pendingPlanHistory = undefined;
     }
-    const wasAtBottom = this.historyInitialized && this.isNearBottom();
+    const shouldFollowLatest =
+      !this.historyInitialized || this.scrollController.shouldFollowUpdate();
     const previousScrollTop = this.history.scrollTop;
-    if (this.historyInitialized && !wasAtBottom) this.followingLatest = false;
+    const previousScrollHeight = this.history.scrollHeight;
     const openActivityKeys = new Set(
-      Array.from(this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
+      Array.from(this.content.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"))
         .filter((details) => details.open)
         .map((details) => details.dataset.activityKey)
         .filter((key): key is string => Boolean(key)),
     );
     const renderedActivityKeys = new Set(
-      Array.from(this.history.querySelectorAll<HTMLElement>("details[data-activity-key]"))
+      Array.from(this.content.querySelectorAll<HTMLElement>("details[data-activity-key]"))
         .map((details) => details.dataset.activityKey)
         .filter((key): key is string => Boolean(key)),
     );
-    this.history.replaceChildren();
+    if (this.historyInitialized && this.history.clientHeight > 0 && previousScrollHeight > 0) {
+      this.scrollController.lockContentExtent(previousScrollHeight);
+    }
+    this.content.replaceChildren();
     this.renderedHistoryStructureKey = structureKey;
     this.renderedHistoryKeys = historyKeys;
     this.renderedMessageContents.clear();
@@ -369,67 +374,75 @@ export class CodexHistoryRenderer {
       const loading = document.createElement("div");
       loading.className = "codex-loading-history";
       loading.textContent = "Loading messages…";
-      this.history.append(loading);
+      this.content.append(loading);
     } else if (!history?.length) {
       const empty = document.createElement("div");
       empty.className = "codex-empty-history";
       empty.textContent = "No messages yet.";
-      this.history.append(empty);
+      this.content.append(empty);
       if (sessionConnected) {
         const connected = document.createElement("div");
         connected.className = "codex-session-connected";
         connected.textContent = "Session connected.";
-        this.history.append(connected);
+        this.content.append(connected);
       }
     }
     for (const [index, message] of (history ?? []).entries()) {
-      this.history.append(
+      this.content.append(
         this.createMessageBubble(message, index, openActivityKeys, renderedActivityKeys),
       );
     }
-    if (queuedSubmissions.length) {
-      const queue = document.createElement("section");
-      queue.className = "codex-queued-submissions";
-      const title = document.createElement("strong");
-      title.textContent = "Queued";
-      queue.append(title);
-      for (const submission of queuedSubmissions) {
-        const item = document.createElement("div");
-        item.className = "codex-queued-submission";
-        const text = document.createElement("span");
-        text.textContent = submission.text || "Image attachment";
-        item.append(text);
-        for (const image of submission.images ?? []) {
-          const preview = document.createElement("img");
-          preview.className = "codex-queued-submission-image";
-          preview.src = image.url;
-          preview.alt = image.name ? `Queued image: ${image.name}` : "Queued image";
-          item.append(preview);
-        }
-        item.title = "Queued follow-up";
-        queue.append(item);
-      }
-      this.history.append(queue);
-    }
+    this.renderQueuedSubmissions(queuedSubmissions);
+    this.renderedHistoryBaseKey = baseHistoryKey;
+    this.renderedHistoryLoading = historyLoading;
+    this.renderedSessionConnected = sessionConnected;
     this.callbacks.applySelectedMessage();
     this.observeHistoryMessages();
-    if (!this.historyInitialized || wasAtBottom) {
+    if (shouldFollowLatest) {
       this.scrollToLatest(false);
     } else {
-      this.history.scrollTop = previousScrollTop;
+      this.scrollController.restoreReaderPosition(previousScrollTop);
     }
     this.historyInitialized = true;
   }
 
   private observeHistoryMessages(): void {
-    this.history.querySelectorAll<HTMLElement>(".codex-message").forEach((message) => {
+    this.content.querySelectorAll<HTMLElement>(".codex-message").forEach((message) => {
       this.resizeObserver?.observe(message);
     });
   }
 
+  private renderQueuedSubmissions(
+    queuedSubmissions: RendererState["codex"]["queuedSubmissions"],
+  ): void {
+    this.content.querySelectorAll(".codex-queued-submissions").forEach((queue) => queue.remove());
+    if (!queuedSubmissions.length) return;
+    const queue = document.createElement("section");
+    queue.className = "codex-queued-submissions";
+    const title = document.createElement("strong");
+    title.textContent = "Queued";
+    queue.append(title);
+    for (const submission of queuedSubmissions) {
+      const item = document.createElement("div");
+      item.className = "codex-queued-submission";
+      const text = document.createElement("span");
+      text.textContent = submission.text || "Image attachment";
+      item.append(text);
+      for (const image of submission.images ?? []) {
+        const preview = document.createElement("img");
+        preview.className = "codex-queued-submission-image";
+        preview.src = image.url;
+        preview.alt = image.name ? `Queued image: ${image.name}` : "Queued image";
+        item.append(preview);
+      }
+      item.title = "Queued follow-up";
+      queue.append(item);
+    }
+    this.content.append(queue);
+  }
+
   isNearBottom(): boolean {
-    const maxScrollTop = Math.max(0, this.history.scrollHeight - this.history.clientHeight);
-    return maxScrollTop - this.history.scrollTop <= this.history.clientHeight * BOTTOM_FOLLOW_RATIO;
+    return this.scrollController.isNearBottom();
   }
 
   /** Creates a DOM bubble for one history message. */
@@ -582,7 +595,7 @@ export class CodexHistoryRenderer {
     });
     if (!planUpdates.length) return true;
     const activityDetails = Array.from(
-      this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"),
+      this.content.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"),
     );
     if (
       !planUpdates.every((message, index) => {
@@ -607,7 +620,7 @@ export class CodexHistoryRenderer {
           if (message.activity?.kind !== "plan") continue;
           const activityKey = historyMessageKeyForRenderer(message, index);
           const details = Array.from(
-            this.history.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"),
+            this.content.querySelectorAll<HTMLDetailsElement>("details[data-activity-key]"),
           ).find((candidate) => candidate.dataset.activityKey === activityKey);
           const content = details?.querySelector<HTMLElement>(".codex-plan-content");
           if (!content) {
