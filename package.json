@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Animated Windows desktop pet.",
   "main": "build/main.js",
-  "author": "",
+  "author": "dev6699",
   "license": "MIT",
   "scripts": {
     "build": "node scripts/clean-build.js && tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-renderer-assets.js",
@@ -12,6 +12,7 @@
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win",
+    "release": "node scripts/release-publish.js",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

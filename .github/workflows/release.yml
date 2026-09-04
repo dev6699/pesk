@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build and publish Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm test
+
+      - name: Verify release tag matches package version
+        shell: pwsh
+        run: |
+          $version = (node -p "require('./package.json').version").Trim()
+          $tagVersion = "${{ github.ref_name }}" -replace '^v', ''
+          if ($version -ne $tagVersion) {
+            throw "Tag ${{ github.ref_name }} does not match package version $version."
+          }
+
+      - run: npm run dist -- --publish never
+
+      - name: Locate installer
+        id: installer
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $installer = Get-Item "dist/Pesk-Setup-$version.exe"
+          "path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Pesk-Setup-${{ github.ref_name }}
+          path: ${{ steps.installer.outputs.path }}
+          if-no-files-found: error
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          INSTALLER: ${{ steps.installer.outputs.path }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG $env:INSTALLER --clobber
+          } else {
+            gh release create $env:TAG $env:INSTALLER --title "Pesk $version" --generate-notes
+          }

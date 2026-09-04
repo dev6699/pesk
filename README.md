@@ -210,6 +210,41 @@ Configuration fields:
 <active-config-directory>\animations\dance\001.png
 ```
 
+### Connect to Codex app-server
+
+Pesk is a client of Codex app-server; it does not start the server or manage its
+authentication. Start an authenticated app-server separately, listening only on
+the local machine:
+
+```bash
+codex app-server --listen ws://127.0.0.1:4500
+```
+
+Then configure Pesk to use the same WebSocket address. In development, edit the
+repository `config.json`; after installation, create or update
+`%APPDATA%\pesk\config.json`:
+
+```json
+{
+  "codexAppServerUrl": "ws://127.0.0.1:4500"
+}
+```
+
+`codexAppServerUrl` accepts `ws://` or `wss://` endpoints. Restart Pesk after a
+configuration change. The app-server owns authentication, threads, and Codex
+permissions; Pesk sends its JSON-RPC requests over this connection.
+
+To confirm that a local server is listening before opening Pesk, request its
+readiness endpoint:
+
+```bash
+curl http://127.0.0.1:4500/readyz
+```
+
+Keep the app-server on loopback (`127.0.0.1`) unless you have separately secured
+the transport and understand the exposure. The WebSocket listener is documented
+by Codex as experimental.
+
 ### Keyboard shortcuts
 
 All shortcut definitions are centralized in `src/renderer/shared/shortcuts.ts`.
