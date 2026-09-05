@@ -21,22 +21,11 @@ import type { JsonRpcResponse, PermissionApprovalResponse, ServerMessage } from 
 import { CodexWebSocketTransport, type CodexSocketTransport } from "./websocket";
 import { CodexThread, parseTokenUsageValue, approvalOptions } from "./thread";
 import { randomUUID } from "node:crypto";
-import type { Project } from "../codex-schema/v2";
 import {
-  isProject,
-  projectRoots,
-  validIdempotencyKey,
-  validMetadata,
+  CodexProjectManager,
   validProjectId,
-  validProjectName,
   validProjectRoots,
-  type ProjectCreateResponse,
-  type ProjectDeleteResponse,
-  type ProjectImportResponse,
-  type ProjectListResponse,
-  type ProjectMoveResponse,
-  type ProjectReadResponse,
-  type ProjectUpdateResponse,
+  type ProjectRequestInput,
 } from "./projects";
 import type {
   Thread,
@@ -136,8 +125,8 @@ export class CodexController {
   private connectionError: string | undefined;
   /** Known selectable threads returned by app-server discovery. */
   private threads: Thread[] = [];
-  /** Server-owned project collection, kept separate from thread selection. */
-  private projects: Project[] = [];
+  /** Server-owned project operations and collection, separate from thread selection. */
+  private readonly projectManager: CodexProjectManager;
   /** True while /new is replacing the selected thread. */
   private startingNewThread = false;
   /** Latest account-wide ChatGPT rate-limit snapshot. */
@@ -193,6 +182,14 @@ export class CodexController {
       },
     };
     this.socket = socket;
+    this.projectManager = new CodexProjectManager({
+      request: (request) => this.requestProject(request),
+      publishRendererState: () => this.options.publishRendererState(),
+      setCommandNotice: (notice) => this.threadRuntime().setCommandNotice(notice),
+      setConnectionError: (error) => {
+        this.connectionError = error;
+      },
+    });
     this.socket
       .on("open", () => this.handleSocketOpen())
       .on("message", (message) => this.handleServerMessage(message))
@@ -285,7 +282,7 @@ export class CodexController {
       connected: thread.connected,
       history: thread.history,
       threads: this.threads,
-      projects: this.projects,
+      projects: this.projectManager.getProjects(),
       threadActivities,
       backgroundWork: {
         completed: backgroundWork.filter((status) => status === "completed").length,
@@ -391,6 +388,17 @@ export class CodexController {
     this.socket.setRequest(id, callback);
   }
 
+  private requestProject<TResult>(
+    request: ProjectRequestInput,
+  ): Promise<JsonRpcResponse<TResult> | undefined> {
+    if (!this.initialized) return Promise.resolve(undefined);
+    const id = ++this.nextId;
+    return new Promise((resolve) => {
+      this.setRequest<TResult>(id, resolve);
+      this.send({ ...request, id } as never);
+    });
+  }
+
   /** Selects a known Codex thread and resumes it. */
   selectThread(id: string): void {
     this.switchThread(id);
@@ -398,50 +406,17 @@ export class CodexController {
 
   /** Lists authoritative projects, optionally appending a server cursor page. */
   listProjects(cursor: string | null = null): Promise<boolean> {
-    if (!this.initialized) return Promise.resolve(false);
-    const id = ++this.nextId;
-    return new Promise((resolve) => {
-      this.setRequest<ProjectListResponse>(id, (message) => {
-        const projects = message.result?.data;
-        if (message.error || !Array.isArray(projects) || !projects.every(isProject)) {
-          this.threadRuntime().setCommandNotice("Unable to load projects.");
-          this.options.publishRendererState();
-          resolve(false);
-          return;
-        }
-        this.projects = cursor ? [...this.projects, ...projects] : projects;
-        this.options.publishRendererState();
-        resolve(true);
-      });
-      this.send({ method: "project/list", id, params: { limit: 50, cursor } });
-    });
+    return this.projectManager.listProjects(cursor);
   }
 
   /** Defers notification-driven refresh so it cannot reorder thread requests. */
   private scheduleProjectRefresh(): void {
-    setTimeout(() => {
-      void this.listProjects();
-    }, 0);
+    this.projectManager.scheduleRefresh();
   }
 
   /** Reads one project and replaces its cached entry without changing thread state. */
   readProject(projectId: string): Promise<boolean> {
-    if (!this.initialized || !validProjectId(projectId)) return Promise.resolve(false);
-    const id = ++this.nextId;
-    return new Promise((resolve) => {
-      this.setRequest<ProjectReadResponse>(id, (message) => {
-        const project = message.result?.project;
-        if (message.error || !isProject(project)) {
-          this.threadRuntime().setCommandNotice("Unable to read project.");
-          resolve(false);
-          return;
-        }
-        this.projects = this.projects.map((entry) => (entry.id === project.id ? project : entry));
-        this.options.publishRendererState();
-        resolve(true);
-      });
-      this.send({ method: "project/read", id, params: { projectId } });
-    });
+    return this.projectManager.readProject(projectId);
   }
 
   /** Creates a project with validated absolute roots and an idempotency key. */
@@ -451,20 +426,7 @@ export class CodexController {
     metadata: Record<string, string> = {},
     idempotencyKey?: string,
   ): Promise<boolean> {
-    if (
-      !this.initialized ||
-      !validProjectName(name) ||
-      !validProjectRoots(projectRoots(roots)) ||
-      !validMetadata(metadata) ||
-      (idempotencyKey !== undefined && !validIdempotencyKey(idempotencyKey))
-    )
-      return Promise.resolve(false);
-    return this.projectMutation("project/create", {
-      name: name.trim(),
-      roots: projectRoots(roots),
-      metadata,
-      idempotencyKey: idempotencyKey ?? randomUUID(),
-    });
+    return this.projectManager.createProject(name, roots, metadata, idempotencyKey);
   }
 
   /** Imports a project and optionally assigns existing threads atomically. */
@@ -475,22 +437,7 @@ export class CodexController {
     metadata: Record<string, string> = {},
     idempotencyKey?: string,
   ): Promise<boolean> {
-    if (
-      !this.initialized ||
-      !validProjectName(name) ||
-      !validProjectRoots(projectRoots(roots)) ||
-      !validMetadata(metadata) ||
-      (idempotencyKey !== undefined && !validIdempotencyKey(idempotencyKey)) ||
-      !threadIds.every(validProjectId)
-    )
-      return Promise.resolve(false);
-    return this.projectMutation("project/import", {
-      name: name.trim(),
-      roots: projectRoots(roots),
-      metadata,
-      threadIds,
-      idempotencyKey: idempotencyKey ?? randomUUID(),
-    });
+    return this.projectManager.importProject(name, roots, threadIds, metadata, idempotencyKey);
   }
 
   /** Applies a project name, root, or metadata update without changing the active thread. */
@@ -498,87 +445,17 @@ export class CodexController {
     projectId: string,
     changes: { name?: string; roots?: string[]; metadata?: Record<string, string> },
   ): Promise<boolean> {
-    if (
-      !this.initialized ||
-      !validProjectId(projectId) ||
-      (changes.name !== undefined && !validProjectName(changes.name)) ||
-      (changes.roots !== undefined && !validProjectRoots(projectRoots(changes.roots))) ||
-      (changes.metadata !== undefined && !validMetadata(changes.metadata))
-    )
-      return Promise.resolve(false);
-    return this.projectMutation("project/update", {
-      projectId,
-      ...(changes.name === undefined ? {} : { name: changes.name.trim() }),
-      ...(changes.roots === undefined ? {} : { roots: projectRoots(changes.roots) }),
-      ...(changes.metadata === undefined ? {} : { metadata: changes.metadata }),
-    });
+    return this.projectManager.updateProject(projectId, changes);
   }
 
   /** Moves a project before another project, or appends it when the target is null. */
   moveProject(projectId: string, beforeProjectId: string | null): Promise<boolean> {
-    if (
-      !this.initialized ||
-      !validProjectId(projectId) ||
-      (beforeProjectId !== null && !validProjectId(beforeProjectId))
-    )
-      return Promise.resolve(false);
-    return this.projectMutation("project/move", { projectId, beforeProjectId });
+    return this.projectManager.moveProject(projectId, beforeProjectId);
   }
 
   /** Deletes project membership metadata; it never deletes threads, roots, or files. */
   deleteProject(projectId: string): Promise<boolean> {
-    if (!this.initialized || !validProjectId(projectId)) return Promise.resolve(false);
-    const id = ++this.nextId;
-    return new Promise((resolve) => {
-      this.setRequest<ProjectDeleteResponse>(id, (message) => {
-        if (message.error) {
-          this.connectionError = "Unable to delete project.";
-          this.options.publishRendererState();
-          resolve(false);
-          return;
-        }
-        this.projects = this.projects.filter((project) => project.id !== projectId);
-        this.options.publishRendererState();
-        resolve(true);
-      });
-      this.send({ method: "project/delete", id, params: { projectId } });
-    });
-  }
-
-  /** Correlates a project mutation response and updates the cached project collection. */
-  private projectMutation(
-    method: "project/create" | "project/import" | "project/update" | "project/move",
-    params: Record<string, unknown>,
-  ): Promise<boolean> {
-    const id = ++this.nextId;
-    return new Promise((resolve) => {
-      this.setRequest<
-        ProjectCreateResponse | ProjectImportResponse | ProjectUpdateResponse | ProjectMoveResponse
-      >(id, (message) => {
-        if (method === "project/move" && !message.error) {
-          this.scheduleProjectRefresh();
-          resolve(true);
-          return;
-        }
-        const project = message.result?.project;
-        if (message.error || !isProject(project)) {
-          this.threadRuntime().setCommandNotice(
-            `Unable to ${method.slice("project/".length)} project.`,
-          );
-          this.options.publishRendererState();
-          resolve(false);
-          return;
-        }
-        const index = this.projects.findIndex((entry) => entry.id === project.id);
-        this.projects =
-          index < 0
-            ? [...this.projects, project]
-            : this.projects.map((entry, i) => (i === index ? project : entry));
-        this.options.publishRendererState();
-        resolve(true);
-      });
-      this.send({ method, id, params } as never);
-    });
+    return this.projectManager.deleteProject(projectId);
   }
 
   /** Selects the collaboration mode used for the next turn. */
@@ -972,7 +849,10 @@ export class CodexController {
     const goalCommand = prompt.match(/^\/goal(?:\s+(.+))?$/is);
     if (goalCommand) return this.manageGoal(goalCommand[1] ?? "");
     const projectCommand = prompt.match(/^\/project(?:\s+(.+))?$/is);
-    if (projectCommand) return this.manageProject(projectCommand[1] ?? "");
+    if (projectCommand) {
+      if (!this.initialized) return false;
+      return this.projectManager.manageProject(projectCommand[1] ?? "");
+    }
     if (/^\/compact$/i.test(prompt)) {
       return this.compactThread();
     }
@@ -1092,57 +972,6 @@ export class CodexController {
       params: { threadId },
     } satisfies ThreadCompactStartRequest);
     runtime.setStatus("working");
-    this.options.publishRendererState();
-    return true;
-  }
-
-  /** Handles project management without selecting, creating, or changing a thread. */
-  manageProject(command: string): boolean {
-    if (!this.initialized) return false;
-    const value = command.trim();
-    if (!value || value.toLowerCase() === "list") {
-      this.threadRuntime().setCommandNotice(
-        this.projects.length
-          ? [
-              "Projects",
-              ...this.projects.map(
-                (project, index) =>
-                  `${index + 1}. ${project.name} — ${project.roots.map((root) => root.path).join(", ")} (${project.id})`,
-              ),
-            ].join("\n")
-          : "No projects are configured.",
-      );
-      this.options.publishRendererState();
-      void this.listProjects();
-      return true;
-    }
-    const create = value.match(/^create\s+(.+?)\s+((?:[A-Za-z]:[\\/]|\/).+)$/i);
-    if (create) {
-      void this.createProject(create[1], [create[2]]);
-      return true;
-    }
-    const rename = value.match(/^rename\s+(\S+)\s+(.+)$/i);
-    if (rename) {
-      void this.updateProject(rename[1], { name: rename[2] });
-      return true;
-    }
-    const removeRoot = value.match(/^remove-root\s+(\S+)\s+(.+)$/i);
-    if (removeRoot) {
-      const project = this.projects.find((entry) => entry.id === removeRoot[1]);
-      if (project)
-        void this.updateProject(project.id, {
-          roots: project.roots.map((root) => root.path).filter((root) => root !== removeRoot[2]),
-        });
-      return true;
-    }
-    const remove = value.match(/^delete\s+(\S+)$/i);
-    if (remove) {
-      void this.deleteProject(remove[1]);
-      return true;
-    }
-    this.threadRuntime().setCommandNotice(
-      "Usage: /project [list|create <name> <absolute-root>|rename <id> <name>|remove-root <id> <root>|delete <id>]",
-    );
     this.options.publishRendererState();
     return true;
   }
@@ -1470,7 +1299,7 @@ export class CodexController {
       this.options.publishRendererState();
       return false;
     }
-    const project = this.projects.find((candidate) => candidate.id === projectId);
+    const project = this.projectManager.findProject(projectId);
     if (!project || !project.roots.some((root) => root.path === cwd)) {
       this.threadRuntime().setCommandNotice(
         "The selected root is not configured for that project.",
@@ -1600,7 +1429,7 @@ export class CodexController {
     selectedRuntime.resetTransportState();
     this.threadId = undefined;
     this.threads = [];
-    this.projects = [];
+    this.projectManager.reset();
     this.pendingThreadStarts = 0;
     this.pendingThreadResumeId = undefined;
     this.locallyStartedThreads.clear();
