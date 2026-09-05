@@ -61,4 +61,58 @@ describe("CodexThreadManager", () => {
 
     expect(manager.activeThread.id).toBe("selected");
   });
+
+  test("correlates local thread start responses and notifications in either order", () => {
+    const manager = new CodexThreadManager();
+
+    manager.noteThreadStartRequest();
+    manager.noteThreadStartResponse("thread-1");
+    expect(manager.consumeLocalThreadStarted("thread-1")).toBe(true);
+
+    manager.noteThreadStartRequest();
+    expect(manager.consumeLocalThreadStarted("thread-2")).toBe(true);
+    manager.noteThreadStartResponse("thread-2");
+    expect(manager.consumeLocalThreadStarted("thread-2")).toBe(false);
+  });
+
+  test("owns history hydration and pending resume state", () => {
+    const manager = new CodexThreadManager();
+
+    manager.markHistoryPending("thread-1");
+    expect(manager.selectedHistoryIsLoading()).toBe(false);
+    manager.select("thread-1");
+    expect(manager.selectedHistoryIsLoading()).toBe(true);
+
+    const state = manager.beginHistoryPage("thread-1", true);
+    expect(state?.loading).toBe(true);
+    expect(manager.beginHistoryPage("thread-1", false)).toBeUndefined();
+    manager.finishHistoryPage("thread-1", "next", true);
+    expect(manager.selectedHistoryIsLoading()).toBe(false);
+    expect(manager.selectedHistoryState()).toMatchObject({
+      loading: false,
+      nextCursor: "next",
+      hasOlderHistory: true,
+    });
+
+    manager.setPendingResume("thread-1");
+    expect(manager.consumePendingResume("other")).toBe(false);
+    expect(manager.consumePendingResume("thread-1")).toBe(true);
+    expect(manager.consumePendingResume("thread-1")).toBe(false);
+  });
+
+  test("clears read-only and exec ownership during thread removal and transport reset", () => {
+    const manager = new CodexThreadManager();
+    const thread = manager.thread("thread-1");
+
+    manager.setReadOnly("thread-1", true);
+    manager.trackExecProcess("process-1", thread);
+    expect(manager.execThread("process-1")).toBe(thread);
+    manager.remove("thread-1");
+    expect(manager.execThread("process-1")).toBeUndefined();
+
+    manager.trackExecProcess("process-2", thread);
+    manager.clearTransportState();
+    expect(manager.execThread("process-2")).toBeUndefined();
+    expect(manager.selectedThreadId).toBeUndefined();
+  });
 });

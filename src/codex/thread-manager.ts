@@ -22,13 +22,26 @@ export class CodexThreadManager {
   private readonly backgroundWork = new Map<string, "working" | "completed">();
   private readonly pagination = new Map<string, HistoryPaginationState>();
   private readonly pendingHistoryLoadIds = new Set<string>();
+  private pendingThreadStarts = 0;
+  private readonly locallyStartedThreads = new Set<string>();
+  private pendingThreadResumeId: string | undefined;
   private publicationSuppression = 0;
 
   /** Server thread metadata in renderer display order. */
   readonly threads: Thread[] = [];
 
-  /** The thread currently selected by the renderer. */
-  selectedThreadId: string | undefined;
+  /** The ID of the thread currently selected by the renderer. */
+  private selectedId: string | undefined;
+
+  /** Returns the ID of the thread currently selected by the renderer. */
+  get selectedThreadId(): string | undefined {
+    return this.selectedId;
+  }
+
+  /** Compatibility setter for existing integrations; prefer select() internally. */
+  set selectedThreadId(threadId: string | undefined) {
+    this.select(threadId);
+  }
 
   /** Whether background-thread updates should be hidden from renderer publication. */
   get isPublicationSuppressed(): boolean {
@@ -42,37 +55,37 @@ export class CodexThreadManager {
 
   /** Returns the selected thread, or the standalone thread when no thread is selected. */
   selectedThread(): CodexThread {
-    return this.selectedThreadId ? this.thread(this.selectedThreadId) : this.standalone;
+    return this.selectedId ? this.thread(this.selectedId) : this.standalone;
   }
 
   /** Reports whether a thread is currently selected. */
   isSelected(threadId: string): boolean {
-    return this.selectedThreadId === threadId;
+    return this.selectedId === threadId;
   }
 
   /** Reports whether the renderer currently has a selected thread. */
   hasSelectedThread(): boolean {
-    return this.selectedThreadId !== undefined;
+    return this.selectedId !== undefined;
   }
 
   /** Reports whether the selected thread is read-only. */
   selectedIsReadOnly(): boolean {
-    return Boolean(this.selectedThreadId && this.readonlyThreadIds.has(this.selectedThreadId));
+    return Boolean(this.selectedId && this.readonlyThreadIds.has(this.selectedId));
   }
 
   /** Reports whether history loading is active for the selected thread. */
   selectedHistoryIsLoading(): boolean {
-    return Boolean(this.selectedThreadId && this.pendingHistoryLoadIds.has(this.selectedThreadId));
+    return Boolean(this.selectedId && this.pendingHistoryLoadIds.has(this.selectedId));
   }
 
   /** Preserves the selected thread's live history before a reload replaces its transport state. */
   captureSelectedHistoryForReload(): void {
-    if (this.selectedThreadId) this.thread(this.selectedThreadId).captureLiveHistoryForReload();
+    if (this.selectedId) this.thread(this.selectedId).captureLiveHistoryForReload();
   }
 
   /** Changes the renderer's selected thread without creating a thread instance. */
   select(threadId: string | undefined): void {
-    this.selectedThreadId = threadId;
+    this.selectedId = threadId;
   }
 
   /** Gets or creates the isolated local instance for a server thread ID. */
@@ -96,7 +109,7 @@ export class CodexThreadManager {
   /** Runs work against a thread while suppressing renderer publication for background threads. */
   withThread<T>(threadId: string, callback: (thread: CodexThread) => T): T {
     const thread = this.thread(threadId);
-    if (this.selectedThreadId === threadId) return callback(thread);
+    if (this.selectedId === threadId) return callback(thread);
     this.publicationSuppression += 1;
     try {
       return callback(thread);
@@ -145,12 +158,79 @@ export class CodexThreadManager {
 
   /** Returns pagination state for the selected thread, if one exists. */
   selectedHistoryState(): HistoryPaginationState | undefined {
-    return this.selectedThreadId ? this.historyState(this.selectedThreadId) : undefined;
+    return this.selectedId ? this.historyState(this.selectedId) : undefined;
   }
 
-  /** Thread IDs whose history request is currently pending. */
-  get pendingHistoryLoads(): Set<string> {
-    return this.pendingHistoryLoadIds;
+  /** Marks a thread as awaiting history hydration. */
+  markHistoryPending(threadId: string): void {
+    this.pendingHistoryLoadIds.add(threadId);
+  }
+
+  /** Clears the history-hydration marker for a thread. */
+  clearHistoryPending(threadId: string): void {
+    this.pendingHistoryLoadIds.delete(threadId);
+  }
+
+  /** Starts one history page request and resets pagination when replacing history. */
+  beginHistoryPage(threadId: string, replace: boolean): HistoryPaginationState | undefined {
+    const state = this.historyState(threadId);
+    if (state.loading) return undefined;
+    state.loading = true;
+    if (replace) {
+      state.paginated = true;
+      state.nextCursor = null;
+      state.hasOlderHistory = false;
+    }
+    return state;
+  }
+
+  /** Applies a history page result and clears its pending hydration marker. */
+  finishHistoryPage(threadId: string, nextCursor: string | null, hasResult: boolean): void {
+    const state = this.historyState(threadId);
+    state.loading = false;
+    state.nextCursor = hasResult ? nextCursor : null;
+    state.hasOlderHistory = hasResult && nextCursor !== null;
+    this.clearHistoryPending(threadId);
+  }
+
+  /** Records a locally requested thread start and matches its response/event pair. */
+  noteThreadStartRequest(): void {
+    this.pendingThreadStarts += 1;
+  }
+
+  /** Correlates a thread/start response with its thread/started notification. */
+  noteThreadStartResponse(threadId: string): void {
+    if (this.locallyStartedThreads.delete(threadId)) return;
+    this.pendingThreadStarts = Math.max(0, this.pendingThreadStarts - 1);
+    this.locallyStartedThreads.add(threadId);
+  }
+
+  /** Consumes a thread/started notification belonging to a local start. */
+  consumeLocalThreadStarted(threadId: string): boolean {
+    if (this.locallyStartedThreads.delete(threadId)) return true;
+    if (this.pendingThreadStarts > 0) {
+      this.pendingThreadStarts -= 1;
+      this.locallyStartedThreads.add(threadId);
+      return true;
+    }
+    return false;
+  }
+
+  /** Tracks the thread whose active status should trigger resume. */
+  setPendingResume(threadId: string | undefined): void {
+    this.pendingThreadResumeId = threadId;
+  }
+
+  /** Reports whether a thread is awaiting active status before resume. */
+  isPendingResume(threadId: string): boolean {
+    return this.pendingThreadResumeId === threadId;
+  }
+
+  /** Clears pending resume when the expected thread becomes active. */
+  consumePendingResume(threadId: string): boolean {
+    if (!this.isPendingResume(threadId)) return false;
+    this.pendingThreadResumeId = undefined;
+    return true;
   }
 
   /** Removes stored pagination state for a thread. */
@@ -208,6 +288,27 @@ export class CodexThreadManager {
     }
   }
 
+  /** Marks or clears app-server ownership state for a thread. */
+  setReadOnly(threadId: string, readOnly: boolean): void {
+    if (readOnly) this.readonlyThreadIds.add(threadId);
+    else this.readonlyThreadIds.delete(threadId);
+  }
+
+  /** Associates an exec process with its owning thread. */
+  trackExecProcess(processId: string, thread: CodexThread): void {
+    this.execThreads.set(processId, thread);
+  }
+
+  /** Returns the thread that owns an exec process. */
+  execThread(processId: string): CodexThread | undefined {
+    return this.execThreads.get(processId);
+  }
+
+  /** Removes an exec process ownership mapping. */
+  clearExecProcess(processId: string): void {
+    this.execThreads.delete(processId);
+  }
+
   /** Removes all local state associated with a thread. */
   remove(threadId: string): void {
     this.threadInstances.delete(threadId);
@@ -217,6 +318,9 @@ export class CodexThreadManager {
     this.pendingHistoryLoadIds.delete(threadId);
     this.readonlyThreadIds.delete(threadId);
     this.attentionQueue.delete(threadId);
+    for (const [processId, thread] of this.execThreads) {
+      if (thread.id === threadId) this.execThreads.delete(processId);
+    }
   }
 
   /** Clears transport-scoped state while preserving the manager instance. */
@@ -228,7 +332,11 @@ export class CodexThreadManager {
     this.pendingHistoryLoadIds.clear();
     this.readonlyThreadIds.clear();
     this.attentionQueue.clear();
-    this.selectedThreadId = undefined;
+    this.selectedId = undefined;
+    this.pendingThreadStarts = 0;
+    this.locallyStartedThreads.clear();
+    this.pendingThreadResumeId = undefined;
+    this.execThreads.clear();
     this.publicationSuppression = 0;
     this.standalone.resetTransportState();
   }
@@ -242,16 +350,6 @@ export class CodexThreadManager {
   /** The standalone thread used for protocol messages without a thread ID. */
   get standaloneThread(): CodexThread {
     return this.standalone;
-  }
-
-  /** Maps exec process IDs to the threads that started them. */
-  get execThreadMap(): Map<string, CodexThread> {
-    return this.execThreads;
-  }
-
-  /** Thread IDs currently marked read-only by the app server. */
-  get readOnlyThreadIds(): Set<string> {
-    return this.readonlyThreadIds;
   }
 
   /** Exposes local instances for compatibility with controller/test inspection. */
@@ -289,7 +387,7 @@ export class CodexThreadManager {
     if (this.threadInstances.size <= MAX_CACHED_THREADS) return;
     for (const [threadId] of this.threadAccess) {
       if (this.threadInstances.size <= MAX_CACHED_THREADS) return;
-      if (threadId === this.selectedThreadId) continue;
+      if (threadId === this.selectedId) continue;
       const thread = this.threadInstances.get(threadId);
       if (
         !thread ||

@@ -119,13 +119,7 @@ export class CodexController {
   private nextId = 0;
   /** Prevents duplicate thread discovery requests. */
   private discoveryPending = false;
-  /** Locally requested thread starts awaiting their responses/events. */
-  private pendingThreadStarts = 0;
-  /** Thread id announced as active and awaiting resume. */
-  private pendingThreadResumeId: string | undefined;
-  /** Correlates local thread/start responses with thread/started events. */
-  private readonly locallyStartedThreads = new Set<string>();
-  /** Per-thread threadInstances and thread-scoped lifecycle state. */
+  /** Per-thread instances and lifecycle bookkeeping. */
   private readonly threadManager = new CodexThreadManager();
   private readonly modelManager: CodexModelManager;
   private readonly goalManager: CodexGoalManager;
@@ -659,13 +653,13 @@ export class CodexController {
         serviceName: "pesk",
       },
     } satisfies ThreadStartRequest);
-    this.pendingThreadStarts += 1;
+    this.threadManager.noteThreadStartRequest();
     this.setRequest<ThreadStartResponse>(id, (message) => {
       const serverThread = message.result?.thread;
       if (typeof serverThread?.id === "string") {
         const thread = this.threadManager.thread(serverThread.id);
         const pendingHistory = this.threadManager.standaloneThread.snapshot().history;
-        this.threadManager.selectedThreadId = serverThread.id;
+        this.threadManager.select(serverThread.id);
         thread.reset(pendingHistory);
         this.threadManager.withThread(thread.id, (targetThread) => {
           this.noteThreadStartResponse(thread.id);
@@ -748,8 +742,8 @@ export class CodexController {
       this.loadHistoryPage(serverThread.id, null, true);
       thread.setConnected(true);
       this.threadManager.upsertThread(serverThread);
-      this.threadManager.selectedThreadId = serverThread.id;
-      this.pendingThreadResumeId = undefined;
+      this.threadManager.select(serverThread.id);
+      this.threadManager.setPendingResume(undefined);
       this.updateModelInfo(message);
       thread.setCommandNotice(`Thread forked — switched to ${serverThread.id}`);
       this.options.publishRendererState();
@@ -808,12 +802,12 @@ export class CodexController {
         serviceName: "pesk",
       },
     } satisfies ThreadStartRequest);
-    this.pendingThreadStarts += 1;
+    this.threadManager.noteThreadStartRequest();
     this.setRequest<ThreadStartResponse>(id, (message) => {
       const serverThread = message.result?.thread;
       if (typeof serverThread?.id !== "string") return;
       this.noteThreadStartResponse(serverThread.id);
-      this.threadManager.selectedThreadId = serverThread.id;
+      this.threadManager.select(serverThread.id);
       const thread = this.threadManager.thread(serverThread.id);
       thread.setConnected(true);
       thread.syncServerThread(serverThread);
@@ -836,7 +830,7 @@ export class CodexController {
     const processId = `pesk-exec-${id}`;
     const thread = this.threadManager.activeThread;
     const cwd = thread.state.workingDirectory ?? process.cwd();
-    this.threadManager.execThreadMap.set(processId, thread);
+    this.threadManager.trackExecProcess(processId, thread);
     thread.addUserMessage(`/exec ${commandText}`);
     thread.addActivity(
       {
@@ -866,7 +860,7 @@ export class CodexController {
         },
         processId,
       );
-      this.threadManager.execThreadMap.delete(processId);
+      this.threadManager.clearExecProcess(processId);
       if (!thread.state.activeTurnId) {
         thread.setStatus("idle");
       }
@@ -1002,7 +996,7 @@ export class CodexController {
       },
     } satisfies ThreadStartRequest);
 
-    this.pendingThreadStarts += 1;
+    this.threadManager.noteThreadStartRequest();
     this.setRequest<ThreadStartResponse>(id, (message) => {
       const serverThread = message.result?.thread;
       if (typeof serverThread?.id !== "string") {
@@ -1011,7 +1005,7 @@ export class CodexController {
       }
       this.startingNewThread = false;
       this.noteThreadStartResponse(serverThread.id);
-      this.threadManager.selectedThreadId = serverThread.id;
+      this.threadManager.select(serverThread.id);
       const thread = this.threadManager.thread(serverThread.id);
       thread.reset([], cwd);
       thread.setConnected(true);
@@ -1062,7 +1056,7 @@ export class CodexController {
         serviceName: "pesk",
       },
     } satisfies ProjectThreadStartRequest);
-    this.pendingThreadStarts += 1;
+    this.threadManager.noteThreadStartRequest();
     this.setRequest<ThreadStartResponse>(id, (message) => {
       const serverThread = message.result?.thread;
       if (typeof serverThread?.id !== "string") {
@@ -1075,7 +1069,7 @@ export class CodexController {
       }
       this.startingNewThread = false;
       this.noteThreadStartResponse(serverThread.id);
-      this.threadManager.selectedThreadId = serverThread.id;
+      this.threadManager.select(serverThread.id);
       const thread = this.threadManager.thread(serverThread.id);
       thread.reset([], cwd);
       thread.setProjectId(projectId);
@@ -1121,8 +1115,8 @@ export class CodexController {
       this.send({ method: "initialized" } satisfies ClientNotification);
       this.initialized = true;
       this.threadManager.activeThread.resetTransportState();
-      this.threadManager.selectedThreadId = undefined;
-      this.pendingThreadResumeId = undefined;
+      this.threadManager.select(undefined);
+      this.threadManager.setPendingResume(undefined);
       this.options.publishRendererState();
       this.discover();
       this.scheduleProjectRefresh();
@@ -1144,7 +1138,7 @@ export class CodexController {
     this.options.publishRendererState();
   }
 
-  /** Clears transport state after a socket closes and schedules reconnection. */
+  /** Clears controller and thread state after a socket closes; the transport reconnects. */
   private handleSocketClose(event: unknown): void {
     const closeEvent = event as {
       code?: unknown;
@@ -1164,12 +1158,9 @@ export class CodexController {
     this.discoveryPending = false;
     this.rateLimitsReadPending = false;
     selectedThread.resetTransportState();
-    this.threadManager.selectedThreadId = undefined;
+    this.threadManager.select(undefined);
     this.threadManager.clearThreads();
     this.projectManager.reset();
-    this.pendingThreadStarts = 0;
-    this.pendingThreadResumeId = undefined;
-    this.locallyStartedThreads.clear();
     this.threadManager.clearTransportState();
     selectedThread.setStatus("idle");
     this.options.publishRendererState();
@@ -1196,7 +1187,7 @@ export class CodexController {
         if (thread.state.status !== "idle") this.threadManager.trackBackgroundWork(serverThread.id);
       }
       if (!threads.length) {
-        this.threadManager.selectedThreadId = undefined;
+        this.threadManager.select(undefined);
         this.threadManager.standaloneThread.clearConversation();
       }
       this.options.publishRendererState();
@@ -1233,7 +1224,7 @@ export class CodexController {
     this.threadManager.clearBackgroundWork(id);
     if (this.threadManager.isSelected(id)) {
       if (resume && !this.threadManager.activeThread.state.connected) {
-        this.threadManager.pendingHistoryLoads.add(id);
+        this.threadManager.markHistoryPending(id);
         this.resume(id);
       }
       this.options.publishRendererState();
@@ -1243,7 +1234,7 @@ export class CodexController {
     const pendingHistory = preserveHistory
       ? this.threadManager.activeThread.snapshot().history
       : undefined;
-    this.threadManager.selectedThreadId = id;
+    this.threadManager.select(id);
     const existing = this.threadManager.hasThreadInstance(id);
     if (!existing) {
       this.threadManager.thread(id).reset(preserveHistory ? (pendingHistory ?? []) : []);
@@ -1251,7 +1242,7 @@ export class CodexController {
       this.threadManager.thread(id).clearHistory();
     }
     if (!preserveHistory) this.threadManager.deleteHistoryState(id);
-    if (resume || existing) this.threadManager.pendingHistoryLoads.add(id);
+    if (resume || existing) this.threadManager.markHistoryPending(id);
     this.options.publishRendererState();
     if (resume) {
       if (existing && this.threadManager.activeThread.state.connected) {
@@ -1266,24 +1257,12 @@ export class CodexController {
 
   /** Tracks the response/notification pair for a locally created thread. */
   private noteThreadStartResponse(threadId: string): void {
-    if (this.locallyStartedThreads.delete(threadId)) {
-      return;
-    }
-    this.pendingThreadStarts = Math.max(0, this.pendingThreadStarts - 1);
-    this.locallyStartedThreads.add(threadId);
+    this.threadManager.noteThreadStartResponse(threadId);
   }
 
   /** Returns whether a thread/started notification belongs to local start. */
   private consumeLocalThreadStarted(threadId: string): boolean {
-    if (this.locallyStartedThreads.delete(threadId)) {
-      return true;
-    }
-    if (this.pendingThreadStarts > 0) {
-      this.pendingThreadStarts -= 1;
-      this.locallyStartedThreads.add(threadId);
-      return true;
-    }
-    return false;
+    return this.threadManager.consumeLocalThreadStarted(threadId);
   }
 
   /** Resumes a thread after the app server has announced it is active. */
@@ -1295,7 +1274,7 @@ export class CodexController {
     this.setRequest<ThreadResumeResponse>(id, (message) => {
       this.threadManager.withThread(threadId, (targetThread) => {
         if (!message.error) {
-          this.threadManager.readOnlyThreadIds.delete(threadId);
+          this.threadManager.setReadOnly(threadId, false);
           this.updateModelInfo(message);
           this.read(threadId);
           return;
@@ -1305,7 +1284,7 @@ export class CodexController {
             ? ((message.error as Record<string, unknown>).message as string)
             : "";
         if (text.includes("already has an active writer")) {
-          this.threadManager.readOnlyThreadIds.add(threadId);
+          this.threadManager.setReadOnly(threadId, true);
           this.options.publishRendererState();
           this.read(threadId);
         }
@@ -1354,14 +1333,8 @@ export class CodexController {
     cursor: string | null,
     replace: boolean,
   ): Promise<boolean> {
-    const state = this.threadManager.historyState(threadId);
-    if (state.loading) return Promise.resolve(false);
-    state.loading = true;
-    if (replace) {
-      state.paginated = true;
-      state.nextCursor = null;
-      state.hasOlderHistory = false;
-    }
+    const state = this.threadManager.beginHistoryPage(threadId, replace);
+    if (!state) return Promise.resolve(false);
     if (this.threadManager.isSelected(threadId)) this.options.publishRendererState();
     const id = ++this.nextId;
     return new Promise((resolve) => {
@@ -1369,18 +1342,13 @@ export class CodexController {
         this.threadManager.withThread(threadId, (targetThread) => {
           const result = message.result;
           if (!result) {
-            state.loading = false;
-            this.threadManager.pendingHistoryLoads.delete(threadId);
-            state.hasOlderHistory = false;
+            this.threadManager.finishHistoryPage(threadId, null, false);
             if (this.threadManager.isSelected(threadId)) this.options.publishRendererState();
             resolve(false);
             return;
           }
           targetThread.restoreTurns([...result.data].reverse(), !replace);
-          state.nextCursor = result.nextCursor;
-          state.hasOlderHistory = result.nextCursor !== null;
-          state.loading = false;
-          this.threadManager.pendingHistoryLoads.delete(threadId);
+          this.threadManager.finishHistoryPage(threadId, result.nextCursor, true);
           if (this.threadManager.isSelected(threadId)) this.options.publishRendererState();
           resolve(true);
         });
@@ -1577,7 +1545,7 @@ export class CodexController {
       return;
     }
     const nextThread = this.threadManager.threads[0];
-    this.threadManager.selectedThreadId = undefined;
+    this.threadManager.select(undefined);
     this.threadManager.standaloneThread.clearConversation();
     if (nextThread) this.switchThread(nextThread.id);
     this.options.publishRendererState();
@@ -1600,7 +1568,7 @@ export class CodexController {
       this.options.publishRendererState();
       return;
     }
-    this.pendingThreadResumeId = locallyStarted ? undefined : serverThread.id;
+    this.threadManager.setPendingResume(locallyStarted ? undefined : serverThread.id);
     const preservePendingPrompt =
       !this.threadManager.hasSelectedThread() &&
       this.threadManager.activeThread.state.history.some((item) => item.role === "user");
@@ -1746,8 +1714,7 @@ export class CodexController {
       this.read(threadId);
     }
     if (!isSelected) return;
-    if (status?.type === "active" && this.pendingThreadResumeId === threadId) {
-      this.pendingThreadResumeId = undefined;
+    if (status?.type === "active" && this.threadManager.consumePendingResume(threadId)) {
       this.resume(threadId);
     } else if (shouldResumeOnActiveStatus(thread.state.connected, status)) {
       this.resume(threadId);
@@ -1963,7 +1930,7 @@ export class CodexController {
     message: Extract<ServerMessage, { method: "command/exec/outputDelta" }>,
   ): void {
     const delta = Buffer.from(message.params.deltaBase64, "base64").toString();
-    const thread = this.threadManager.execThreadMap.get(message.params.processId);
+    const thread = this.threadManager.execThread(message.params.processId);
     if (thread) {
       thread.appendActivityOutput(message.params.processId, delta);
       this.options.publishRendererState();
