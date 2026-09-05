@@ -110,6 +110,7 @@ export type ThreadSettingsUpdateRequest = {
   id: number;
   params: { threadId: string; model?: string; effort?: string };
 };
+export type ThreadSettingsUpdateResponse = Record<string, never>;
 
 type LocalTextInput = { type: "text"; text: string; text_elements: [] };
 export type TurnSteerRequest = {
