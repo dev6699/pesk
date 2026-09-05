@@ -118,16 +118,18 @@ function threadState(
   prompts: Map<string, number>;
 } {
   const internal = controller as unknown as {
-    threadControllers: Map<string, { state: ReturnType<typeof threadState> }>;
+    threadManager: {
+      getThreadMap: () => Map<string, { state: ReturnType<typeof threadState> }>;
+    };
   };
-  return internal.threadControllers.get(id)!.state;
+  return internal.threadManager.getThreadMap().get(id)!.state;
 }
 
-function threadRuntime(controller: CodexController, id = "thread-1"): CodexThread {
+function threadInstance(controller: CodexController, id = "thread-1"): CodexThread {
   const internal = controller as unknown as {
-    threadControllers: Map<string, CodexThread>;
+    threadManager: { getThreadMap: () => Map<string, CodexThread> };
   };
-  return internal.threadControllers.get(id)!;
+  return internal.threadManager.getThreadMap().get(id)!;
 }
 
 beforeEach(() => {
@@ -203,13 +205,15 @@ describe("CodexController", () => {
   test("clears the selected session and history when the socket closes", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string }>;
+      threadManager: { threads: Array<{ id: string }> };
     };
     threadState(controller).history.push({
       role: "assistant",
       text: "previous response",
     });
-    internal.threads = [{ id: "thread-1" }];
+    internal.threadManager.threads.splice(0, internal.threadManager.threads.length, {
+      id: "thread-1",
+    });
 
     socket.emit("close", { code: 1006, reason: "server restarted" });
 
@@ -614,8 +618,10 @@ describe("CodexController", () => {
 
   test("rejects manual compaction without an idle selected thread", () => {
     const { controller, socket } = connectedController();
-    const internal = controller as unknown as { threadId: string | undefined };
-    internal.threadId = undefined;
+    const internal = controller as unknown as {
+      threadManager: { selectedThreadId: string | undefined };
+    };
+    internal.threadManager.selectedThreadId = undefined;
 
     expect(controller.submitPrompt("/compact")).toBe(false);
     expect(controller.getState().commandNotice).toBe("No active thread to compact.");
@@ -623,8 +629,8 @@ describe("CodexController", () => {
       "thread/compact/start",
     );
 
-    internal.threadId = "thread-1";
-    threadRuntime(controller).setStatus("working");
+    internal.threadManager.selectedThreadId = "thread-1";
+    threadInstance(controller).setStatus("working");
     expect(controller.submitPrompt("/compact")).toBe(false);
     expect(controller.getState().commandNotice).toBe(
       "Wait for the current turn to finish before compacting.",
@@ -650,9 +656,11 @@ describe("CodexController", () => {
 
   test("rejects thread lifecycle commands without a selected thread", () => {
     const { controller, socket } = connectedController();
-    const internal = controller as unknown as { threadId?: string; threads: unknown[] };
-    internal.threadId = undefined;
-    internal.threads = [];
+    const internal = controller as unknown as {
+      threadManager: { selectedThreadId: string | undefined; threads: unknown[] };
+    };
+    internal.threadManager.selectedThreadId = undefined;
+    internal.threadManager.threads.length = 0;
 
     expect(controller.submitPrompt("/archive")).toBe(false);
     expect(controller.submitPrompt("/delete")).toBe(false);
@@ -1184,7 +1192,7 @@ describe("CodexController", () => {
   test("shows the same message when submitted again from Pesk", () => {
     const { controller } = connectedController();
     expect(controller.submitPrompt("repeat this message")).toBe(true);
-    threadRuntime(controller).setStatus("idle");
+    threadInstance(controller).setStatus("idle");
     expect(controller.submitPrompt("repeat this message")).toBe(true);
     expect(
       controller
@@ -1531,7 +1539,9 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().tokenUsage).toBeUndefined();
-    expect(threadRuntime(controller, "other-thread").state.tokenUsage?.total.totalTokens).toBe(900);
+    expect(threadInstance(controller, "other-thread").state.tokenUsage?.total.totalTokens).toBe(
+      900,
+    );
   });
 
   test("does not clear live token usage when history has no persisted usage", () => {
@@ -2114,9 +2124,12 @@ describe("CodexController", () => {
   test("completes /exec commands in the thread where they started", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
 
     expect(controller.submitPrompt('/exec bash -lc "printf hello"')).toBe(true);
     const execId = lastMessage(socket).id;
@@ -2230,9 +2243,12 @@ describe("CodexController", () => {
   test("clears cached history when selecting another thread", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
 
     socket.emit(
       "message",
@@ -2320,9 +2336,12 @@ describe("CodexController", () => {
   test("refreshes the queue for a background thread without selecting it", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "active" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "active" } },
+    ];
 
     socket.emit(
       "message",
@@ -2590,9 +2609,12 @@ describe("CodexController", () => {
   test("switches to a background user-input request", () => {
     const { controller, socket, options: controllerOptions } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
     controllerOptions.handleNotification.mockClear();
 
     socket.emit(
@@ -2637,9 +2659,12 @@ describe("CodexController", () => {
   test("keeps the selected thread for a background approval while chat is visible", () => {
     const { controller, socket, options: controllerOptions } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
     controllerOptions.isChatVisible.mockReturnValue(true);
 
     socket.emit(
@@ -2668,9 +2693,12 @@ describe("CodexController", () => {
   test("switches to a background approval when chat is hidden", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
 
     socket.emit(
       "message",
@@ -2694,9 +2722,12 @@ describe("CodexController", () => {
   test("keeps the selected thread for background user input while chat is visible", () => {
     const { controller, socket, options: controllerOptions } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
     controllerOptions.isChatVisible.mockReturnValue(true);
 
     socket.emit(
@@ -2720,9 +2751,12 @@ describe("CodexController", () => {
   test("aggregates background thread activity without changing selected chat context", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
 
     socket.emit(
       "message",
@@ -2751,9 +2785,12 @@ describe("CodexController", () => {
   test("retains completed background work until its thread is selected", () => {
     const { controller, socket, options: controllerOptions } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
     controllerOptions.isChatVisible.mockReturnValue(true);
 
     socket.emit(
@@ -2781,9 +2818,12 @@ describe("CodexController", () => {
   test("counts one background work entry per thread until selection", () => {
     const { controller, socket, options: controllerOptions } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
     controllerOptions.isChatVisible.mockReturnValue(true);
 
     const statusChanged = () =>
@@ -2817,9 +2857,12 @@ describe("CodexController", () => {
   test("switches to and focuses a background thread after turn completion", () => {
     const { controller, socket, options: controllerOptions } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "active" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "active" } },
+    ];
     socket.emit(
       "message",
       JSON.stringify({
@@ -2840,9 +2883,12 @@ describe("CodexController", () => {
   test("resolves background user input without clearing the selected thread", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
-      threads: Array<{ id: string; status: { type: string } }>;
+      threadManager: { threads: Array<{ id: string; status: { type: string } }> };
     };
-    internal.threads = [...internal.threads, { id: "other-thread", status: { type: "idle" } }];
+    internal.threadManager.threads = [
+      ...internal.threadManager.threads,
+      { id: "other-thread", status: { type: "idle" } },
+    ];
 
     const request = (id: string, threadId: string): void => {
       socket.emit(
@@ -2946,11 +2992,10 @@ describe("CodexController", () => {
   test("keeps the first prompt visible while its new thread starts", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
-      threadId: string | undefined;
-      threads: unknown[];
+      threadManager: { selectedThreadId: string | undefined; threads: unknown[] };
     };
-    internal.threadId = undefined;
-    internal.threads = [];
+    internal.threadManager.selectedThreadId = undefined;
+    internal.threadManager.threads.length = 0;
 
     expect(controller.submitPrompt("first prompt")).toBe(true);
     socket.emit(
@@ -3465,21 +3510,23 @@ describe("CodexController", () => {
     expect(controllerOptions.publishRendererState).not.toHaveBeenCalled();
   });
 
-  test("bounds inactive runtime history retention", () => {
+  test("bounds inactive thread history retention", () => {
     const { controller } = connectedController();
     const internal = controller as unknown as {
-      runtime: (threadId: string) => CodexThread;
-      threadControllers: Map<string, CodexThread>;
-      backgroundWork: Map<string, "working" | "completed">;
+      threadManager: {
+        thread: (threadId: string) => CodexThread;
+        getThreadMap: () => Map<string, CodexThread>;
+        completeBackgroundWork: (threadId: string) => void;
+      };
     };
-    internal.backgroundWork.set("completed-thread", "completed");
-    internal.runtime("completed-thread");
+    internal.threadManager.completeBackgroundWork("completed-thread");
+    internal.threadManager.thread("completed-thread");
     for (let index = 0; index < 32; index += 1) {
-      internal.runtime(`inactive-${index}`);
+      internal.threadManager.thread(`inactive-${index}`);
     }
 
-    expect(internal.threadControllers.size).toBeLessThanOrEqual(16);
-    expect(internal.threadControllers.has("thread-1")).toBe(true);
+    expect(internal.threadManager.getThreadMap().size).toBeLessThanOrEqual(16);
+    expect(internal.threadManager.getThreadMap().has("thread-1")).toBe(true);
     expect(controller.getState().backgroundWork).toEqual({ completed: 1, total: 1 });
   });
 });

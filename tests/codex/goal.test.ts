@@ -96,11 +96,11 @@ function connectedController() {
   return { controller, socket, options };
 }
 
-function threadRuntime(controller: CodexController, id = "thread-1"): CodexThread {
+function threadInstance(controller: CodexController, id = "thread-1"): CodexThread {
   const internal = controller as unknown as {
-    threadControllers: Map<string, CodexThread>;
+    threadManager: { getThreadMap: () => Map<string, CodexThread> };
   };
-  return internal.threadControllers.get(id)!;
+  return internal.threadManager.getThreadMap().get(id)!;
 }
 
 beforeEach(() => {
@@ -336,8 +336,10 @@ describe("CodexController goal integration", () => {
     );
 
     expect(controller.getState().threadId).toBe("thread-1");
-    expect(threadRuntime(controller, "other-thread").state.goal?.objective).toBe("background goal");
-    expect(threadRuntime(controller).state.goal).toBeUndefined();
+    expect(threadInstance(controller, "other-thread").state.goal?.objective).toBe(
+      "background goal",
+    );
+    expect(threadInstance(controller).state.goal).toBeUndefined();
 
     socket.emit(
       "message",
@@ -347,12 +349,12 @@ describe("CodexController goal integration", () => {
       }),
     );
 
-    expect(threadRuntime(controller, "other-thread").state.goal).toBeUndefined();
+    expect(threadInstance(controller, "other-thread").state.goal).toBeUndefined();
   });
 
   test("edits an existing goal through thread/goal/set", () => {
     const { controller, socket } = connectedController();
-    threadRuntime(controller).setGoal({
+    threadInstance(controller).setGoal({
       threadId: "thread-1",
       objective: "old objective",
       status: "active",
@@ -374,7 +376,7 @@ describe("CodexController goal integration", () => {
 
   test("shows current goal details for bare goal command", () => {
     const { controller, socket } = connectedController();
-    threadRuntime(controller).setGoal({
+    threadInstance(controller).setGoal({
       threadId: "thread-1",
       objective: "say hi",
       status: "complete",
@@ -401,8 +403,8 @@ describe("CodexController goal integration", () => {
 
   test("handles goal edit and lifecycle request failures", () => {
     const { controller, socket, options: callbacks } = connectedController();
-    const runtime = threadRuntime(controller);
-    runtime.setGoal({
+    const threadInstanceState = threadInstance(controller);
+    threadInstanceState.setGoal({
       threadId: "thread-1",
       objective: "old objective",
       status: "active",
@@ -415,7 +417,7 @@ describe("CodexController goal integration", () => {
 
     expect(controller.submitPrompt("/goal edit")).toBe(true);
     expect(controller.getState().commandNotice).toContain("Usage: /goal edit");
-    runtime.setGoal(undefined);
+    threadInstanceState.setGoal(undefined);
     expect(controller.submitPrompt("/goal edit")).toBe(true);
     expect(controller.getState().commandNotice).toContain("No goal is currently set");
 
@@ -445,8 +447,8 @@ describe("CodexController goal integration", () => {
 
   test("does not synthesize a visible continuation prompt after an idle turn", () => {
     const { controller, socket } = connectedController();
-    const runtime = threadRuntime(controller);
-    runtime.setGoal({
+    const threadInstanceState = threadInstance(controller);
+    threadInstanceState.setGoal({
       threadId: "thread-1",
       objective: "Produce a verified final report",
       status: "active",
@@ -456,7 +458,7 @@ describe("CodexController goal integration", () => {
       createdAt: 1,
       updatedAt: 1,
     });
-    runtime.setStatus("working");
+    threadInstanceState.setStatus("working");
 
     socket.emit(
       "message",

@@ -20,6 +20,7 @@ import type { NotificationRequest } from "../services/notification";
 import type { JsonRpcResponse, PermissionApprovalResponse, ServerMessage } from "./protocol";
 import { CodexWebSocketTransport, type CodexSocketTransport } from "./websocket";
 import { CodexThread, parseTokenUsageValue, approvalOptions } from "./thread";
+import { CodexThreadManager } from "./thread-manager";
 import { randomUUID } from "node:crypto";
 import {
   CodexProjectManager,
@@ -45,7 +46,7 @@ import type {
   ThreadCompactStartResponse,
 } from "../codex-schema/v2";
 import type { UserInput } from "../codex-schema/v2/UserInput";
-import type { CodexState, CodexStreamDelta, CodexThreadActivity } from "./types";
+import type { CodexState, CodexStreamDelta } from "./types";
 import type {
   AccountRateLimitsRequest,
   CommandExecRequest,
@@ -82,16 +83,7 @@ If the steer is materially ambiguous, ask one concise clarifying question. Other
 
 Steer message:
 `;
-const MAX_CACHED_THREAD_RUNTIMES = 16;
-
 const HISTORY_PAGE_LIMIT = 5;
-
-interface HistoryPaginationState {
-  nextCursor: string | null;
-  loading: boolean;
-  hasOlderHistory: boolean;
-  paginated: boolean;
-}
 
 /** Codex-related settings persisted alongside the pet settings. */
 interface Options {
@@ -111,12 +103,8 @@ interface Options {
  */
 export class CodexController {
   private readonly socket: CodexSocketTransport;
-  /** Currently selected thread in the renderer. */
-  private threadId: string | undefined;
   /** Human-readable transport error shown by the renderer. */
   private connectionError: string | undefined;
-  /** Known selectable threads returned by app-server discovery. */
-  private threads: Thread[] = [];
   /** Server-owned project operations and collection, separate from thread selection. */
   private readonly projectManager: CodexProjectManager;
   /** True while /new is replacing the selected thread. */
@@ -137,25 +125,8 @@ export class CodexController {
   private pendingThreadResumeId: string | undefined;
   /** Correlates local thread/start responses with thread/started events. */
   private readonly locallyStartedThreads = new Set<string>();
-  /** Isolated runtime state for every known or active thread. */
-  private readonly threadControllers = new Map<string, CodexThread>();
-  /** Last access time for inactive runtime eviction. */
-  private readonly runtimeAccess = new Map<string, number>();
-  /** Local command/exec activity before a Codex thread exists. */
-  private readonly standaloneThread = new CodexThread("standalone");
-  /** Runtime owning each standalone command/exec process. */
-  private readonly execRuntimes = new Map<string, CodexThread>();
-  /** Runtime currently being applied while routing a background event. */
-  private routedThreadId: string | undefined;
-  private readonlyThreadIds = new Set<string>();
-  /** Suppresses renderer publication while a background runtime is updated. */
-  private suppressedPublication = 0;
-  /** Pending background requests, retained in first-arrival order. */
-  private readonly attentionQueue = new Map<string, "approval" | "userInput">();
-  /** One background-work entry per thread until that thread is selected. */
-  private readonly backgroundWork = new Map<string, "working" | "completed">();
-  private readonly historyPagination = new Map<string, HistoryPaginationState>();
-  private readonly pendingHistoryLoads = new Set<string>();
+  /** Per-thread threadInstances and thread-scoped lifecycle state. */
+  private readonly threadManager = new CodexThreadManager();
   private readonly modelManager: CodexModelManager;
   private readonly goalManager: CodexGoalManager;
 
@@ -164,35 +135,37 @@ export class CodexController {
     this.options = {
       ...options,
       publishRendererState: () => {
-        if (this.suppressedPublication === 0) {
+        if (!this.threadManager.isPublicationSuppressed) {
           options.publishRendererState();
         }
       },
       handleNotification: (request) => {
-        if (this.suppressedPublication === 0) options.handleNotification(request);
+        if (!this.threadManager.isPublicationSuppressed) {
+          options.handleNotification(request);
+        }
       },
     };
     this.socket = socket;
     this.projectManager = new CodexProjectManager({
       request: (request) => this.requestProject(request),
       publishRendererState: () => this.options.publishRendererState(),
-      setCommandNotice: (notice) => this.threadRuntime().setCommandNotice(notice),
+      setCommandNotice: (notice) => this.threadManager.activeThread.setCommandNotice(notice),
       setConnectionError: (error) => {
         this.connectionError = error;
       },
     });
     this.modelManager = new CodexModelManager({
       request: (request, callback) => this.requestModel(request, callback),
-      getSelectedThreadId: () => this.threadId,
+      getSelectedThreadId: () => this.threadManager.selectedThreadId,
       publishRendererState: () => this.options.publishRendererState(),
-      setCommandNotice: (notice) => this.threadRuntime().setCommandNotice(notice),
+      setCommandNotice: (notice) => this.threadManager.activeThread.setCommandNotice(notice),
     });
     this.goalManager = new CodexGoalManager({
       request: (request, callback) => this.requestGoal(request, callback),
       setGoal: (threadId, goal) =>
-        this.withRuntime(threadId, () => this.runtime(threadId).setGoal(goal)),
+        this.threadManager.withThread(threadId, (targetThread) => targetThread.setGoal(goal)),
       publishRendererState: () => this.options.publishRendererState(),
-      setCommandNotice: (notice) => this.threadRuntime().setCommandNotice(notice),
+      setCommandNotice: (notice) => this.threadManager.activeThread.setCommandNotice(notice),
       setConnectionError: (error) => {
         this.connectionError = error;
       },
@@ -208,69 +181,12 @@ export class CodexController {
 
   private readonly options: Options;
 
-  /** Returns the runtime selected for UI work or currently routed background work. */
-  private threadRuntime(): CodexThread {
-    const threadId = this.routedThreadId ?? this.threadId;
-    return threadId ? this.runtime(threadId) : this.standaloneThread;
-  }
-
-  /** Gets or creates the isolated runtime for a server thread ID. */
-  private runtime(threadId: string): CodexThread {
-    let runtime = this.threadControllers.get(threadId);
-    if (!runtime) {
-      runtime = new CodexThread(threadId);
-      this.threadControllers.set(threadId, runtime);
-    }
-    this.runtimeAccess.delete(threadId);
-    this.runtimeAccess.set(threadId, Date.now());
-    this.evictInactiveRuntimes();
-    return runtime;
-  }
-
-  /** Releases inactive loaded histories while retaining active thread state. */
-  private evictInactiveRuntimes(): void {
-    if (this.threadControllers.size <= MAX_CACHED_THREAD_RUNTIMES) return;
-    for (const [threadId] of this.runtimeAccess) {
-      if (this.threadControllers.size <= MAX_CACHED_THREAD_RUNTIMES) return;
-      if (threadId === this.threadId) continue;
-      const runtime = this.threadControllers.get(threadId);
-      if (
-        !runtime ||
-        runtime.state.status !== "idle" ||
-        runtime.state.pendingApproval ||
-        runtime.state.pendingUserInput
-      ) {
-        continue;
-      }
-      this.threadControllers.delete(threadId);
-      this.runtimeAccess.delete(threadId);
-      this.historyPagination.delete(threadId);
-      this.pendingHistoryLoads.delete(threadId);
-      this.readonlyThreadIds.delete(threadId);
-      this.attentionQueue.delete(threadId);
-    }
-  }
-
-  /** Runs a notification against its own runtime without changing the UI selection. */
-  private withRuntime<T>(threadId: string, callback: () => T): T {
-    if (this.threadId === threadId) return callback();
-    const previousRoutedThreadId = this.routedThreadId;
-    this.routedThreadId = threadId;
-    this.suppressedPublication += 1;
-    try {
-      return callback();
-    } finally {
-      this.suppressedPublication -= 1;
-      this.routedThreadId = previousRoutedThreadId;
-    }
-  }
-
   /** Returns the current state snapshot for renderer IPC responses. */
   getState(): CodexState {
-    const thread = this.threadRuntime().snapshot();
-    const pagination = this.threadId ? this.historyState(this.threadId) : undefined;
-    const threadActivities = this.getThreadActivities();
-    const backgroundWork = [...this.backgroundWork.values()];
+    const thread = this.threadManager.activeThread.snapshot();
+    const pagination = this.threadManager.selectedHistoryState();
+    const threadActivities = this.threadManager.getThreadActivities();
+    const backgroundWork = this.threadManager.backgroundWorkSnapshot();
     const aggregateStatus: CodexState["status"] = threadActivities.some(
       (activity) => activity.status === "waiting",
     )
@@ -279,9 +195,9 @@ export class CodexController {
         ? "working"
         : "idle";
     return {
-      threadId: this.threadId,
+      threadId: this.threadManager.selectedThreadId,
       projectId: thread.projectId,
-      readOnly: Boolean(this.threadId && this.readonlyThreadIds.has(this.threadId)),
+      readOnly: this.threadManager.selectedIsReadOnly(),
       cwd: thread.workingDirectory ?? process.cwd(),
       error: this.connectionError,
       commandNotice: thread.commandNotice,
@@ -289,13 +205,10 @@ export class CodexController {
       aggregateStatus,
       connected: thread.connected,
       history: thread.history,
-      threads: this.threads,
+      threads: this.threadManager.threads,
       projects: this.projectManager.getProjects(),
       threadActivities,
-      backgroundWork: {
-        completed: backgroundWork.filter((status) => status === "completed").length,
-        total: backgroundWork.length,
-      },
+      backgroundWork,
       workingSince: thread.workingSince,
       workedElapsed: thread.workedElapsed,
       interrupted: thread.interrupted,
@@ -309,68 +222,19 @@ export class CodexController {
       goal: thread.goal,
       modelPicker: this.modelManager.getPicker(),
       hasOlderHistory: pagination?.hasOlderHistory ?? false,
-      historyLoading: Boolean(
-        pagination?.loading || (this.threadId && this.pendingHistoryLoads.has(this.threadId)),
-      ),
+      historyLoading: Boolean(pagination?.loading || this.threadManager.selectedHistoryIsLoading()),
     };
-  }
-
-  private historyState(threadId: string): HistoryPaginationState {
-    let state = this.historyPagination.get(threadId);
-    if (!state) {
-      state = { nextCursor: null, loading: false, hasOlderHistory: false, paginated: false };
-      this.historyPagination.set(threadId, state);
-    }
-    return state;
-  }
-
-  /** Records one background work unit for a thread until it is selected. */
-  private trackBackgroundWork(threadId: string): void {
-    if (!this.backgroundWork.has(threadId)) this.backgroundWork.set(threadId, "working");
-  }
-
-  /** Retains a background work unit as completed until its thread is selected. */
-  private completeBackgroundWork(threadId: string): void {
-    if (threadId !== this.threadId) {
-      this.trackBackgroundWork(threadId);
-      this.backgroundWork.set(threadId, "completed");
-    }
   }
 
   /** Loads the next older persisted history page for the selected thread. */
   loadOlderHistory(): Promise<boolean> {
-    const threadId = this.threadId;
+    const threadId = this.threadManager.selectedThreadId;
     if (!threadId) return Promise.resolve(false);
-    const state = this.historyState(threadId);
+    const state = this.threadManager.historyState(threadId);
     if (!state.paginated || state.loading || !state.hasOlderHistory) {
       return Promise.resolve(false);
     }
     return this.loadHistoryPage(threadId, state.nextCursor, false);
-  }
-
-  /** Returns normalized activity for every known or currently materialized thread. */
-  private getThreadActivities(): CodexThreadActivity[] {
-    const known = new Map<string, Thread | undefined>(
-      this.threads.map((thread) => [thread.id, thread]),
-    );
-    for (const id of this.threadControllers.keys()) {
-      if (!known.has(id)) known.set(id, undefined);
-    }
-    return [...known.entries()].map(([threadId, thread]) => {
-      const runtime = this.threadControllers.get(threadId);
-      const attention = runtime?.state.pendingUserInput
-        ? "userInput"
-        : runtime?.state.pendingApproval
-          ? "approval"
-          : undefined;
-      return {
-        threadId,
-        preview: thread?.preview ?? threadId,
-        status: runtime?.state.status ?? "idle",
-        workingSince: runtime?.state.workingSince,
-        attention,
-      };
-    });
   }
 
   start(): void {
@@ -492,15 +356,17 @@ export class CodexController {
 
   /** Selects the collaboration mode used for the next turn. */
   setCollaborationMode(mode: "default" | "plan"): void {
-    this.threadRuntime().setCollaborationMode(mode);
+    const thread = this.threadManager.activeThread;
+    thread.setCollaborationMode(mode);
     this.options.publishRendererState();
   }
 
   /** Handles the native /goal command and its lifecycle controls. */
   manageGoal(command: string): boolean {
+    const thread = this.threadManager.activeThread;
     return (
       this.initialized &&
-      this.goalManager.manage(this.threadId, this.threadRuntime().state.goal, command)
+      this.goalManager.manage(this.threadManager.selectedThreadId, thread.state.goal, command)
     );
   }
 
@@ -520,8 +386,8 @@ export class CodexController {
 
   /** Answers an app-server request_user_input request. */
   respondUserInput(answers: Record<string, string[]>): boolean {
-    const runtime = this.threadRuntime();
-    const pending = runtime.state.pendingUserInput;
+    const thread = this.threadManager.activeThread;
+    const pending = thread.state.pendingUserInput;
     if (!pending || !this.initialized) return false;
     const responseAnswers = Object.fromEntries(
       Object.entries(answers).map(([questionId, values]) => [questionId, { answers: values }]),
@@ -537,8 +403,8 @@ export class CodexController {
         return `${question.header || question.question}: ${displayed.join(", ") || "No answer"}`;
       })
       .join("\n");
-    runtime.addMessage("user", answerText || "No answer provided.", pending.turnId);
-    runtime.clearUserInput();
+    thread.addMessage("user", answerText || "No answer provided.", pending.turnId);
+    thread.clearUserInput();
     this.clearAttention(pending.threadId);
     this.options.publishRendererState();
     this.routeNextAttention();
@@ -598,8 +464,14 @@ export class CodexController {
 
   /** Requests cancellation of the currently running turn. */
   interruptTurn(): boolean {
-    const activeTurnId = this.threadRuntime().state.activeTurnId;
-    if (!this.initialized || !this.isOpen() || !this.threadId || !activeTurnId) {
+    const thread = this.threadManager.activeThread;
+    const activeTurnId = thread.state.activeTurnId;
+    if (
+      !this.initialized ||
+      !this.isOpen() ||
+      !this.threadManager.selectedThreadId ||
+      !activeTurnId
+    ) {
       return false;
     }
     const id = ++this.nextId;
@@ -607,7 +479,7 @@ export class CodexController {
       method: "turn/interrupt",
       id,
       params: {
-        threadId: this.threadId,
+        threadId: this.threadManager.selectedThreadId,
         turnId: activeTurnId,
       },
     } satisfies TurnInterruptRequest);
@@ -617,24 +489,25 @@ export class CodexController {
   /** Starts an inline custom review on the selected thread. */
   startReview(instructions: string): boolean {
     const value = instructions.trim();
+    const thread = this.threadManager.activeThread;
     if (
       !value ||
       !this.initialized ||
       !this.isOpen() ||
-      !this.threadId ||
-      this.threadRuntime().state.status !== "idle"
+      !this.threadManager.selectedThreadId ||
+      thread.state.status !== "idle"
     ) {
       return false;
     }
-    this.threadRuntime().beginReview();
-    const threadId = this.threadId;
+    thread.beginReview();
+    const threadId = this.threadManager.selectedThreadId;
     if (!threadId) return false;
     const id = ++this.nextId;
     this.setRequest<ReviewStartResponse>(id, (message) => {
-      this.withRuntime(threadId, () => {
-        this.threadRuntime().setActiveTurn(message.result?.turn.id);
+      this.threadManager.withThread(threadId, (targetThread) => {
+        targetThread.setActiveTurn(message.result?.turn.id);
         if (message.error) {
-          this.threadRuntime().completeTurn(false);
+          targetThread.completeTurn(false);
           this.options.publishRendererState();
         }
       });
@@ -643,12 +516,12 @@ export class CodexController {
       method: "review/start",
       id,
       params: {
-        threadId: this.threadId,
+        threadId: this.threadManager.selectedThreadId,
         delivery: "inline",
         target: { type: "custom", instructions: value },
       },
     } satisfies ReviewStartRequest);
-    this.threadRuntime().setStatus("working");
+    thread.setStatus("working");
     this.options.publishRendererState();
     return true;
   }
@@ -656,29 +529,29 @@ export class CodexController {
   /** Steers the active turn, falling back to queueing when its ID is stale. */
   steerPrompt(value: string): boolean {
     const prompt = value.trim();
-    const activeTurnId = this.threadRuntime().state.activeTurnId;
+    const thread = this.threadManager.activeThread;
+    const activeTurnId = thread.state.activeTurnId;
     if (
       !prompt ||
       !this.initialized ||
       !this.isOpen() ||
-      !this.threadId ||
+      !this.threadManager.selectedThreadId ||
       !activeTurnId ||
-      (this.threadRuntime().state.status !== "working" &&
-        this.threadRuntime().state.status !== "waiting")
+      (thread.state.status !== "working" && thread.state.status !== "waiting")
     ) {
       return false;
     }
     const steerPrompt = `${STEER_INSTRUCTIONS}${prompt}`;
-    this.threadRuntime().addUserMessage(steerPrompt);
+    thread.addUserMessage(steerPrompt);
     this.options.publishRendererState();
     const id = ++this.nextId;
-    this.threadRuntime().rememberPrompt(prompt);
-    this.threadRuntime().rememberPrompt(steerPrompt);
+    thread.rememberPrompt(prompt);
+    thread.rememberPrompt(steerPrompt);
     this.send({
       method: "turn/steer",
       id,
       params: {
-        threadId: this.threadId,
+        threadId: this.threadManager.selectedThreadId,
         input: [{ type: "text", text: steerPrompt, text_elements: [] }],
         expectedTurnId: activeTurnId,
         clientUserMessageId: randomUUID(),
@@ -710,7 +583,8 @@ export class CodexController {
     }
 
     const prompt = value.trim();
-    this.threadRuntime().setCommandNotice(undefined);
+    const thread = this.threadManager.activeThread;
+    thread.setCommandNotice(undefined);
     if (/^\/model$/i.test(prompt)) return this.beginModelPicker();
     const goalCommand = prompt.match(/^\/goal(?:\s+(.+))?$/is);
     if (goalCommand) return this.manageGoal(goalCommand[1] ?? "");
@@ -729,7 +603,7 @@ export class CodexController {
     }
     const newThreadMatch = prompt.match(/^\/new(?:\s+(.+))?$/);
     if (newThreadMatch) {
-      this.threadRuntime().setCommandNotice("Choose a project and root in the /new prompt.");
+      thread.setCommandNotice("Choose a project and root in the /new prompt.");
       return false;
     }
     if (/^\/fork$/i.test(prompt)) {
@@ -751,7 +625,7 @@ export class CodexController {
       return this.submitExecCommand(execCommand);
     }
 
-    if (this.threadRuntime().state.status !== "idle") {
+    if (thread.state.status !== "idle") {
       return this.queuePromptInput(
         [
           ...(prompt ? [{ type: "text" as const, text: prompt, text_elements: [] }] : []),
@@ -762,11 +636,11 @@ export class CodexController {
       );
     }
 
-    this.threadRuntime().prepareTurn();
-    this.threadRuntime().addUserMessage(prompt, undefined, imageMetadata(images));
+    thread.prepareTurn();
+    thread.addUserMessage(prompt, undefined, imageMetadata(images));
     this.options.publishRendererState();
-    this.threadRuntime().rememberPrompt(prompt);
-    const threadId = this.threadId;
+    thread.rememberPrompt(prompt);
+    const threadId = this.threadManager.selectedThreadId;
     if (threadId) {
       this.startTurn(threadId, prompt, imageInputs(images));
       return true;
@@ -774,30 +648,30 @@ export class CodexController {
 
     const id = ++this.nextId;
     this.options.debug("Pesk starting new Codex thread", {
-      cwd: this.threadRuntime().state.workingDirectory ?? process.cwd(),
+      cwd: thread.state.workingDirectory ?? process.cwd(),
       reason: "first prompt",
     });
     this.send({
       method: "thread/start",
       id,
       params: {
-        cwd: this.threadRuntime().snapshot().workingDirectory ?? ".",
+        cwd: thread.snapshot().workingDirectory ?? ".",
         serviceName: "pesk",
       },
     } satisfies ThreadStartRequest);
     this.pendingThreadStarts += 1;
     this.setRequest<ThreadStartResponse>(id, (message) => {
-      const thread = message.result?.thread;
-      if (typeof thread?.id === "string") {
-        const runtime = this.runtime(thread.id);
-        const pendingHistory = this.standaloneThread.snapshot().history;
-        this.threadId = thread.id;
-        runtime.reset(pendingHistory);
-        this.withRuntime(thread.id, () => {
+      const serverThread = message.result?.thread;
+      if (typeof serverThread?.id === "string") {
+        const thread = this.threadManager.thread(serverThread.id);
+        const pendingHistory = this.threadManager.standaloneThread.snapshot().history;
+        this.threadManager.selectedThreadId = serverThread.id;
+        thread.reset(pendingHistory);
+        this.threadManager.withThread(thread.id, (targetThread) => {
           this.noteThreadStartResponse(thread.id);
           this.updateModelInfo(message);
-          runtime.setConnected(true);
-          runtime.syncServerThread(thread);
+          targetThread.setConnected(true);
+          targetThread.syncServerThread(serverThread);
           this.options.publishRendererState();
           this.startTurn(thread.id, prompt, imageInputs(images));
         });
@@ -809,25 +683,25 @@ export class CodexController {
   /** Starts manual history compaction for the selected idle thread. */
   private compactThread(): boolean {
     if (!this.initialized || !this.isOpen()) return false;
-    if (!this.threadId) {
-      this.threadRuntime().setCommandNotice("No active thread to compact.");
+    const thread = this.threadManager.activeThread;
+    if (!this.threadManager.selectedThreadId) {
+      thread.setCommandNotice("No active thread to compact.");
       this.options.publishRendererState();
       return false;
     }
-    const runtime = this.threadRuntime();
-    if (runtime.state.status !== "idle") {
-      runtime.setCommandNotice("Wait for the current turn to finish before compacting.");
+    if (thread.state.status !== "idle") {
+      thread.setCommandNotice("Wait for the current turn to finish before compacting.");
       this.options.publishRendererState();
       return false;
     }
 
-    const threadId = this.threadId;
+    const threadId = this.threadManager.selectedThreadId;
     const id = ++this.nextId;
     this.setRequest<ThreadCompactStartResponse>(id, (message) => {
       if (message.error) {
-        this.withRuntime(threadId, () => {
-          this.threadRuntime().setStatus("idle");
-          this.threadRuntime().setCommandNotice("Unable to compact the current thread.");
+        this.threadManager.withThread(threadId, (targetThread) => {
+          targetThread.setStatus("idle");
+          targetThread.setCommandNotice("Unable to compact the current thread.");
         });
         this.options.publishRendererState();
       }
@@ -837,15 +711,15 @@ export class CodexController {
       id,
       params: { threadId },
     } satisfies ThreadCompactStartRequest);
-    runtime.setStatus("working");
+    thread.setStatus("working");
     this.options.publishRendererState();
     return true;
   }
 
   /** Archives the currently selected thread through the app server. */
   private archiveThread(): boolean {
-    if (!this.threadId) return false;
-    const threadId = this.threadId;
+    if (!this.threadManager.selectedThreadId) return false;
+    const threadId = this.threadManager.selectedThreadId;
     const id = ++this.nextId;
     this.setRequest<ThreadArchiveResponse>(id, () => undefined);
     this.send({
@@ -858,26 +732,26 @@ export class CodexController {
 
   /** Forks the currently selected thread and selects the new copy. */
   private forkThread(): boolean {
-    if (!this.threadId) return false;
-    const sourceThreadId = this.threadId;
-    const sourceCollaborationMode = this.threadRuntime().state.collaborationMode;
+    if (!this.threadManager.selectedThreadId) return false;
+    const sourceThreadId = this.threadManager.selectedThreadId;
+    const sourceCollaborationMode = this.threadManager.selectedThread().state.collaborationMode;
     const id = ++this.nextId;
     this.setRequest<ThreadForkResponse>(id, (message) => {
-      const thread = message.result?.thread;
-      if (typeof thread?.id !== "string") return;
-      const runtime = this.runtime(thread.id);
-      runtime.reset([], thread.cwd ?? process.cwd());
-      runtime.setCollaborationMode(sourceCollaborationMode);
-      runtime.syncServerThread(thread);
-      runtime.applyServerStatus(thread.status ?? {});
-      this.historyPagination.delete(thread.id);
-      this.loadHistoryPage(thread.id, null, true);
-      runtime.setConnected(true);
-      this.threads = [thread, ...this.threads.filter((candidate) => candidate.id !== thread.id)];
-      this.threadId = thread.id;
+      const serverThread = message.result?.thread;
+      if (typeof serverThread?.id !== "string") return;
+      const thread = this.threadManager.thread(serverThread.id);
+      thread.reset([], serverThread.cwd ?? process.cwd());
+      thread.setCollaborationMode(sourceCollaborationMode);
+      thread.syncServerThread(serverThread);
+      thread.applyServerStatus(serverThread.status ?? {});
+      this.threadManager.deleteHistoryState(serverThread.id);
+      this.loadHistoryPage(serverThread.id, null, true);
+      thread.setConnected(true);
+      this.threadManager.upsertThread(serverThread);
+      this.threadManager.selectedThreadId = serverThread.id;
       this.pendingThreadResumeId = undefined;
       this.updateModelInfo(message);
-      runtime.setCommandNotice(`Thread forked — switched to ${thread.id}`);
+      thread.setCommandNotice(`Thread forked — switched to ${serverThread.id}`);
       this.options.publishRendererState();
     });
     this.send({
@@ -890,8 +764,8 @@ export class CodexController {
 
   /** Permanently deletes the currently selected thread through the app server. */
   private deleteThread(): boolean {
-    if (!this.threadId) return false;
-    const threadId = this.threadId;
+    if (!this.threadManager.selectedThreadId) return false;
+    const threadId = this.threadManager.selectedThreadId;
     const id = ++this.nextId;
     this.setRequest<ThreadDeleteResponse>(id, () => undefined);
     this.send({
@@ -912,38 +786,39 @@ export class CodexController {
         id,
         params: { threadId, command },
       } satisfies ThreadShellCommandRequest);
-      this.threadRuntime().setStatus("working");
+      this.threadManager.thread(threadId).setStatus("working");
       this.options.publishRendererState();
     };
-    if (this.threadId) {
-      this.threadRuntime().addUserMessage(`!${command}`);
+    if (this.threadManager.selectedThreadId) {
+      this.threadManager.selectedThread().addUserMessage(`!${command}`);
       this.options.publishRendererState();
-      sendCommand(this.threadId);
+      sendCommand(this.threadManager.selectedThreadId);
       return true;
     }
-    if (this.threadRuntime().state.status !== "idle") return false;
-    this.threadRuntime().addUserMessage(`!${command}`);
+    const thread = this.threadManager.activeThread;
+    if (thread.state.status !== "idle") return false;
+    thread.addUserMessage(`!${command}`);
     this.options.publishRendererState();
     const id = ++this.nextId;
     this.send({
       method: "thread/start",
       id,
       params: {
-        cwd: this.threadRuntime().snapshot().workingDirectory ?? ".",
+        cwd: thread.snapshot().workingDirectory ?? ".",
         serviceName: "pesk",
       },
     } satisfies ThreadStartRequest);
     this.pendingThreadStarts += 1;
     this.setRequest<ThreadStartResponse>(id, (message) => {
-      const thread = message.result?.thread;
-      if (typeof thread?.id !== "string") return;
-      this.noteThreadStartResponse(thread.id);
-      this.threadId = thread.id;
-      const runtime = this.runtime(thread.id);
-      runtime.setConnected(true);
-      runtime.syncServerThread(thread);
+      const serverThread = message.result?.thread;
+      if (typeof serverThread?.id !== "string") return;
+      this.noteThreadStartResponse(serverThread.id);
+      this.threadManager.selectedThreadId = serverThread.id;
+      const thread = this.threadManager.thread(serverThread.id);
+      thread.setConnected(true);
+      thread.syncServerThread(serverThread);
       this.options.publishRendererState();
-      sendCommand(thread.id);
+      sendCommand(serverThread.id);
     });
     return true;
   }
@@ -959,11 +834,11 @@ export class CodexController {
     if (!command?.length) return false;
     const id = ++this.nextId;
     const processId = `pesk-exec-${id}`;
-    const runtime = this.threadRuntime();
-    const cwd = runtime.state.workingDirectory ?? process.cwd();
-    this.execRuntimes.set(processId, runtime);
-    runtime.addUserMessage(`/exec ${commandText}`);
-    runtime.addActivity(
+    const thread = this.threadManager.activeThread;
+    const cwd = thread.state.workingDirectory ?? process.cwd();
+    this.threadManager.execThreadMap.set(processId, thread);
+    thread.addUserMessage(`/exec ${commandText}`);
+    thread.addActivity(
       {
         id: processId,
         type: "commandExecution",
@@ -977,7 +852,7 @@ export class CodexController {
     );
     this.setRequest<CommandExecResponse>(id, (message) => {
       const result = message.result;
-      runtime.addActivity(
+      thread.addActivity(
         {
           id: processId,
           type: "commandExecution",
@@ -991,9 +866,9 @@ export class CodexController {
         },
         processId,
       );
-      this.execRuntimes.delete(processId);
-      if (!runtime.state.activeTurnId) {
-        runtime.setStatus("idle");
+      this.threadManager.execThreadMap.delete(processId);
+      if (!thread.state.activeTurnId) {
+        thread.setStatus("idle");
       }
       this.options.publishRendererState();
     });
@@ -1006,7 +881,7 @@ export class CodexController {
         cwd,
       },
     } satisfies CommandExecRequest);
-    runtime.setStatus("working");
+    thread.setStatus("working");
     this.options.publishRendererState();
     return true;
   }
@@ -1016,11 +891,11 @@ export class CodexController {
     prompt: string,
     queuedImageMetadata?: Array<{ url: string; name?: string }>,
   ): boolean {
+    const thread = this.threadManager.activeThread;
     if (
-      !this.threadId ||
+      !this.threadManager.selectedThreadId ||
       !this.isOpen() ||
-      (this.threadRuntime().state.status !== "working" &&
-        this.threadRuntime().state.status !== "waiting")
+      (thread.state.status !== "working" && thread.state.status !== "waiting")
     )
       return false;
     const queuedImages =
@@ -1030,12 +905,12 @@ export class CodexController {
         .map(({ url }) => ({ url }));
     const clientUserMessageId = randomUUID();
     const id = ++this.nextId;
-    const threadId = this.threadId;
+    const threadId = this.threadManager.selectedThreadId;
     this.setRequest<LocalQueueAddResponse>(id, (message) => {
       const submission = message.result?.queuedSubmission;
       if (!submission) return;
-      this.withRuntime(threadId, () => {
-        this.runtime(threadId).resolveQueuedSubmission(clientUserMessageId, {
+      this.threadManager.withThread(threadId, (targetThread) => {
+        targetThread.resolveQueuedSubmission(clientUserMessageId, {
           id: submission.id,
           text: prompt,
           ...(queuedImages.length ? { images: queuedImages } : {}),
@@ -1048,12 +923,12 @@ export class CodexController {
       method: "thread/queue/add",
       id,
       params: {
-        threadId: this.threadId,
+        threadId: this.threadManager.selectedThreadId,
         input,
         clientUserMessageId,
       },
     });
-    this.runtime(threadId).queuePending({
+    thread.queuePending({
       id: `pending-${clientUserMessageId}`,
       text: prompt,
       ...(queuedImages.length ? { images: queuedImages } : {}),
@@ -1068,8 +943,8 @@ export class CodexController {
     if (!this.initialized || !this.isOpen()) return;
     const id = ++this.nextId;
     this.setRequest<LocalQueueListResponse>(id, (message) => {
-      this.withRuntime(threadId, () => {
-        this.runtime(threadId).replaceQueueFromServer(message.result?.data ?? []);
+      this.threadManager.withThread(threadId, (targetThread) => {
+        targetThread.replaceQueueFromServer(message.result?.data ?? []);
         this.options.publishRendererState();
         if (message.result?.nextCursor) {
           this.refreshQueuePage(threadId, message.result.nextCursor);
@@ -1087,8 +962,8 @@ export class CodexController {
   private refreshQueuePage(threadId: string, cursor: string): void {
     const id = ++this.nextId;
     this.setRequest<LocalQueueListResponse>(id, (message) => {
-      this.withRuntime(threadId, () => {
-        this.runtime(threadId).appendQueueFromServer(message.result?.data ?? []);
+      this.threadManager.withThread(threadId, (targetThread) => {
+        targetThread.appendQueueFromServer(message.result?.data ?? []);
         this.options.publishRendererState();
         if (message.result?.nextCursor) this.refreshQueuePage(threadId, message.result.nextCursor);
       });
@@ -1105,16 +980,13 @@ export class CodexController {
     if (!this.initialized) {
       return false;
     }
-    const cwd = (
-      workingDirectory ??
-      this.threadRuntime().state.workingDirectory ??
-      process.cwd()
-    ).trim();
+    const thread = this.threadManager.activeThread;
+    const cwd = (workingDirectory ?? thread.state.workingDirectory ?? process.cwd()).trim();
     if (!cwd) {
       return false;
     }
     this.startingNewThread = true;
-    this.threadRuntime().setTokenUsage(undefined);
+    thread.setTokenUsage(undefined);
     this.options.publishRendererState();
     const id = ++this.nextId;
     this.options.debug("Pesk starting new Codex thread", {
@@ -1132,25 +1004,25 @@ export class CodexController {
 
     this.pendingThreadStarts += 1;
     this.setRequest<ThreadStartResponse>(id, (message) => {
-      const thread = message.result?.thread;
-      if (typeof thread?.id !== "string") {
+      const serverThread = message.result?.thread;
+      if (typeof serverThread?.id !== "string") {
         this.startingNewThread = false;
         return;
       }
       this.startingNewThread = false;
-      this.noteThreadStartResponse(thread.id);
-      this.threadId = thread.id;
-      const runtime = this.runtime(thread.id);
-      runtime.reset([], cwd);
-      runtime.setConnected(true);
-      runtime.syncServerThread(thread);
+      this.noteThreadStartResponse(serverThread.id);
+      this.threadManager.selectedThreadId = serverThread.id;
+      const thread = this.threadManager.thread(serverThread.id);
+      thread.reset([], cwd);
+      thread.setConnected(true);
+      thread.syncServerThread(serverThread);
       this.updateModelInfo(message);
-      this.threads = [thread, ...this.threads.filter((candidate) => candidate.id !== thread.id)];
+      this.threadManager.upsertThread(serverThread);
       this.options.publishRendererState();
       if (initialPrompt) {
-        runtime.addUserMessage(initialPrompt);
+        thread.addUserMessage(initialPrompt);
         this.options.publishRendererState();
-        this.threadRuntime().rememberPrompt(initialPrompt);
+        thread.rememberPrompt(initialPrompt);
         this.startTurn(thread.id, initialPrompt);
       }
     });
@@ -1160,21 +1032,20 @@ export class CodexController {
   /** Starts and selects an empty thread assigned to a project and one of its roots. */
   startProjectThread(projectId: string, workingDirectory: string): boolean {
     const cwd = typeof workingDirectory === "string" ? workingDirectory.trim() : "";
+    const initialThread = this.threadManager.activeThread;
     if (!this.initialized || !validProjectId(projectId) || !validProjectRoots([{ path: cwd }])) {
-      this.threadRuntime().setCommandNotice("Choose a valid project and absolute root.");
+      initialThread.setCommandNotice("Choose a valid project and absolute root.");
       this.options.publishRendererState();
       return false;
     }
     const project = this.projectManager.findProject(projectId);
     if (!project || !project.roots.some((root) => root.path === cwd)) {
-      this.threadRuntime().setCommandNotice(
-        "The selected root is not configured for that project.",
-      );
+      initialThread.setCommandNotice("The selected root is not configured for that project.");
       this.options.publishRendererState();
       return false;
     }
     this.startingNewThread = true;
-    this.threadRuntime().setTokenUsage(undefined);
+    initialThread.setTokenUsage(undefined);
     this.options.publishRendererState();
     const id = ++this.nextId;
     this.options.debug("Pesk starting project Codex thread", {
@@ -1193,25 +1064,25 @@ export class CodexController {
     } satisfies ProjectThreadStartRequest);
     this.pendingThreadStarts += 1;
     this.setRequest<ThreadStartResponse>(id, (message) => {
-      const thread = message.result?.thread;
-      if (typeof thread?.id !== "string") {
+      const serverThread = message.result?.thread;
+      if (typeof serverThread?.id !== "string") {
         this.startingNewThread = false;
-        this.threadRuntime().setCommandNotice(
+        initialThread.setCommandNotice(
           typeof message.error === "string" ? message.error : "Unable to create project thread.",
         );
         this.options.publishRendererState();
         return;
       }
       this.startingNewThread = false;
-      this.noteThreadStartResponse(thread.id);
-      this.threadId = thread.id;
-      const runtime = this.runtime(thread.id);
-      runtime.reset([], cwd);
-      runtime.setProjectId(projectId);
-      runtime.setConnected(true);
-      runtime.syncServerThread(thread);
+      this.noteThreadStartResponse(serverThread.id);
+      this.threadManager.selectedThreadId = serverThread.id;
+      const thread = this.threadManager.thread(serverThread.id);
+      thread.reset([], cwd);
+      thread.setProjectId(projectId);
+      thread.setConnected(true);
+      thread.syncServerThread(serverThread);
       this.updateModelInfo(message);
-      this.threads = [thread, ...this.threads.filter((candidate) => candidate.id !== thread.id)];
+      this.threadManager.upsertThread(serverThread);
       this.options.publishRendererState();
     });
     return true;
@@ -1220,8 +1091,8 @@ export class CodexController {
   /** Sends an approval response for an app-server request. */
   respondPermission(requestId: RequestId, optionId: string): void {
     const key = requestIdKey(requestId);
-    const runtime = this.threadRuntime();
-    const pending = runtime.state.pendingApprovals.get(key);
+    const thread = this.threadManager.activeThread;
+    const pending = thread.state.pendingApprovals.get(key);
     const decision = pending?.decisions.get(optionId);
     if (!pending || decision === undefined) return;
     this.send({
@@ -1230,14 +1101,14 @@ export class CodexController {
         decision,
       },
     } satisfies JsonRpcResponse<PermissionApprovalResponse>);
-    const resolution = runtime.resolveApprovalSelection(key, optionId);
+    const resolution = thread.resolveApprovalSelection(key, optionId);
     if (!resolution) return;
-    this.clearAttention(runtime.id);
+    this.clearAttention(thread.id);
     this.options.publishRendererState();
     if (!resolution.hasPending) {
       this.options.clearNotification?.();
     }
-    runtime.setStatus("working");
+    thread.setStatus("working");
     this.options.publishRendererState();
     this.routeNextAttention();
   }
@@ -1249,8 +1120,8 @@ export class CodexController {
     this.setRequest<InitializeResponse>(id, () => {
       this.send({ method: "initialized" } satisfies ClientNotification);
       this.initialized = true;
-      this.threadRuntime().resetTransportState();
-      this.threadId = undefined;
+      this.threadManager.activeThread.resetTransportState();
+      this.threadManager.selectedThreadId = undefined;
       this.pendingThreadResumeId = undefined;
       this.options.publishRendererState();
       this.discover();
@@ -1285,27 +1156,22 @@ export class CodexController {
       reason: closeEvent.reason,
       wasClean: closeEvent.wasClean,
     });
-    const selectedRuntime = this.threadId ? this.runtime(this.threadId) : this.standaloneThread;
-    if (this.threadId) {
-      this.standaloneThread.replaceHistory(selectedRuntime.snapshot().history);
+    const selectedThread = this.threadManager.selectedThread();
+    if (this.threadManager.selectedThreadId) {
+      this.threadManager.standaloneThread.replaceHistory(selectedThread.snapshot().history);
     }
     this.initialized = false;
     this.discoveryPending = false;
     this.rateLimitsReadPending = false;
-    selectedRuntime.resetTransportState();
-    this.threadId = undefined;
-    this.threads = [];
+    selectedThread.resetTransportState();
+    this.threadManager.selectedThreadId = undefined;
+    this.threadManager.clearThreads();
     this.projectManager.reset();
     this.pendingThreadStarts = 0;
     this.pendingThreadResumeId = undefined;
     this.locallyStartedThreads.clear();
-    this.threadControllers.clear();
-    this.backgroundWork.clear();
-    this.runtimeAccess.clear();
-    this.historyPagination.clear();
-    this.pendingHistoryLoads.clear();
-    this.standaloneThread.resetTransportState();
-    selectedRuntime.setStatus("idle");
+    this.threadManager.clearTransportState();
+    selectedThread.setStatus("idle");
     this.options.publishRendererState();
   }
 
@@ -1322,16 +1188,16 @@ export class CodexController {
     const id = ++this.nextId;
     this.setRequest<ThreadListResponse>(id, (message) => {
       const threads = (message.result?.data ?? []).filter(isThread);
-      this.threads = threads;
-      for (const thread of threads) {
-        const runtime = this.runtime(thread.id);
-        runtime.syncServerThread(thread);
-        runtime.applyServerStatus(thread.status ?? {});
-        if (runtime.state.status !== "idle") this.trackBackgroundWork(thread.id);
+      this.threadManager.replaceThreads(threads);
+      for (const serverThread of threads) {
+        const thread = this.threadManager.thread(serverThread.id);
+        thread.syncServerThread(serverThread);
+        thread.applyServerStatus(serverThread.status ?? {});
+        if (thread.state.status !== "idle") this.threadManager.trackBackgroundWork(serverThread.id);
       }
       if (!threads.length) {
-        this.threadId = undefined;
-        this.standaloneThread.clearConversation();
+        this.threadManager.selectedThreadId = undefined;
+        this.threadManager.standaloneThread.clearConversation();
       }
       this.options.publishRendererState();
       const firstSession = threads[0];
@@ -1352,44 +1218,43 @@ export class CodexController {
 
   /** Replaces the selected session and optionally resumes it. */
   private switchThread(id: string, resume = true, preserveHistory = false): void {
-    if (!id || (this.threads.length > 0 && !this.threads.some((thread) => thread.id === id))) {
+    if (!id || (this.threadManager.threads.length > 0 && !this.threadManager.hasThread(id))) {
       return;
     }
-    const previousThreadId = this.threadId;
+    const previousThreadId = this.threadManager.selectedThreadId;
     if (previousThreadId !== id) {
       this.modelManager.cancel();
     }
     if (previousThreadId && previousThreadId !== id) {
-      const previousRuntime = this.runtime(previousThreadId);
-      if (previousRuntime.state.status !== "idle" && !this.backgroundWork.has(previousThreadId)) {
-        this.backgroundWork.set(previousThreadId, "working");
-      }
+      const previousThread = this.threadManager.thread(previousThreadId);
+      if (previousThread.state.status !== "idle")
+        this.threadManager.trackBackgroundWork(previousThreadId);
     }
-    this.backgroundWork.delete(id);
-    if (this.threadId === id) {
-      if (resume && !this.threadRuntime().state.connected) {
-        this.pendingHistoryLoads.add(id);
+    this.threadManager.clearBackgroundWork(id);
+    if (this.threadManager.isSelected(id)) {
+      if (resume && !this.threadManager.activeThread.state.connected) {
+        this.threadManager.pendingHistoryLoads.add(id);
         this.resume(id);
       }
       this.options.publishRendererState();
       return;
     }
-    if (this.threadId && !preserveHistory) {
-      this.runtime(this.threadId).captureLiveHistoryForReload();
-    }
-    const pendingHistory = preserveHistory ? this.threadRuntime().snapshot().history : undefined;
-    this.threadId = id;
-    const existing = this.threadControllers.has(id);
+    if (!preserveHistory) this.threadManager.captureSelectedHistoryForReload();
+    const pendingHistory = preserveHistory
+      ? this.threadManager.activeThread.snapshot().history
+      : undefined;
+    this.threadManager.selectedThreadId = id;
+    const existing = this.threadManager.hasThreadInstance(id);
     if (!existing) {
-      this.runtime(id).reset(preserveHistory ? (pendingHistory ?? []) : []);
+      this.threadManager.thread(id).reset(preserveHistory ? (pendingHistory ?? []) : []);
     } else if (!preserveHistory) {
-      this.runtime(id).clearHistory();
+      this.threadManager.thread(id).clearHistory();
     }
-    if (!preserveHistory) this.historyPagination.delete(id);
-    if (resume || existing) this.pendingHistoryLoads.add(id);
+    if (!preserveHistory) this.threadManager.deleteHistoryState(id);
+    if (resume || existing) this.threadManager.pendingHistoryLoads.add(id);
     this.options.publishRendererState();
     if (resume) {
-      if (existing && this.threadRuntime().state.connected) {
+      if (existing && this.threadManager.activeThread.state.connected) {
         this.read(id);
       } else {
         this.resume(id);
@@ -1428,9 +1293,9 @@ export class CodexController {
     }
     const id = ++this.nextId;
     this.setRequest<ThreadResumeResponse>(id, (message) => {
-      this.withRuntime(threadId, () => {
+      this.threadManager.withThread(threadId, (targetThread) => {
         if (!message.error) {
-          this.readonlyThreadIds.delete(threadId);
+          this.threadManager.readOnlyThreadIds.delete(threadId);
           this.updateModelInfo(message);
           this.read(threadId);
           return;
@@ -1440,7 +1305,7 @@ export class CodexController {
             ? ((message.error as Record<string, unknown>).message as string)
             : "";
         if (text.includes("already has an active writer")) {
-          this.readonlyThreadIds.add(threadId);
+          this.threadManager.readOnlyThreadIds.add(threadId);
           this.options.publishRendererState();
           this.read(threadId);
         }
@@ -1460,17 +1325,14 @@ export class CodexController {
   private read(threadId: string): void {
     const id = ++this.nextId;
     this.setRequest<ThreadReadResponse>(id, (message) => {
-      this.withRuntime(threadId, () => {
-        const thread = message.result?.thread;
-        if (isThread(thread)) {
-          this.threads = [
-            thread,
-            ...this.threads.filter((candidate) => candidate.id !== thread.id),
-          ];
+      this.threadManager.withThread(threadId, (targetThread) => {
+        const serverThread = message.result?.thread;
+        if (isThread(serverThread)) {
+          this.threadManager.upsertThread(serverThread);
         }
-        this.threadRuntime().syncServerThread(thread);
-        this.threadRuntime().setConnected(true);
-        this.threadRuntime().applyServerStatus(thread?.status ?? {});
+        targetThread.syncServerThread(serverThread);
+        targetThread.setConnected(true);
+        targetThread.applyServerStatus(serverThread?.status ?? {});
         this.options.publishRendererState();
         setTimeout(() => this.refreshQueue(threadId), 0);
         this.loadHistoryPage(threadId, null, true);
@@ -1492,7 +1354,7 @@ export class CodexController {
     cursor: string | null,
     replace: boolean,
   ): Promise<boolean> {
-    const state = this.historyState(threadId);
+    const state = this.threadManager.historyState(threadId);
     if (state.loading) return Promise.resolve(false);
     state.loading = true;
     if (replace) {
@@ -1500,26 +1362,26 @@ export class CodexController {
       state.nextCursor = null;
       state.hasOlderHistory = false;
     }
-    if (this.threadId === threadId) this.options.publishRendererState();
+    if (this.threadManager.isSelected(threadId)) this.options.publishRendererState();
     const id = ++this.nextId;
     return new Promise((resolve) => {
       this.setRequest<ThreadTurnsListResponse>(id, (message) => {
-        this.withRuntime(threadId, () => {
+        this.threadManager.withThread(threadId, (targetThread) => {
           const result = message.result;
           if (!result) {
             state.loading = false;
-            this.pendingHistoryLoads.delete(threadId);
+            this.threadManager.pendingHistoryLoads.delete(threadId);
             state.hasOlderHistory = false;
-            if (this.threadId === threadId) this.options.publishRendererState();
+            if (this.threadManager.isSelected(threadId)) this.options.publishRendererState();
             resolve(false);
             return;
           }
-          this.threadRuntime().restoreTurns([...result.data].reverse(), !replace);
+          targetThread.restoreTurns([...result.data].reverse(), !replace);
           state.nextCursor = result.nextCursor;
           state.hasOlderHistory = result.nextCursor !== null;
           state.loading = false;
-          this.pendingHistoryLoads.delete(threadId);
-          if (this.threadId === threadId) this.options.publishRendererState();
+          this.threadManager.pendingHistoryLoads.delete(threadId);
+          if (this.threadManager.isSelected(threadId)) this.options.publishRendererState();
           resolve(true);
         });
       });
@@ -1537,16 +1399,18 @@ export class CodexController {
     });
   }
 
-  /** Routes a thread-scoped event into the owning runtime. */
+  /** Routes a thread-scoped event into the owning thread. */
   private handleServerMessage(message: ServerMessage): void {
     const threadId = messageThreadId(message);
     if (threadId && message.method !== "thread/started") {
-      const previousSelectedThread = this.threadId;
+      const previousSelectedThread = this.threadManager.selectedThreadId;
       const wasBackgroundThread = previousSelectedThread !== threadId;
-      const runtime = this.runtime(threadId);
-      const previousStatus = runtime.state.status;
-      this.withRuntime(threadId, () => this.handleServerMessageInternal(message));
-      const nextStatus = runtime.state.status;
+      const thread = this.threadManager.thread(threadId);
+      const previousStatus = thread.state.status;
+      this.threadManager.withThread(threadId, (targetThread) =>
+        this.handleServerMessageInternal(message, targetThread),
+      );
+      const nextStatus = thread.state.status;
       if (nextStatus !== previousStatus) {
         this.options.debug("Pesk thread status transition", {
           threadId,
@@ -1562,7 +1426,7 @@ export class CodexController {
         });
       }
       if (wasBackgroundThread && message.method === "turn/completed") {
-        this.completeBackgroundWork(threadId);
+        this.threadManager.completeBackgroundWork(threadId);
         if (!this.options.isChatVisible()) this.switchThread(threadId, false);
       }
       if (message.method === "turn/completed") {
@@ -1605,11 +1469,11 @@ export class CodexController {
       if (shouldPublish) this.options.publishRendererState();
       return;
     }
-    this.handleServerMessageInternal(message);
+    this.handleServerMessageInternal(message, this.threadManager.activeThread);
   }
 
   /** Routes an app-server notification or request to its protocol handler. */
-  private handleServerMessageInternal(message: ServerMessage): void {
+  private handleServerMessageInternal(message: ServerMessage, thread: CodexThread): void {
     const method = message.method;
     if (!method.startsWith("item")) {
       this.options.debug(message);
@@ -1626,7 +1490,7 @@ export class CodexController {
         this.scheduleProjectRefresh();
         break;
       case "thread/project/updated":
-        this.runtime(message.params.threadId).setProjectId(message.params.projectId);
+        thread.setProjectId(message.params.projectId);
         this.scheduleProjectRefresh();
         this.options.publishRendererState();
         break;
@@ -1637,26 +1501,26 @@ export class CodexController {
         this.handleThreadRemoved(message.params.threadId);
         break;
       case "turn/started":
-        this.handleTurnStarted(message);
+        this.handleTurnStarted(message, thread);
         break;
       case "item/started":
-        this.handleItemStarted(message);
+        this.handleItemStarted(message, thread);
         break;
       case "turn/completed":
-        this.handleTurnCompleted(message);
+        this.handleTurnCompleted(message, thread);
         break;
       case "thread/tokenUsage/updated":
-        this.handleTokenUsageUpdated(message);
+        this.handleTokenUsageUpdated(message, thread);
         break;
       case "account/rateLimits/updated":
         this.rateLimits = message.params.rateLimits;
         this.options.publishRendererState();
         break;
       case "model/rerouted":
-        this.handleModelRerouted(message);
+        this.handleModelRerouted(message, thread);
         break;
       case "thread/settings/updated":
-        this.handleThreadSettingsUpdated(message);
+        this.handleThreadSettingsUpdated(message, thread);
         break;
       case "thread/goal/updated":
         this.goalManager.handleUpdated(message.params.threadId, message.params.goal);
@@ -1665,35 +1529,35 @@ export class CodexController {
         this.goalManager.handleCleared(message.params.threadId);
         break;
       case "thread/status/changed":
-        this.handleThreadStatusChanged(message);
+        this.handleThreadStatusChanged(message, thread);
         break;
       case "item/agentMessage/delta":
-        this.handleAgentMessageDelta(message);
+        this.handleAgentMessageDelta(message, thread);
         break;
       case "item/plan/delta":
-        this.threadRuntime().appendPlanDelta(message.params.itemId, message.params.delta);
+        thread.appendPlanDelta(message.params.itemId, message.params.delta);
         this.options.publishRendererState();
         break;
       case "item/commandExecution/outputDelta":
-        this.handleCommandOutputDelta(message);
+        this.handleCommandOutputDelta(message, thread);
         break;
       case "command/exec/outputDelta":
         this.handleExecOutputDelta(message);
         break;
       case "item/completed":
-        this.handleItemCompleted(message);
+        this.handleItemCompleted(message, thread);
         break;
       case "item/commandExecution/requestApproval":
       case "item/fileChange/requestApproval":
-        this.handleApprovalRequest(message);
+        this.handleApprovalRequest(message, thread);
         break;
       case "item/tool/requestUserInput":
-        this.handleUserInputRequest(message);
+        this.handleUserInputRequest(message, thread);
         break;
       case "serverRequest/resolved":
-        if (this.threadRuntime().state.pendingUserInput?.requestId === message.params.requestId) {
-          const threadId = this.threadRuntime().state.pendingUserInput?.threadId;
-          this.threadRuntime().clearUserInput();
+        if (thread.state.pendingUserInput?.requestId === message.params.requestId) {
+          const threadId = thread.state.pendingUserInput?.threadId;
+          thread.clearUserInput();
           if (threadId) {
             this.clearAttention(threadId);
             this.routeNextAttention();
@@ -1706,99 +1570,103 @@ export class CodexController {
 
   /** Removes archived/deleted threads from local state and selects a survivor. */
   private handleThreadRemoved(threadId: string): void {
-    this.threads = this.threads.filter((thread) => thread.id !== threadId);
-    this.threadControllers.delete(threadId);
-    this.backgroundWork.delete(threadId);
-    this.runtimeAccess.delete(threadId);
-    this.readonlyThreadIds.delete(threadId);
-    this.attentionQueue.delete(threadId);
-    if (this.threadId !== threadId) {
+    this.threadManager.removeThread(threadId);
+    this.threadManager.remove(threadId);
+    if (!this.threadManager.isSelected(threadId)) {
       this.options.publishRendererState();
       return;
     }
-    const nextThread = this.threads[0];
-    this.threadId = undefined;
-    this.standaloneThread.clearConversation();
+    const nextThread = this.threadManager.threads[0];
+    this.threadManager.selectedThreadId = undefined;
+    this.threadManager.standaloneThread.clearConversation();
     if (nextThread) this.switchThread(nextThread.id);
     this.options.publishRendererState();
   }
 
   /** Selects and initializes a thread announced by the app server. */
   private handleThreadStarted(message: Extract<ServerMessage, { method: "thread/started" }>): void {
-    const { thread } = message.params;
-    this.threads = [thread, ...this.threads.filter((candidate) => candidate.id !== thread.id)];
-    const locallyStarted = this.consumeLocalThreadStarted(thread.id);
+    const { thread: serverThread } = message.params;
+    this.threadManager.upsertThread(serverThread);
+    const locallyStarted = this.consumeLocalThreadStarted(serverThread.id);
     // Real thread/started payloads always include status. Incomplete legacy
     // payloads are treated as a local announcement for compatibility.
-    const shouldSelect = locallyStarted || this.threadId === undefined || !thread.status;
+    const shouldSelect =
+      locallyStarted || !this.threadManager.hasSelectedThread() || !serverThread.status;
     if (!shouldSelect) {
-      const runtime = this.runtime(thread.id);
-      runtime.syncServerThread(thread);
-      runtime.applyServerStatus(thread.status ?? {});
-      if (runtime.state.status !== "idle") this.trackBackgroundWork(thread.id);
+      const thread = this.threadManager.thread(serverThread.id);
+      thread.syncServerThread(serverThread);
+      thread.applyServerStatus(serverThread.status ?? {});
+      if (thread.state.status !== "idle") this.threadManager.trackBackgroundWork(serverThread.id);
       this.options.publishRendererState();
       return;
     }
-    this.pendingThreadResumeId = locallyStarted ? undefined : thread.id;
+    this.pendingThreadResumeId = locallyStarted ? undefined : serverThread.id;
     const preservePendingPrompt =
-      this.threadId === undefined &&
-      this.threadRuntime().state.history.some((item) => item.role === "user");
-    this.switchThread(thread.id, false, preservePendingPrompt);
-    const runtime = this.runtime(thread.id);
-    runtime.syncServerThread(thread);
-    runtime.applyServerStatus(thread.status ?? {});
+      !this.threadManager.hasSelectedThread() &&
+      this.threadManager.activeThread.state.history.some((item) => item.role === "user");
+    this.switchThread(serverThread.id, false, preservePendingPrompt);
+    const thread = this.threadManager.thread(serverThread.id);
+    thread.syncServerThread(serverThread);
+    thread.applyServerStatus(serverThread.status ?? {});
     this.options.publishRendererState();
   }
 
   /** Tracks the active turn and associates it with the latest user message. */
-  private handleTurnStarted(message: Extract<ServerMessage, { method: "turn/started" }>): void {
+  private handleTurnStarted(
+    message: Extract<ServerMessage, { method: "turn/started" }>,
+    thread: CodexThread,
+  ): void {
     const turnId = message.params.turn.id;
     if (typeof message.params.threadId !== "string") {
-      this.threadRuntime().setActiveTurn(turnId);
-      this.threadRuntime().ensureWorking();
-      this.threadRuntime().setStatus("working");
+      thread.setActiveTurn(turnId);
+      thread.ensureWorking();
+      thread.setStatus("working");
       this.options.publishRendererState();
       return;
     }
-    const runtime = this.runtime(message.params.threadId);
-    runtime.startTurn(turnId);
+    thread.startTurn(turnId);
     this.options.publishRendererState();
   }
 
   /** Adds echoed user input and visible activity from a started item. */
-  private handleItemStarted(message: Extract<ServerMessage, { method: "item/started" }>): void {
+  private handleItemStarted(
+    message: Extract<ServerMessage, { method: "item/started" }>,
+    thread: CodexThread,
+  ): void {
     const threadId = message.params.threadId;
-    this.threadRuntime().setStatus("working");
+    thread.setStatus("working");
     this.options.publishRendererState();
     const item = isRecord(message.params.item)
       ? (message.params.item as Record<string, unknown>)
       : undefined;
     if (item) {
-      this.threadRuntime().processStartedItem(
+      thread.processStartedItem(
         item,
         message.params.turnId,
-        this.threadRuntime().state.reviewInProgress && item.type === "userMessage",
+        thread.state.reviewInProgress && item.type === "userMessage",
       );
     }
   }
 
   /** Finalizes turn state and records token usage from a completed turn. */
-  private handleTurnCompleted(message: Extract<ServerMessage, { method: "turn/completed" }>): void {
+  private handleTurnCompleted(
+    message: Extract<ServerMessage, { method: "turn/completed" }>,
+    thread: CodexThread,
+  ): void {
     if (typeof message.params.threadId !== "string") {
-      this.threadRuntime().completeTurn(message.params.turn?.status === "interrupted");
-      this.threadRuntime().setStatus("idle");
+      thread.completeTurn(message.params.turn?.status === "interrupted");
+      thread.setStatus("idle");
       this.options.publishRendererState();
       const legacyTurn = isRecord(message.params.turn)
         ? (message.params.turn as Record<string, unknown>)
         : undefined;
       const legacyUsage = parseTokenUsageValue(legacyTurn?.tokenUsage ?? legacyTurn?.usage);
-      if (legacyUsage) this.threadRuntime().setTokenUsage(legacyUsage);
+      if (legacyUsage) thread.setTokenUsage(legacyUsage);
       return;
     }
-    const runtime = this.runtime(message.params.threadId);
-    runtime.clearUserInput();
+    thread.clearUserInput();
     this.clearAttention(message.params.threadId);
-    runtime.completeTurn(message.params.turn?.status === "interrupted");
+    thread.completeTurn(message.params.turn?.status === "interrupted");
     this.refreshQueue(message.params.threadId);
     this.options.publishRendererState();
     const turn = isRecord(message.params.turn)
@@ -1806,7 +1674,7 @@ export class CodexController {
       : undefined;
     const usage = parseTokenUsageValue(turn?.tokenUsage ?? turn?.usage);
     if (usage && !this.startingNewThread) {
-      runtime.setTokenUsage(usage);
+      thread.setTokenUsage(usage);
       this.options.debug("Pesk Codex token usage", {
         source: "turn/completed",
         usage,
@@ -1818,11 +1686,12 @@ export class CodexController {
   /** Updates the selected thread's token usage from a live notification. */
   private handleTokenUsageUpdated(
     message: Extract<ServerMessage, { method: "thread/tokenUsage/updated" }>,
+    thread: CodexThread,
   ): void {
     const { threadId, turnId, tokenUsage } = message.params;
     const usage = parseTokenUsageValue(tokenUsage);
     if (usage && !this.startingNewThread) {
-      this.threadRuntime().setTokenUsage(usage);
+      thread.setTokenUsage(usage);
       this.options.debug("Pesk Codex token usage", {
         source: "thread/tokenUsage/updated",
         threadId,
@@ -1834,21 +1703,27 @@ export class CodexController {
   }
 
   /** Stores the model selected after an app-server reroute. */
-  private handleModelRerouted(message: Extract<ServerMessage, { method: "model/rerouted" }>): void {
-    this.threadRuntime().mergeModelInfo({ model: message.params.toModel });
+  private handleModelRerouted(
+    message: Extract<ServerMessage, { method: "model/rerouted" }>,
+    thread: CodexThread,
+  ): void {
+    thread.mergeModelInfo({ model: message.params.toModel });
     this.options.publishRendererState();
   }
 
   /** Updates model metadata when thread settings change. */
   private handleThreadSettingsUpdated(
     message: Extract<ServerMessage, { method: "thread/settings/updated" }>,
+    thread: CodexThread,
   ): void {
     const mode = message.params.threadSettings.collaborationMode?.mode;
     if (mode === "plan" || mode === "default") {
-      this.threadRuntime().setCollaborationMode(mode);
+      thread.setCollaborationMode(mode);
     }
     if (isRecord(message.params.threadSettings)) {
-      this.updateModelInfoFromValue(message.params.threadSettings);
+      if (thread.mergeModelInfoFromServer(message.params.threadSettings)) {
+        this.options.publishRendererState();
+      }
     }
     this.options.publishRendererState();
   }
@@ -1856,27 +1731,25 @@ export class CodexController {
   /** Applies thread lifecycle changes and performs resume/reconcile work. */
   private handleThreadStatusChanged(
     message: Extract<ServerMessage, { method: "thread/status/changed" }>,
+    thread: CodexThread,
   ): void {
     const { threadId, status } = message.params;
-    const isSelected = threadId === this.threadId;
-    const previous = this.threadRuntime().state.status;
-    this.threadRuntime().applyServerStatus(status ?? {});
-    if (!isSelected && this.threadRuntime().state.status !== "idle") {
-      this.trackBackgroundWork(threadId);
+    const isSelected = this.threadManager.isSelected(threadId);
+    const previous = thread.state.status;
+    thread.applyServerStatus(status ?? {});
+    if (!isSelected && thread.state.status !== "idle") {
+      this.threadManager.trackBackgroundWork(threadId);
     }
     this.options.publishRendererState();
-    if (
-      isSelected &&
-      shouldReconcileOnIdle(previous, status, this.threadRuntime().state.needsReconcile)
-    ) {
-      this.threadRuntime().markNeedsReconcile(false);
+    if (isSelected && shouldReconcileOnIdle(previous, status, thread.state.needsReconcile)) {
+      thread.markNeedsReconcile(false);
       this.read(threadId);
     }
     if (!isSelected) return;
     if (status?.type === "active" && this.pendingThreadResumeId === threadId) {
       this.pendingThreadResumeId = undefined;
       this.resume(threadId);
-    } else if (shouldResumeOnActiveStatus(this.threadRuntime().state.connected, status)) {
+    } else if (shouldResumeOnActiveStatus(thread.state.connected, status)) {
       this.resume(threadId);
     }
   }
@@ -1884,9 +1757,10 @@ export class CodexController {
   /** Appends streamed assistant text to the conversation. */
   private handleAgentMessageDelta(
     message: Extract<ServerMessage, { method: "item/agentMessage/delta" }>,
+    thread: CodexThread,
   ): void {
     if (typeof message.params.threadId !== "string") {
-      this.threadRuntime().appendAssistantDelta(
+      thread.appendAssistantDelta(
         message.params.delta,
         message.params.itemId,
         message.params.turnId,
@@ -1898,13 +1772,8 @@ export class CodexController {
       });
       return;
     }
-    const runtime = this.runtime(message.params.threadId);
-    runtime.appendAssistantDelta(
-      message.params.delta,
-      message.params.itemId,
-      message.params.turnId,
-    );
-    if (message.params.threadId === this.threadId) {
+    thread.appendAssistantDelta(message.params.delta, message.params.itemId, message.params.turnId);
+    if (this.threadManager.isSelected(message.params.threadId)) {
       this.options.publishStreamDelta?.({
         threadId: message.params.threadId,
         kind: "assistant",
@@ -1917,16 +1786,13 @@ export class CodexController {
   /** Appends streamed command output to its activity message. */
   private handleCommandOutputDelta(
     message: Extract<ServerMessage, { method: "item/commandExecution/outputDelta" }>,
+    thread: CodexThread,
   ): void {
-    if (this.threadId || this.routedThreadId) {
-      this.threadRuntime().appendActivityOutput(message.params.itemId, message.params.delta);
-      if (
-        !this.threadId ||
-        this.routedThreadId === undefined ||
-        this.routedThreadId === this.threadId
-      ) {
+    if (this.threadManager.selectedThreadId || thread.id !== "standalone") {
+      thread.appendActivityOutput(message.params.itemId, message.params.delta);
+      if (!this.threadManager.selectedThreadId || this.threadManager.isSelected(thread.id)) {
         this.options.publishStreamDelta?.({
-          threadId: this.routedThreadId ?? this.threadId,
+          threadId: thread.id === "standalone" ? this.threadManager.selectedThreadId : thread.id,
           kind: "command",
           itemId: message.params.itemId,
           delta: message.params.delta,
@@ -1938,6 +1804,7 @@ export class CodexController {
   /** Stores a server request_user_input request for the renderer. */
   private handleUserInputRequest(
     message: Extract<ServerMessage, { method: "item/tool/requestUserInput" }>,
+    thread: CodexThread,
   ): void {
     const pending = {
       requestId: message.id,
@@ -1947,25 +1814,28 @@ export class CodexController {
       questions: message.params.questions,
       isBlocking: message.params.isBlocking,
     };
-    this.threadRuntime().setUserInput(pending);
-    this.threadRuntime().setStatus("waiting");
+    thread.setUserInput(pending);
+    thread.setStatus("waiting");
     this.noteAttention(pending.threadId, "userInput");
     this.routeAttention(pending.threadId);
     if (!messageThreadId(message)) {
       this.options.handleNotification({
         event: "userInputRequested",
         threadId: pending.threadId,
-        selectedThreadId: this.threadId,
+        selectedThreadId: this.threadManager.selectedThreadId,
       });
     }
     this.options.publishRendererState();
   }
 
   /** Commits a completed assistant or activity item to conversation history. */
-  private handleItemCompleted(message: Extract<ServerMessage, { method: "item/completed" }>): void {
+  private handleItemCompleted(
+    message: Extract<ServerMessage, { method: "item/completed" }>,
+    thread: CodexThread,
+  ): void {
     const item = isRecord(message.params.item) ? message.params.item : undefined;
     if (item) {
-      this.threadRuntime().processCompletedItem(item);
+      thread.processCompletedItem(item);
       if (item.type === "agentMessage") {
         this.options.publishStreamDelta?.({
           threadId: messageThreadId(message),
@@ -1987,6 +1857,7 @@ export class CodexController {
         method: "item/commandExecution/requestApproval" | "item/fileChange/requestApproval";
       }
     >,
+    thread: CodexThread,
   ): void {
     const id = message.id;
     const decisions = approvalDecisions(message);
@@ -2004,32 +1875,32 @@ export class CodexController {
       reason,
       options: approvalOptions(decisions),
     };
-    this.threadRuntime().addApproval(requestIdKey(id), approval, displayed);
+    thread.addApproval(requestIdKey(id), approval, displayed);
     this.noteAttention(message.params.threadId, "approval");
     this.routeAttention(message.params.threadId);
     if (!messageThreadId(message)) {
       this.options.handleNotification({
         event: "approvalRequested",
         threadId: message.params.threadId,
-        selectedThreadId: this.threadId,
+        selectedThreadId: this.threadManager.selectedThreadId,
         requestId: id,
         command,
         reason,
       });
     }
-    this.threadRuntime().setStatus("waiting");
+    thread.setStatus("waiting");
     this.options.publishRendererState();
   }
 
   private noteAttention(threadId: string, type: "approval" | "userInput"): void {
-    if (!this.attentionQueue.has(threadId)) this.attentionQueue.set(threadId, type);
+    this.threadManager.noteAttention(threadId, type);
   }
 
   private routeAttention(threadId: string): void {
-    const nextThreadId = this.attentionQueue.keys().next().value;
+    const nextThreadId = this.threadManager.nextAttention();
     if (
       typeof nextThreadId !== "string" ||
-      this.threadId === nextThreadId ||
+      this.threadManager.isSelected(nextThreadId) ||
       this.options.isChatVisible()
     ) {
       return;
@@ -2038,27 +1909,24 @@ export class CodexController {
   }
 
   private clearAttention(threadId: string): void {
-    const runtime = this.runtime(threadId);
-    if (!runtime.state.pendingApproval && !runtime.state.pendingUserInput) {
-      this.attentionQueue.delete(threadId);
-    }
+    this.threadManager.clearAttention(threadId);
   }
 
   private routeNextAttention(): void {
-    const nextThreadId = this.attentionQueue.keys().next().value;
+    const nextThreadId = this.threadManager.nextAttention();
     if (typeof nextThreadId === "string") this.routeAttention(nextThreadId);
   }
 
   /** Starts a text turn and creates a temporary working message. */
   private startTurn(threadId: string, prompt: string, extraInput: UserInput[] = []): void {
-    const runtime = this.runtime(threadId);
-    runtime.prepareTurn();
+    const thread = this.threadManager.thread(threadId);
+    thread.prepareTurn();
     const id = ++this.nextId;
     this.setRequest<TurnStartResponse>(id, (message) => {
-      this.withRuntime(threadId, () => {
-        runtime.setActiveTurn(message.result?.turn.id);
+      this.threadManager.withThread(threadId, (targetThread) => {
+        targetThread.setActiveTurn(message.result?.turn.id);
         if (message.error) {
-          this.threadRuntime().setStatus("idle");
+          targetThread.setStatus("idle");
           this.options.publishRendererState();
         }
       });
@@ -2071,10 +1939,10 @@ export class CodexController {
       ],
     };
     params.collaborationMode = {
-      mode: runtime.state.collaborationMode,
+      mode: thread.state.collaborationMode,
       settings: {
-        model: runtime.state.modelInfo?.model ?? "gpt-5.1-codex",
-        reasoning_effort: runtime.state.collaborationMode === "plan" ? "medium" : null,
+        model: thread.state.modelInfo?.model ?? "gpt-5.1-codex",
+        reasoning_effort: thread.state.collaborationMode === "plan" ? "medium" : null,
         developer_instructions: null,
       },
     };
@@ -2083,9 +1951,9 @@ export class CodexController {
       id,
       params,
     } satisfies TurnStartRequest);
-    if (threadId !== this.threadId) this.trackBackgroundWork(threadId);
-    this.withRuntime(threadId, () => {
-      runtime.setStatus("working");
+    if (!this.threadManager.isSelected(threadId)) this.threadManager.trackBackgroundWork(threadId);
+    this.threadManager.withThread(threadId, (targetThread) => {
+      targetThread.setStatus("working");
       this.options.publishRendererState();
     });
   }
@@ -2095,9 +1963,9 @@ export class CodexController {
     message: Extract<ServerMessage, { method: "command/exec/outputDelta" }>,
   ): void {
     const delta = Buffer.from(message.params.deltaBase64, "base64").toString();
-    const runtime = this.execRuntimes.get(message.params.processId);
-    if (runtime) {
-      runtime.appendActivityOutput(message.params.processId, delta);
+    const thread = this.threadManager.execThreadMap.get(message.params.processId);
+    if (thread) {
+      thread.appendActivityOutput(message.params.processId, delta);
       this.options.publishRendererState();
     }
   }
@@ -2114,7 +1982,7 @@ export class CodexController {
 
   /** Merges model metadata from an untyped protocol value into controller state. */
   private updateModelInfoFromValue(value: Record<string, unknown>): void {
-    if (this.threadRuntime().mergeModelInfoFromServer(value)) {
+    if (this.threadManager.activeThread.mergeModelInfoFromServer(value)) {
       this.options.publishRendererState();
     }
   }
