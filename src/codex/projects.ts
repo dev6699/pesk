@@ -81,17 +81,13 @@ export type ProjectRequest =
   | { method: "project/delete"; id: number; params: ProjectDeleteParams };
 
 export type ProjectRequestInput = {
-  [TRequest in ProjectRequest as TRequest["method"]]: Omit<TRequest, "id">
+  [TRequest in ProjectRequest as TRequest["method"]]: Omit<TRequest, "id">;
 }[ProjectRequest["method"]];
 
 type ProjectMutationRequest = Extract<
   ProjectRequestInput,
   {
-    method:
-      | "project/create"
-      | "project/import"
-      | "project/update"
-      | "project/move";
+    method: "project/create" | "project/import" | "project/update" | "project/move";
   }
 >;
 
@@ -323,35 +319,30 @@ export class CodexProjectManager {
   }
 
   /** Sends a project mutation and updates the cache from its response. */
-  private projectMutation(
-    request: ProjectMutationRequest,
-  ): Promise<boolean> {
+  private projectMutation(request: ProjectMutationRequest): Promise<boolean> {
     return this.request<
       ProjectCreateResponse | ProjectImportResponse | ProjectUpdateResponse | ProjectMoveResponse
-    >(
-      request,
-      (message) => {
-        if (request.method === "project/move" && !message.error) {
-          this.scheduleRefresh();
-          return true;
-        }
-        const project = message.result?.project;
-        if (message.error || !isProject(project)) {
-          this.options.setCommandNotice(
-            `Unable to ${request.method.slice("project/".length)} project.`,
-          );
-          this.options.publishRendererState();
-          return false;
-        }
-        const index = this.projects.findIndex((entry) => entry.id === project.id);
-        this.projects =
-          index < 0
-            ? [...this.projects, project]
-            : this.projects.map((entry, i) => (i === index ? project : entry));
-        this.options.publishRendererState();
+    >(request, (message) => {
+      if (request.method === "project/move" && !message.error) {
+        this.scheduleRefresh();
         return true;
-      },
-    );
+      }
+      const project = message.result?.project;
+      if (message.error || !isProject(project)) {
+        this.options.setCommandNotice(
+          `Unable to ${request.method.slice("project/".length)} project.`,
+        );
+        this.options.publishRendererState();
+        return false;
+      }
+      const index = this.projects.findIndex((entry) => entry.id === project.id);
+      this.projects =
+        index < 0
+          ? [...this.projects, project]
+          : this.projects.map((entry, i) => (i === index ? project : entry));
+      this.options.publishRendererState();
+      return true;
+    });
   }
 
   /** Correlates one project request through the controller-owned transport. */
@@ -359,9 +350,9 @@ export class CodexProjectManager {
     request: ProjectRequestInput,
     handle: (message: JsonRpcResponse<TResult>) => boolean,
   ): Promise<boolean> {
-    return this.options.request<TResult>(request).then((message) =>
-      message ? handle(message) : false,
-    );
+    return this.options
+      .request<TResult>(request)
+      .then((message) => (message ? handle(message) : false));
   }
 }
 

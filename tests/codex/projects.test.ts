@@ -122,9 +122,7 @@ test("handles project commands through the manager", async () => {
   harness.requests.get(2)!({ id: 2, result: { data: [managedProject] } });
   await expect(refresh).resolves.toBe(true);
   expect(harness.manager.manageProject("LIST")).toBe(true);
-  expect(harness.setCommandNotice).toHaveBeenLastCalledWith(
-    expect.stringContaining("Workspace"),
-  );
+  expect(harness.setCommandNotice).toHaveBeenLastCalledWith(expect.stringContaining("Workspace"));
   harness.requests.get(3)!({ id: 3, result: { data: [managedProject] } });
   await Promise.resolve();
 
@@ -171,16 +169,14 @@ test("rejects invalid project operation inputs before requesting", async () => {
   const harness = projectManagerHarness();
   await expect(harness.manager.readProject(" ")).resolves.toBe(false);
   await expect(harness.manager.createProject("", ["relative"])).resolves.toBe(false);
-  await expect(harness.manager.createProject("Project", ["/root"], { team: 1 } as never)).resolves.toBe(
+  await expect(
+    harness.manager.createProject("Project", ["/root"], { team: 1 } as never),
+  ).resolves.toBe(false);
+  await expect(harness.manager.createProject("Project", ["/root"], {}, " ")).resolves.toBe(false);
+  await expect(harness.manager.importProject("Project", ["/root"], [" "])).resolves.toBe(false);
+  await expect(harness.manager.importProject("Project", ["relative"], ["thread-1"])).resolves.toBe(
     false,
   );
-  await expect(harness.manager.createProject("Project", ["/root"], {}, " ")).resolves.toBe(false);
-  await expect(
-    harness.manager.importProject("Project", ["/root"], [" "]),
-  ).resolves.toBe(false);
-  await expect(
-    harness.manager.importProject("Project", ["relative"], ["thread-1"]),
-  ).resolves.toBe(false);
   await expect(harness.manager.updateProject(" ", {})).resolves.toBe(false);
   await expect(harness.manager.updateProject("project-1", { name: " " })).resolves.toBe(false);
   await expect(harness.manager.updateProject("project-1", { roots: ["relative"] })).resolves.toBe(
