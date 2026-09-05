@@ -1,5 +1,6 @@
 export { CodexController } from "./controller";
 export { CodexThread } from "./thread";
+export { CodexWebSocketTransport, type CodexSocketTransport, type SocketEvents } from "./websocket";
 
 export type * from "./types";
 export type * from "./projects";

@@ -68,7 +68,7 @@ function connectedController(turns: unknown[] = [], nextCursor: string | null = 
   const controllerOptions = options();
   const controller = new CodexController(controllerOptions);
   (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
-  (controller as unknown as { connect: () => void }).connect();
+  controller.start();
   const socket = FakeWebSocket.instances.at(-1) as FakeWebSocket;
 
   socket.emit("open");
@@ -239,87 +239,6 @@ describe("CodexController", () => {
     expect(controller.getState().commandNotice).toBe("start failed");
   });
 
-  test("logs connection and socket errors and retries after construction fails", () => {
-    jest.useFakeTimers();
-    FakeWebSocket.shouldThrow = true;
-    const callbacks = options();
-    const controller = new CodexController(callbacks);
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
-
-    (controller as unknown as { connect: () => void }).connect();
-    expect(FakeWebSocket.instances).toHaveLength(0);
-    jest.advanceTimersByTime(3000);
-    expect(FakeWebSocket.instances).toHaveLength(0);
-    expect(callbacks.debug).toHaveBeenCalledWith("Codex connection failed", expect.any(Error));
-    jest.useRealTimers();
-  });
-
-  test("handles malformed messages and socket errors", () => {
-    const callbacks = options();
-    const controller = new CodexController(callbacks);
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
-    (controller as unknown as { connect: () => void }).connect();
-    const socket = FakeWebSocket.instances[0];
-
-    socket.emit("message", "not-json");
-    socket.emit("error", {
-      type: "error",
-      message: "socket failed",
-    });
-
-    expect(callbacks.debug).toHaveBeenCalledWith(
-      "Codex socket error",
-      expect.stringContaining("message=socket failed"),
-    );
-    expect(controller.getState().error).toContain("message=socket failed");
-    socket.emit("error", {
-      type: "error",
-      message: "socket failed",
-    });
-    expect(controller.getState().error).toContain("message=socket failed");
-    socket.emit("open");
-    expect(controller.getState().error).toBeUndefined();
-  });
-
-  test("ignores events from an obsolete socket after replacement", () => {
-    const callbacks = options();
-    const controller = new CodexController(callbacks);
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
-    (controller as unknown as { connect: () => void }).connect();
-    const first = FakeWebSocket.instances[0];
-    const internal = controller as unknown as {
-      socket: FakeWebSocket | null;
-      connect: () => void;
-    };
-    internal.socket = null;
-    internal.connect();
-    const second = FakeWebSocket.instances[1];
-
-    first.emit("close", { code: 1006, reason: "obsolete" });
-    first.emit("error", { message: "obsolete error" });
-
-    expect(internal.socket).toBe(second);
-    expect(callbacks.debug).not.toHaveBeenCalledWith("Codex socket closed", expect.anything());
-  });
-
-  test("does not reconnect after an explicit stop", () => {
-    jest.useFakeTimers();
-    try {
-      const controller = new CodexController(options());
-      (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
-      (controller as unknown as { connect: () => void }).connect();
-      const socket = FakeWebSocket.instances[0];
-
-      socket.emit("close", { code: 1006, reason: "server restarted" });
-      controller.stop();
-      jest.advanceTimersByTime(3000);
-
-      expect(FakeWebSocket.instances).toHaveLength(1);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
   test("clears the selected session and history when the socket closes", () => {
     const { controller, socket } = connectedController();
     const internal = controller as unknown as {
@@ -341,24 +260,6 @@ describe("CodexController", () => {
     expect(controller.getState().history).toEqual([
       { role: "assistant", text: "previous response" },
     ]);
-    controller.stop();
-  });
-
-  test("ignores responses that arrive from a closed socket", () => {
-    const { controller, socket } = connectedController();
-    controller.refreshRateLimits();
-    const requestId = lastMessage(socket).id;
-
-    socket.emit("close", { code: 1006, reason: "server restarted" });
-    socket.emit(
-      "message",
-      JSON.stringify({
-        id: requestId,
-        result: { rateLimits: { primary: { usedPercent: 99 } } },
-      }),
-    );
-
-    expect(controller.getState().rateLimits).toBeUndefined();
     controller.stop();
   });
 
@@ -390,8 +291,7 @@ describe("CodexController", () => {
       threads: Array<{ id: string }>;
     };
 
-    controller.setSocketUrl("ws://example.test:4500");
-    internal.connect();
+    controller.start();
     controller.selectThread("missing-thread");
     controller.selectThread("thread-1");
     state.threads = [{ id: "thread-1" }];
@@ -1189,7 +1089,7 @@ describe("CodexController", () => {
   test("starts a new session when no session is selected", () => {
     const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
-    (controller as unknown as { connect: () => void }).connect();
+    controller.start();
     const socket = FakeWebSocket.instances[0];
     socket.emit("open");
     socket.emit("message", JSON.stringify({ id: 1, result: {} }));
@@ -1984,28 +1884,10 @@ describe("CodexController", () => {
     expect(controller.getState().status).toBe("waiting");
   });
 
-  test("retries after the WebSocket closes and reconnects", () => {
-    jest.useFakeTimers();
-    const controller = new CodexController(options());
-    (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
-
-    controller.start();
-    const firstSocket = FakeWebSocket.instances[0];
-    firstSocket.emit("open");
-    firstSocket.emit("close");
-
-    expect(FakeWebSocket.instances).toHaveLength(1);
-    jest.advanceTimersByTime(3000);
-
-    expect(FakeWebSocket.instances).toHaveLength(2);
-    controller.stop();
-    jest.useRealTimers();
-  });
-
   test("stays healthy when connected without an active session", () => {
     const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
-    (controller as unknown as { connect: () => void }).connect();
+    controller.start();
     const socket = FakeWebSocket.instances[0];
 
     socket.emit("open");
@@ -2023,7 +1905,7 @@ describe("CodexController", () => {
   test("lists all sessions returned by thread/list", () => {
     const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
-    (controller as unknown as { connect: () => void }).connect();
+    controller.start();
     const socket = FakeWebSocket.instances[0];
     socket.emit("open");
     socket.emit("message", JSON.stringify({ id: 1, result: {} }));
@@ -2057,7 +1939,7 @@ describe("CodexController", () => {
   test("counts an active discovered session as background work until selected", () => {
     const controller = new CodexController(options());
     (globalThis as unknown as { WebSocket: typeof FakeWebSocket }).WebSocket = FakeWebSocket;
-    (controller as unknown as { connect: () => void }).connect();
+    controller.start();
     const socket = FakeWebSocket.instances.at(-1) as FakeWebSocket;
 
     socket.emit("open");

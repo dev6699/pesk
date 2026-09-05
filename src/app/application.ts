@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { ChatWindowController } from "../windows/chat";
 import { FocusController } from "./focus";
 import { ChatWebServer } from "../services/chat-web-server";
-import { CodexController } from "../codex";
+import { CodexController, CodexWebSocketTransport } from "../codex";
 import { loadConfig, loadSettings, saveSettings, saveTheme } from "../config/config";
 import { themes, type RendererTheme } from "../config/themes";
 import type { PeskSettings } from "../config/config";
@@ -142,15 +142,17 @@ export class PeskApplication implements ApplicationContext {
       toggleCodexStatusSound: () => this.pet.toggleCodexStatusSound(),
       showPet: () => this.pet.show(),
     });
-    this._codex = new CodexController({
-      publishRendererState: () => this.state.publish(),
-      publishStreamDelta: (delta) => this.state.publishStreamDelta(delta),
-      handleNotification: (request) => this.notifications.handle(request),
-      isChatVisible: () => this.chat.window?.isVisible() ?? false,
-      clearNotification: () => this.notifications.clear(),
-      debug,
-    });
-    this.codex.setSocketUrl(config.codexAppServerUrl);
+    this._codex = new CodexController(
+      {
+        publishRendererState: () => this.state.publish(),
+        publishStreamDelta: (delta) => this.state.publishStreamDelta(delta),
+        handleNotification: (request) => this.notifications.handle(request),
+        isChatVisible: () => this.chat.window?.isVisible() ?? false,
+        clearNotification: () => this.notifications.clear(),
+        debug,
+      },
+      new CodexWebSocketTransport(config.codexAppServerUrl),
+    );
     this._state = new RendererStatePublisher(
       () => this.settings,
       this.codex,

@@ -6,13 +6,10 @@ import type {
   FuzzyFileSearchResult,
 } from "../codex-schema";
 import {
-  describeSocketError,
   approvalDecisions,
-  isJsonRpcResponse,
   isRecord,
   isThread,
   messageThreadId,
-  records,
   requestIdKey,
   stringValue,
   shouldReconcileOnIdle,
@@ -20,12 +17,8 @@ import {
 } from "./protocol";
 
 import type { NotificationRequest } from "../services/notification";
-import type {
-  IncomingMessage,
-  JsonRpcResponse,
-  PermissionApprovalResponse,
-  ServerMessage,
-} from "./protocol";
+import type { JsonRpcResponse, PermissionApprovalResponse, ServerMessage } from "./protocol";
+import { CodexWebSocketTransport, type CodexSocketTransport } from "./websocket";
 import { CodexThread, parseTokenUsageValue, approvalOptions } from "./thread";
 import { randomUUID } from "node:crypto";
 import type { Project } from "../codex-schema/v2";
@@ -136,10 +129,7 @@ interface Options {
  * Window management remains in main.ts; callbacks notify it about UI changes.
  */
 export class CodexController {
-  /** Active WebSocket transport, or null while disconnected. */
-  private socket: WebSocket | null = null;
-  /** App-server endpoint used for the current and future connections. */
-  private url = "ws://127.0.0.1:4500";
+  private readonly socket: CodexSocketTransport;
   /** Currently selected thread in the renderer. */
   private threadId: string | undefined;
   /** Human-readable transport error shown by the renderer. */
@@ -158,10 +148,6 @@ export class CodexController {
   private initialized = false;
   /** Monotonic JSON-RPC request id for this controller instance. */
   private nextId = 0;
-  /** Delayed reconnect task after a transport close or failure. */
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  /** Prevents close/error paths from reconnecting after an explicit stop. */
-  private stopped = false;
   /** Prevents duplicate thread discovery requests. */
   private discoveryPending = false;
   /** Locally requested thread starts awaiting their responses/events. */
@@ -170,8 +156,6 @@ export class CodexController {
   private pendingThreadResumeId: string | undefined;
   /** Correlates local thread/start responses with thread/started events. */
   private readonly locallyStartedThreads = new Set<string>();
-  /** Callbacks waiting for JSON-RPC responses keyed by request id. */
-  private readonly requests = new Map<number, (message: JsonRpcResponse) => void>();
   /** Isolated runtime state for every known or active thread. */
   private readonly threadControllers = new Map<string, CodexThread>();
   /** Last access time for inactive runtime eviction. */
@@ -196,7 +180,7 @@ export class CodexController {
   private modelPickerRequest = 0;
 
   /** Creates a controller with callbacks for renderer and window updates. */
-  constructor(options: Options) {
+  constructor(options: Options, socket: CodexSocketTransport = new CodexWebSocketTransport()) {
     this.options = {
       ...options,
       publishRendererState: () => {
@@ -208,6 +192,13 @@ export class CodexController {
         if (this.suppressedPublication === 0) options.handleNotification(request);
       },
     };
+    this.socket = socket;
+    this.socket
+      .on("open", () => this.handleSocketOpen())
+      .on("message", (message) => this.handleServerMessage(message))
+      .on("close", (event) => this.handleSocketClose(event))
+      .on("error", (details) => this.handleSocketError(details))
+      .on("debug", (values) => this.options.debug(...values));
   }
 
   private readonly options: Options;
@@ -377,25 +368,27 @@ export class CodexController {
     });
   }
 
-  /** Changes the app-server endpoint before the controller starts. */
-  setSocketUrl(url: string): void {
-    this.url = url;
-  }
-
-  /** Starts the WebSocket connection and reconnect lifecycle. */
   start(): void {
-    this.stopped = false;
-    this.connect();
+    this.socket.start();
   }
 
-  /** Stops the connection and cancels pending reconnect timers. */
   stop(): void {
-    this.stopped = true;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    this.socket?.close();
+    this.socket.stop();
+  }
+
+  private isOpen(): boolean {
+    return this.socket.isOpen();
+  }
+
+  private send(message: OutgoingMessage): void {
+    this.socket.send(message);
+  }
+
+  private setRequest<TResult>(
+    id: number,
+    callback: (message: JsonRpcResponse<TResult>) => void,
+  ): void {
+    this.socket.setRequest(id, callback);
   }
 
   /** Selects a known Codex thread and resumes it. */
@@ -769,7 +762,7 @@ export class CodexController {
 
   /** Searches files below the requested roots for the renderer's picker. */
   fuzzyFileSearch(query: string, roots: string[]): Promise<FuzzyFileSearchResult[]> {
-    if (!this.initialized || this.socket?.readyState !== WebSocket.OPEN || !roots.length) {
+    if (!this.initialized || !this.isOpen() || !roots.length) {
       return Promise.resolve([]);
     }
     const id = ++this.nextId;
@@ -802,12 +795,7 @@ export class CodexController {
   /** Requests cancellation of the currently running turn. */
   interruptTurn(): boolean {
     const activeTurnId = this.threadRuntime().state.activeTurnId;
-    if (
-      !this.initialized ||
-      this.socket?.readyState !== WebSocket.OPEN ||
-      !this.threadId ||
-      !activeTurnId
-    ) {
+    if (!this.initialized || !this.isOpen() || !this.threadId || !activeTurnId) {
       return false;
     }
     const id = ++this.nextId;
@@ -828,7 +816,7 @@ export class CodexController {
     if (
       !value ||
       !this.initialized ||
-      this.socket?.readyState !== WebSocket.OPEN ||
+      !this.isOpen() ||
       !this.threadId ||
       this.threadRuntime().state.status !== "idle"
     ) {
@@ -868,7 +856,7 @@ export class CodexController {
     if (
       !prompt ||
       !this.initialized ||
-      this.socket?.readyState !== WebSocket.OPEN ||
+      !this.isOpen() ||
       !this.threadId ||
       !activeTurnId ||
       (this.threadRuntime().state.status !== "working" &&
@@ -1074,7 +1062,7 @@ export class CodexController {
 
   /** Starts manual history compaction for the selected idle thread. */
   private compactThread(): boolean {
-    if (!this.initialized || this.socket?.readyState !== WebSocket.OPEN) return false;
+    if (!this.initialized || !this.isOpen()) return false;
     if (!this.threadId) {
       this.threadRuntime().setCommandNotice("No active thread to compact.");
       this.options.publishRendererState();
@@ -1267,7 +1255,7 @@ export class CodexController {
 
   /** Runs a standalone argv command through the app-server sandbox. */
   private submitExecCommand(commandText: string): boolean {
-    if (!this.initialized || this.socket?.readyState !== WebSocket.OPEN) {
+    if (!this.initialized || !this.isOpen()) {
       return false;
     }
     const command = commandText
@@ -1335,7 +1323,7 @@ export class CodexController {
   ): boolean {
     if (
       !this.threadId ||
-      this.socket?.readyState !== WebSocket.OPEN ||
+      !this.isOpen() ||
       (this.threadRuntime().state.status !== "working" &&
         this.threadRuntime().state.status !== "waiting")
     )
@@ -1382,7 +1370,7 @@ export class CodexController {
 
   /** Requests the first page of the queue for one thread. */
   private refreshQueue(threadId: string): void {
-    if (!this.initialized || this.socket?.readyState !== WebSocket.OPEN) return;
+    if (!this.initialized || !this.isOpen()) return;
     const id = ++this.nextId;
     this.setRequest<LocalQueueListResponse>(id, (message) => {
       this.withRuntime(threadId, () => {
@@ -1559,101 +1547,35 @@ export class CodexController {
     this.routeNextAttention();
   }
 
-  /** Sends one newline-delimited JSON-RPC message to the app server. */
-  private send(message: OutgoingMessage): void {
-    if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(`${JSON.stringify(message)}\n`);
-    }
-  }
-  /** Registers a response callback with the expected generated result type. */
-  private setRequest<TResult>(
-    id: number,
-    callback: (message: JsonRpcResponse<TResult>) => void,
-  ): void {
-    this.requests.set(id, (message) => {
-      callback(message as JsonRpcResponse<TResult>);
+  private handleSocketOpen(): void {
+    this.connectionError = undefined;
+    this.options.publishRendererState();
+    const id = ++this.nextId;
+    this.setRequest<InitializeResponse>(id, () => {
+      this.send({ method: "initialized" } satisfies ClientNotification);
+      this.initialized = true;
+      this.threadRuntime().resetTransportState();
+      this.threadId = undefined;
+      this.pendingThreadResumeId = undefined;
+      this.options.publishRendererState();
+      this.discover();
+      this.scheduleProjectRefresh();
     });
+    this.send({
+      method: "initialize",
+      id,
+      params: {
+        clientInfo: { name: "pesk", title: "Pesk", version: "0.1.0" },
+        capabilities: { experimentalApi: true, requestAttestation: false },
+      },
+    } satisfies InitializeRequest);
   }
 
-  /** Opens the socket and wires protocol, close, and error events. */
-  private connect(): void {
-    if (this.stopped) return;
-    if (
-      this.socket &&
-      (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)
-    ) {
-      return;
-    }
-
-    try {
-      const socket = new WebSocket(this.url);
-      this.requests.clear();
-      this.socket = socket;
-      socket.addEventListener("open", () => {
-        if (this.socket !== socket) return;
-        this.connectionError = undefined;
-        this.options.publishRendererState();
-        const id = ++this.nextId;
-        this.setRequest<InitializeResponse>(id, () => {
-          if (this.socket !== socket) return;
-          this.send({
-            method: "initialized",
-          } satisfies ClientNotification);
-          this.initialized = true;
-          this.threadRuntime().resetTransportState();
-          this.threadId = undefined;
-          this.pendingThreadResumeId = undefined;
-          this.options.publishRendererState();
-          this.discover();
-          this.scheduleProjectRefresh();
-        });
-        this.send({
-          method: "initialize",
-          id,
-          params: {
-            clientInfo: {
-              name: "pesk",
-              title: "Pesk",
-              version: "0.1.0",
-            },
-            capabilities: {
-              experimentalApi: true,
-              requestAttestation: false,
-            },
-          },
-        } satisfies InitializeRequest);
-      });
-      socket.addEventListener("message", (event) => {
-        if (this.socket !== socket) return;
-        try {
-          const value: unknown = JSON.parse(String(event.data));
-          if (isRecord(value)) {
-            this.handle(value as IncomingMessage);
-          }
-        } catch (error) {
-          this.options.debug("Invalid Codex message", error);
-        }
-      });
-      socket.addEventListener("close", (event) => {
-        if (this.socket !== socket) return;
-        this.handleSocketClose(event);
-      });
-      socket.addEventListener("error", (error) => {
-        if (this.socket !== socket) return;
-        const details = describeSocketError(error, this.url);
-        if (this.connectionError === details) {
-          return;
-        }
-        this.connectionError = details;
-        this.options.debug("Codex socket error", details);
-        this.options.publishRendererState();
-      });
-      return;
-    } catch (error) {
-      this.options.debug("Codex connection failed", error);
-      if (!this.stopped) this.scheduleReconnect();
-      return;
-    }
+  private handleSocketError(details: string): void {
+    if (this.connectionError === details) return;
+    this.connectionError = details;
+    this.options.debug("Codex socket error", details);
+    this.options.publishRendererState();
   }
 
   /** Clears transport state after a socket closes and schedules reconnection. */
@@ -1664,7 +1586,6 @@ export class CodexController {
       wasClean?: unknown;
     };
     this.options.debug("Codex socket closed", {
-      url: this.url,
       code: closeEvent.code,
       reason: closeEvent.reason,
       wasClean: closeEvent.wasClean,
@@ -1673,9 +1594,7 @@ export class CodexController {
     if (this.threadId) {
       this.standaloneThread.replaceHistory(selectedRuntime.snapshot().history);
     }
-    this.socket = null;
     this.initialized = false;
-    this.requests.clear();
     this.discoveryPending = false;
     this.rateLimitsReadPending = false;
     selectedRuntime.resetTransportState();
@@ -1693,7 +1612,6 @@ export class CodexController {
     this.standaloneThread.resetTransportState();
     selectedRuntime.setStatus("idle");
     this.options.publishRendererState();
-    if (!this.stopped) this.scheduleReconnect();
   }
 
   /** Finds the most recent Codex session after initialization. */
@@ -1923,25 +1841,6 @@ export class CodexController {
         },
       } satisfies ThreadTurnsListRequest);
     });
-  }
-
-  /** Dispatches JSON-RPC responses and app-server notifications. */
-  private handle(message: IncomingMessage): void {
-    if (isJsonRpcResponse(message)) {
-      this.handleResponse(message);
-      return;
-    }
-    this.handleServerMessage(message as ServerMessage);
-  }
-
-  /** Resolves and invokes a callback waiting for a JSON-RPC response. */
-  private handleResponse(message: JsonRpcResponse): void {
-    if (typeof message.id !== "number") return;
-    const callback = this.requests.get(message.id);
-    if (callback) {
-      this.requests.delete(message.id);
-      callback(message);
-    }
   }
 
   /** Routes a thread-scoped event into the owning runtime. */
@@ -2529,16 +2428,6 @@ export class CodexController {
   private updateModelInfoFromValue(value: Record<string, unknown>): void {
     if (this.threadRuntime().mergeModelInfoFromServer(value)) {
       this.options.publishRendererState();
-    }
-  }
-
-  /** Schedules one delayed reconnect after socket failure. */
-  private scheduleReconnect(): void {
-    if (!this.reconnectTimer) {
-      this.reconnectTimer = setTimeout(() => {
-        this.reconnectTimer = null;
-        this.connect();
-      }, 3000);
     }
   }
 }
