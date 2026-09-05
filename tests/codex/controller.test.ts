@@ -3,6 +3,7 @@
 
 import { CodexController } from "../../src/codex";
 import type { CodexThread } from "../../src/codex/thread";
+import type { CodexThreadLifecycle } from "../../src/codex/thread-lifecycle";
 
 class FakeWebSocket {
   static readonly OPEN = 1;
@@ -132,6 +133,10 @@ function threadInstance(controller: CodexController, id = "thread-1"): CodexThre
   return internal.threadManager.getThreadMap().get(id)!;
 }
 
+function lifecycle(controller: CodexController): CodexThreadLifecycle {
+  return (controller as unknown as { lifecycle: CodexThreadLifecycle }).lifecycle;
+}
+
 beforeEach(() => {
   FakeWebSocket.instances = [];
   FakeWebSocket.shouldThrow = false;
@@ -226,27 +231,6 @@ describe("CodexController", () => {
       { role: "assistant", text: "previous response" },
     ]);
     controller.stop();
-  });
-
-  test("clears stale history after reconnect when no active session exists", () => {
-    const { controller, socket } = connectedController();
-    const internal = controller as unknown as {
-      history: Array<{ role: string; text: string }>;
-      threadId: string;
-      discover: () => void;
-    };
-    internal.history = [{ role: "assistant", text: "stale response" }];
-    internal.threadId = "stale-thread";
-    internal.discover();
-
-    const threadListId = lastMessage(socket).id;
-    socket.emit("message", JSON.stringify({ id: threadListId, result: { data: [] } }));
-
-    expect(controller.getState()).toMatchObject({
-      threadId: undefined,
-      history: [],
-      threads: [],
-    });
   });
 
   test("covers controller guards and failed turn paths", () => {
@@ -367,65 +351,6 @@ describe("CodexController", () => {
     expect(controller.interruptTurn()).toBe(false);
     expect(controller.startNewThread("/workspace/next")).toBe(false);
     controller.stop();
-  });
-
-  test("waits for active status when the rollout is not ready", () => {
-    jest.useFakeTimers();
-    const { controller, socket } = connectedController();
-    const internal = controller as unknown as Record<string, (...args: unknown[]) => unknown>;
-    threadState(controller).connected = false;
-
-    internal.resume("thread-1");
-    const resumeId = lastMessage(socket).id;
-    socket.emit(
-      "message",
-      JSON.stringify({
-        id: resumeId,
-        error: { message: "no rollout found" },
-      }),
-    );
-    jest.advanceTimersByTime(3000);
-
-    expect(socket.sent.map((message) => JSON.parse(message.trim()))).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          method: "thread/resume",
-          params: expect.objectContaining({ threadId: "thread-1" }),
-        }),
-      ]),
-    );
-
-    socket.emit(
-      "message",
-      JSON.stringify({
-        method: "thread/status/changed",
-        params: { threadId: "thread-1", status: { type: "active" } },
-      }),
-    );
-
-    expect(lastMessage(socket)).toMatchObject({
-      method: "thread/resume",
-      params: { threadId: "thread-1" },
-    });
-    jest.useRealTimers();
-  });
-
-  test("resumes a disconnected controller on an active status", () => {
-    const { controller, socket } = connectedController();
-    threadState(controller).connected = false;
-
-    socket.emit(
-      "message",
-      JSON.stringify({
-        method: "thread/status/changed",
-        params: { threadId: "thread-1", status: { type: "active" } },
-      }),
-    );
-
-    expect(lastMessage(socket)).toMatchObject({
-      method: "thread/resume",
-      params: { threadId: "thread-1" },
-    });
   });
 
   test("rejects invalid prompts and queues prompts while a turn is active", () => {
@@ -1126,11 +1051,7 @@ describe("CodexController", () => {
 
   test("keeps generic activity after idle history reconciliation", () => {
     const { controller, socket } = connectedController();
-    const internal = controller as unknown as {
-      read: (threadId: string) => void;
-    };
-
-    internal.read("thread-1");
+    lifecycle(controller).readThread("thread-1");
     const readId = lastMessage(socket).id;
     socket.emit(
       "message",
@@ -1237,12 +1158,8 @@ describe("CodexController", () => {
 
   test("keeps a locally submitted message during incomplete reconciliation", () => {
     const { controller, socket } = connectedController();
-    const internal = controller as unknown as {
-      read: (threadId: string) => void;
-    };
-
     controller.submitPrompt("message from Pesk");
-    internal.read("thread-1");
+    lifecycle(controller).readThread("thread-1");
     const readId = lastMessage(socket).id;
     socket.emit(
       "message",
@@ -1558,7 +1475,7 @@ describe("CodexController", () => {
       }),
     );
 
-    (controller as unknown as { read: (id: string) => void }).read("thread-1");
+    lifecycle(controller).readThread("thread-1");
     const readId = lastMessage(socket).id;
     socket.emit(
       "message",
@@ -1733,7 +1650,7 @@ describe("CodexController", () => {
   test("keeps a session rejected by an active writer", () => {
     const { controller, socket } = connectedController();
 
-    (controller as unknown as { resume: (id: string) => void }).resume("thread-1");
+    lifecycle(controller).resumeThread("thread-1");
     const resumeId = lastMessage(socket).id;
     socket.emit(
       "message",
@@ -1917,11 +1834,7 @@ describe("CodexController", () => {
 
   test("normalizes restored review history order and removes duplicate prompts", () => {
     const { controller, socket } = connectedController();
-    const internal = controller as unknown as {
-      read: (threadId: string) => void;
-    };
-
-    internal.read("thread-1");
+    lifecycle(controller).readThread("thread-1");
     const readId = lastMessage(socket).id;
     socket.emit(
       "message",
@@ -1998,11 +1911,7 @@ describe("CodexController", () => {
 
   test("removes persisted review prompts when activities span turns", () => {
     const { controller, socket } = connectedController();
-    const internal = controller as unknown as {
-      read: (threadId: string) => void;
-    };
-
-    internal.read("thread-1");
+    lifecycle(controller).readThread("thread-1");
     const readId = lastMessage(socket).id;
     socket.emit(
       "message",

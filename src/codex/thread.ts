@@ -32,7 +32,6 @@ export interface ThreadState {
   streamingAssistant: number;
   streamingAssistantItemId?: string;
   activityIndexes: Map<string, number>;
-  needsReconcile: boolean;
   prompts: Map<string, number>;
   pendingApprovals: Map<string, PendingApproval>;
   workingDirectory?: string;
@@ -55,7 +54,6 @@ export class CodexThread {
     reviewInProgress: false,
     streamingAssistant: -1,
     activityIndexes: new Map(),
-    needsReconcile: false,
     prompts: new Map(),
     pendingApprovals: new Map(),
   };
@@ -115,7 +113,6 @@ export class CodexThread {
     this.state.streamingAssistant = -1;
     this.state.streamingAssistantItemId = undefined;
     this.state.activityIndexes.clear();
-    this.state.needsReconcile = false;
     this.state.prompts.clear();
     this.state.pendingApprovals.clear();
     this.state.workingDirectory = workingDirectory;
@@ -723,7 +720,6 @@ export class CodexThread {
 
   /** Initializes transient state for a newly submitted turn. */
   prepareTurn(): void {
-    this.state.needsReconcile = true;
     this.state.workingSince = undefined;
     this.state.workedElapsed = undefined;
     this.state.interrupted = false;
@@ -827,11 +823,6 @@ export class CodexThread {
   /** Remembers local prompt text for short-lived server echo de-duplication. */
   rememberPrompt(text: string, timestamp = Date.now()): void {
     this.state.prompts.set(text, timestamp);
-  }
-
-  /** Marks whether persisted history should be reconciled on the next idle state. */
-  markNeedsReconcile(needsReconcile = true): void {
-    this.state.needsReconcile = needsReconcile;
   }
 
   /** Replaces history and rebuilds indexes used by streaming updates. */

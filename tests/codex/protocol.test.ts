@@ -10,7 +10,6 @@ import {
   messageThreadId,
   records,
   requestIdKey,
-  shouldReconcileOnIdle,
   shouldResumeOnActiveStatus,
   stringValue,
 } from "../../src/codex/protocol";
@@ -76,18 +75,6 @@ describe("Codex protocol helpers", () => {
     expect(shouldResumeOnActiveStatus(true, { type: "active" })).toBe(false);
   });
 
-  test("reconciles after a working session becomes idle", () => {
-    expect(shouldReconcileOnIdle("working", { type: "idle" }, false)).toBe(false);
-  });
-
-  test("does not reconcile an idle session with a pending Pesk turn while disabled", () => {
-    expect(shouldReconcileOnIdle("idle", { type: "idle" }, true)).toBe(false);
-  });
-
-  test("does not reconcile an active session without a pending turn", () => {
-    expect(shouldReconcileOnIdle("working", { type: "active" }, false)).toBe(false);
-  });
-
   test("narrows JSON-RPC responses and records safely", () => {
     expect(isJsonRpcResponse({ id: 1, result: {} })).toBe(true);
     expect(isJsonRpcResponse({ id: 1, method: "thread/list" })).toBe(false);
@@ -135,7 +122,6 @@ describe("Codex protocol helpers", () => {
     expect(requestIdKey("4")).toBe("string:4");
     expect(shouldResumeOnActiveStatus(false, { type: "active" })).toBe(true);
     expect(shouldResumeOnActiveStatus(true, { type: "active" })).toBe(false);
-    expect(shouldReconcileOnIdle("working", { type: "idle" }, true)).toBe(false);
   });
 
   test("formats socket errors with useful context", () => {

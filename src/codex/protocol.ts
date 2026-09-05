@@ -14,11 +14,6 @@ import type {
 import type { ApprovalDecision } from "./types";
 import type { ProjectRequest } from "./projects";
 
-// Temporarily disabled because reconciling the full thread history on idle is
-// too heavy during normal use. Re-enable after a lighter reconciliation path
-// is available.
-const RECONCILE_ON_IDLE = false;
-
 export interface JsonRpcResponse<TResult = unknown> {
   [key: string]: unknown;
   id: RequestId;
@@ -77,7 +72,7 @@ export type ThreadStartRequest = RequestOf<"thread/start">;
 export type ProjectThreadStartRequest = {
   method: "thread/start";
   id: number;
-  params: ThreadStartRequest["params"] & { projectId: string };
+  params: ThreadStartRequest["params"] & { projectId?: string };
 };
 export type ThreadResumeRequest = RequestOf<"thread/resume">;
 export type ThreadForkRequest = RequestOf<"thread/fork">;
@@ -161,6 +156,18 @@ export type OutgoingMessage =
   | ProjectRequest
   | JsonRpcResponse;
 
+type RequestWithoutId<T> = T extends { id: unknown } ? Omit<T, "id"> : never;
+/** All client request shapes before the controller assigns their JSON-RPC ID. */
+export type OutgoingRequestInput = RequestWithoutId<
+  | ClientRequest
+  | ProjectThreadStartRequest
+  | ThreadSettingsUpdateRequest
+  | TurnSteerRequest
+  | LocalQueueAddRequest
+  | LocalQueueListRequest
+  | ProjectRequest
+>;
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -236,15 +243,4 @@ export function shouldResumeOnActiveStatus(
   status: ThreadStatusLike | undefined,
 ): boolean {
   return !connected && status?.type === "active";
-}
-
-/** Whether an idle transition should trigger a fresh history read. */
-export function shouldReconcileOnIdle(
-  previousStatus: string,
-  status: ThreadStatusLike | undefined,
-  needsReconcile: boolean,
-): boolean {
-  return (
-    RECONCILE_ON_IDLE && status?.type === "idle" && (previousStatus === "working" || needsReconcile)
-  );
 }
