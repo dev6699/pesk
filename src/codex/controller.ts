@@ -2,7 +2,6 @@ import type {
   ClientNotification,
   InitializeResponse,
   RequestId,
-  FuzzyFileSearchResponse,
   FuzzyFileSearchResult,
 } from "../codex-schema";
 import {
@@ -13,53 +12,31 @@ import {
   stringValue,
 } from "./protocol";
 
-import type {
-  JsonRpcResponse,
-  OutgoingRequestInput,
-  PermissionApprovalResponse,
-  ServerMessage,
-} from "./protocol";
+import type { JsonRpcResponse, OutgoingRequestInput, ServerMessage } from "./protocol";
 import { CodexWebSocketTransport, type CodexSocketTransport } from "./websocket";
 import { CodexThread, parseTokenUsageValue, approvalOptions } from "./thread";
 import { CodexThreadManager } from "./thread-manager";
-import { randomUUID } from "node:crypto";
 import { CodexProjectManager } from "./projects";
 import type {
-  TurnStartResponse,
-  ReviewStartResponse,
   GetAccountRateLimitsResponse,
   RateLimitSnapshot,
-  CommandExecResponse,
+  TurnStartResponse,
 } from "../codex-schema/v2";
 import type { UserInput } from "../codex-schema/v2/UserInput";
 import type { CodexState, CodexStreamDelta } from "./types";
 import type {
   AccountRateLimitsRequest,
-  CommandExecRequest,
-  FuzzyFileSearchRequest,
   InitializeRequest,
-  LocalQueueAddResponse,
   LocalQueueListResponse,
   OutgoingMessage,
   PlanTurnStartParams,
-  ReviewStartRequest,
-  ThreadShellCommandRequest,
-  TurnInterruptRequest,
   TurnStartRequest,
-  TurnSteerRequest,
 } from "./protocol";
 import { CodexModelManager } from "./model";
 import { CodexGoalManager } from "./goal";
 import { CodexThreadLifecycle } from "./thread-lifecycle";
-
-const STEER_INSTRUCTIONS = `Treat this message as a steer to the currently active request.
-
-Preserve all existing requirements, constraints, entities, and output formats unless this steer explicitly changes, removes, cancels, or replaces them. Apply only the requested change and continue the complete updated request.
-
-If the steer is materially ambiguous, ask one concise clarifying question. Otherwise, use the most natural interpretation and proceed.
-
-Steer message:
-`;
+import { CodexInteraction } from "./interaction";
+import { parsePrompt, type PromptImages } from "./prompt";
 
 export interface CodexControllerOptions {
   onStateChanged: (state: CodexState) => void;
@@ -95,6 +72,7 @@ export class CodexController {
   private rateLimits: RateLimitSnapshot | undefined;
   /** Prevents duplicate initial rate-limit reads from concurrent callers. */
   private rateLimitsReadPending = false;
+  /** Prevents duplicate initial rate-limit reads from concurrent callers. */
   /** Whether initialize/initialized completed on the current socket. */
   private initialized = false;
   /** Monotonic JSON-RPC request id for this controller instance. */
@@ -105,6 +83,7 @@ export class CodexController {
   private readonly modelManager: CodexModelManager;
   private readonly goalManager: CodexGoalManager;
   private readonly lifecycle: CodexThreadLifecycle;
+  private readonly interaction: CodexInteraction;
   private readonly options: CodexControllerOptions;
 
   /** Creates a controller with application-level event callbacks. */
@@ -153,6 +132,17 @@ export class CodexController {
         this.startingNewThread = value;
       },
       startTurn: (threadId, prompt) => this.startTurn(threadId, prompt),
+    });
+    this.interaction = new CodexInteraction({
+      threadManager: this.threadManager,
+      lifecycle: this.lifecycle,
+      request: (request, callback) => this.request(request, callback),
+      requestWithId: (buildRequest, callback) => this.requestWithId(buildRequest, callback),
+      sendResponse: (id, result) => this.sendResponse(id, result),
+      startTurn: (threadId, prompt, extraInput) => this.startTurn(threadId, prompt, extraInput),
+      onChanged: () => this.notifyStateChanged(),
+      clearAttention: (threadId) => this.clearAttention(threadId),
+      onAttentionCleared: options.onAttentionCleared,
     });
     this.socket
       .on("open", () => this.handleSocketOpen())
@@ -228,6 +218,12 @@ export class CodexController {
     this.socket.send(message);
   }
 
+  private sendResponse(id: RequestId, result: unknown): boolean {
+    if (!this.initialized || !this.isOpen()) return false;
+    this.send({ id, result } as JsonRpcResponse<unknown>);
+    return true;
+  }
+
   private setRequest<TResult>(
     id: number,
     callback: (message: JsonRpcResponse<TResult>) => void,
@@ -239,10 +235,17 @@ export class CodexController {
     request: OutgoingRequestInput,
     callback: (message: JsonRpcResponse<TResult>) => void,
   ): boolean {
+    return this.requestWithId(() => request, callback);
+  }
+
+  private requestWithId<TResult>(
+    buildRequest: (id: number) => OutgoingRequestInput,
+    callback: (message: JsonRpcResponse<TResult>) => void,
+  ): boolean {
     if (!this.initialized || !this.isOpen()) return false;
     const id = ++this.nextId;
     this.setRequest<TResult>(id, callback);
-    this.send({ ...request, id } as never);
+    this.send({ ...buildRequest(id), id } as never);
     return true;
   }
 
@@ -310,58 +313,23 @@ export class CodexController {
 
   /** Selects the collaboration mode used for the next turn. */
   setCollaborationMode(mode: "default" | "plan"): void {
-    const thread = this.threadManager.activeThread;
-    thread.setCollaborationMode(mode);
-    this.notifyStateChanged();
+    this.interaction.setCollaborationMode(mode);
   }
 
   /** Handles the native /goal command and its lifecycle controls. */
   manageGoal(command: string): boolean {
     const thread = this.threadManager.activeThread;
-    return (
-      this.initialized &&
-      this.goalManager.manage(this.threadManager.selectedThreadId, thread.state.goal, command)
-    );
+    return this.goalManager.manage(this.threadManager.selectedThreadId, thread.state.goal, command);
   }
 
   /** Starts implementation from a completed plan confirmation. */
   implementPlan(planText: string, clearContext: boolean): boolean {
-    this.setCollaborationMode("default");
-    if (!clearContext) {
-      return this.submitPrompt("Implement the plan.");
-    }
-    const prompt = [
-      "A previous agent produced the plan below to accomplish the user's task. Implement the plan in a fresh context. Treat the plan as the source of user intent, re-read files as needed, and carry the work through implementation and verification.",
-      "",
-      planText.trim(),
-    ].join("\n");
-    return this.startNewThread(undefined, prompt);
+    return this.interaction.implementPlan(planText, clearContext);
   }
 
   /** Answers an app-server request_user_input request. */
   respondUserInput(answers: Record<string, string[]>): boolean {
-    const thread = this.threadManager.activeThread;
-    const pending = thread.state.pendingUserInput;
-    if (!pending || !this.initialized) return false;
-    const responseAnswers = Object.fromEntries(
-      Object.entries(answers).map(([questionId, values]) => [questionId, { answers: values }]),
-    );
-    this.send({
-      id: pending.requestId,
-      result: { answers: responseAnswers },
-    });
-    const answerText = pending.questions
-      .map((question) => {
-        const values = answers[question.id] ?? [];
-        const displayed = question.isSecret ? values.map(() => "[hidden]") : values;
-        return `${question.header || question.question}: ${displayed.join(", ") || "No answer"}`;
-      })
-      .join("\n");
-    thread.addMessage("user", answerText || "No answer provided.", pending.turnId);
-    thread.clearUserInput();
-    this.clearAttention(pending.threadId);
-    this.notifyStateChanged();
-    return true;
+    return this.interaction.respondUserInput(answers);
   }
 
   /** Requests the complete account-wide rate-limit snapshot. */
@@ -385,132 +353,22 @@ export class CodexController {
 
   /** Searches files below the requested roots for application consumers. */
   fuzzyFileSearch(query: string, roots: string[]): Promise<FuzzyFileSearchResult[]> {
-    if (!this.initialized || !this.isOpen() || !roots.length) {
-      return Promise.resolve([]);
-    }
-    const id = ++this.nextId;
-    return new Promise((resolve) => {
-      this.setRequest<FuzzyFileSearchResponse>(id, (message) => {
-        if (message.error) {
-          this.options.debug("Fuzzy file search failed", message.error);
-        } else {
-          this.options.debug("Fuzzy file search completed", {
-            query,
-            roots,
-            count: message.result?.files.length ?? 0,
-          });
-        }
-        resolve(message.result?.files ?? []);
-      });
-      this.options.debug("Fuzzy file search requested", { query, roots });
-      this.send({
-        method: "fuzzyFileSearch",
-        id,
-        params: {
-          query,
-          roots,
-          cancellationToken: null,
-        },
-      } satisfies FuzzyFileSearchRequest);
-    });
+    return this.interaction.fuzzyFileSearch(query, roots);
   }
 
   /** Requests cancellation of the currently running turn. */
   interruptTurn(): boolean {
-    const thread = this.threadManager.activeThread;
-    const activeTurnId = thread.state.activeTurnId;
-    if (
-      !this.initialized ||
-      !this.isOpen() ||
-      !this.threadManager.selectedThreadId ||
-      !activeTurnId
-    ) {
-      return false;
-    }
-    const id = ++this.nextId;
-    this.send({
-      method: "turn/interrupt",
-      id,
-      params: {
-        threadId: this.threadManager.selectedThreadId,
-        turnId: activeTurnId,
-      },
-    } satisfies TurnInterruptRequest);
-    return true;
+    return this.interaction.interruptTurn();
   }
 
   /** Starts an inline custom review on the selected thread. */
   startReview(instructions: string): boolean {
-    const value = instructions.trim();
-    const thread = this.threadManager.activeThread;
-    if (
-      !value ||
-      !this.initialized ||
-      !this.isOpen() ||
-      !this.threadManager.selectedThreadId ||
-      thread.state.status !== "idle"
-    ) {
-      return false;
-    }
-    thread.beginReview();
-    const threadId = this.threadManager.selectedThreadId;
-    if (!threadId) return false;
-    const id = ++this.nextId;
-    this.setRequest<ReviewStartResponse>(id, (message) => {
-      this.threadManager.withThread(threadId, (targetThread) => {
-        targetThread.setActiveTurn(message.result?.turn.id);
-        if (message.error) {
-          targetThread.completeTurn(false);
-          this.notifyStateChanged();
-        }
-      });
-    });
-    this.send({
-      method: "review/start",
-      id,
-      params: {
-        threadId: this.threadManager.selectedThreadId,
-        delivery: "inline",
-        target: { type: "custom", instructions: value },
-      },
-    } satisfies ReviewStartRequest);
-    thread.setStatus("working");
-    this.notifyStateChanged();
-    return true;
+    return this.interaction.startReview(instructions);
   }
 
   /** Steers the active turn, falling back to queueing when its ID is stale. */
   steerPrompt(value: string): boolean {
-    const prompt = value.trim();
-    const thread = this.threadManager.activeThread;
-    const activeTurnId = thread.state.activeTurnId;
-    if (
-      !prompt ||
-      !this.initialized ||
-      !this.isOpen() ||
-      !this.threadManager.selectedThreadId ||
-      !activeTurnId ||
-      (thread.state.status !== "working" && thread.state.status !== "waiting")
-    ) {
-      return false;
-    }
-    const steerPrompt = `${STEER_INSTRUCTIONS}${prompt}`;
-    thread.addUserMessage(steerPrompt);
-    this.notifyStateChanged();
-    const id = ++this.nextId;
-    thread.rememberPrompt(prompt);
-    thread.rememberPrompt(steerPrompt);
-    this.send({
-      method: "turn/steer",
-      id,
-      params: {
-        threadId: this.threadManager.selectedThreadId,
-        input: [{ type: "text", text: steerPrompt, text_elements: [] }],
-        expectedTurnId: activeTurnId,
-        clientUserMessageId: randomUUID(),
-      },
-    } satisfies TurnSteerRequest);
-    return true;
+    return this.interaction.steerPrompt(value);
   }
 
   /** Starts a turn while idle or persists a follow-up while a turn is active. */
@@ -530,219 +388,21 @@ export class CodexController {
     return this.submitPromptWithImages(value, []);
   }
 
-  submitPromptWithImages(value: string, images: Array<{ url: string; name: string }>): boolean {
-    if ((!value.trim() && !images.length) || !this.initialized) {
-      return false;
-    }
-
-    const prompt = value.trim();
+  submitPromptWithImages(value: string, images: PromptImages): boolean {
+    if ((!value.trim() && !images.length) || !this.initialized) return false;
+    const parsed = parsePrompt(value, images);
     const thread = this.threadManager.activeThread;
     thread.setCommandNotice(undefined);
-    if (/^\/model$/i.test(prompt)) return this.beginModelPicker();
-    const goalCommand = prompt.match(/^\/goal(?:\s+(.+))?$/is);
-    if (goalCommand) return this.manageGoal(goalCommand[1] ?? "");
-    const projectCommand = prompt.match(/^\/project(?:\s+(.+))?$/is);
-    if (projectCommand) {
-      if (!this.initialized) return false;
-      return this.projectManager.manageProject(projectCommand[1] ?? "");
+    switch (parsed.kind) {
+      case "model":
+        return this.beginModelPicker();
+      case "goal":
+        return this.manageGoal(parsed.command);
+      case "project":
+        return this.projectManager.manageProject(parsed.command);
+      default:
+        return this.interaction.submitPrompt(parsed);
     }
-    if (/^\/compact$/i.test(prompt)) {
-      return this.lifecycle.compact();
-    }
-    const modeCommand = prompt.match(/^\/(plan|default)$/i);
-    if (modeCommand) {
-      this.setCollaborationMode(modeCommand[1].toLowerCase() as "plan" | "default");
-      return true;
-    }
-    const newThreadMatch = prompt.match(/^\/new(?:\s+(.+))?$/);
-    if (newThreadMatch) {
-      thread.setCommandNotice("Choose a project and root in the /new prompt.");
-      return false;
-    }
-    if (/^\/fork$/i.test(prompt)) {
-      return this.lifecycle.fork();
-    }
-    if (/^\/archive$/i.test(prompt)) {
-      return this.lifecycle.archive();
-    }
-    if (/^\/delete$/i.test(prompt)) {
-      return this.lifecycle.delete();
-    }
-
-    const shellCommand = prompt.match(/^!(.+)$/s)?.[1].trim();
-    if (shellCommand) {
-      return this.submitShellCommand(shellCommand);
-    }
-    const execCommand = prompt.match(/^\/exec\s+(.+)$/s)?.[1].trim();
-    if (execCommand) {
-      return this.submitExecCommand(execCommand);
-    }
-
-    if (thread.state.status !== "idle") {
-      return this.queuePromptInput(
-        [
-          ...(prompt ? [{ type: "text" as const, text: prompt, text_elements: [] }] : []),
-          ...imageInputs(images),
-        ],
-        prompt,
-        imageMetadata(images),
-      );
-    }
-
-    thread.prepareTurn();
-    thread.addUserMessage(prompt, undefined, imageMetadata(images));
-    this.notifyStateChanged();
-    thread.rememberPrompt(prompt);
-    const threadId = this.threadManager.selectedThreadId;
-    if (threadId) {
-      this.startTurn(threadId, prompt, imageInputs(images));
-      return true;
-    }
-
-    return this.lifecycle.startInitial((targetThread) => {
-      this.startTurn(targetThread.id, prompt, imageInputs(images));
-    });
-  }
-
-  /** Runs a user-entered shell string through the current thread. */
-  private submitShellCommand(command: string): boolean {
-    if (!this.initialized) return false;
-    const sendCommand = (threadId: string): void => {
-      const id = ++this.nextId;
-      this.send({
-        method: "thread/shellCommand",
-        id,
-        params: { threadId, command },
-      } satisfies ThreadShellCommandRequest);
-      this.threadManager.thread(threadId).setStatus("working");
-      this.notifyStateChanged();
-    };
-    if (this.threadManager.selectedThreadId) {
-      this.threadManager.selectedThread().addUserMessage(`!${command}`);
-      this.notifyStateChanged();
-      sendCommand(this.threadManager.selectedThreadId);
-      return true;
-    }
-    const thread = this.threadManager.activeThread;
-    if (thread.state.status !== "idle") return false;
-    thread.addUserMessage(`!${command}`);
-    this.notifyStateChanged();
-    return this.lifecycle.startShell((createdThread) => sendCommand(createdThread.id));
-  }
-
-  /** Runs a standalone argv command through the app-server sandbox. */
-  private submitExecCommand(commandText: string): boolean {
-    if (!this.initialized || !this.isOpen()) {
-      return false;
-    }
-    const command = commandText
-      .match(/"[^"]*"|'[^']*'|\S+/g)
-      ?.map((part) => part.replace(/^(['"])(.*)\1$/, "$2"));
-    if (!command?.length) return false;
-    const id = ++this.nextId;
-    const processId = `pesk-exec-${id}`;
-    const thread = this.threadManager.activeThread;
-    const cwd = thread.state.workingDirectory ?? process.cwd();
-    this.threadManager.trackExecProcess(processId, thread);
-    thread.addUserMessage(`/exec ${commandText}`);
-    thread.addActivity(
-      {
-        id: processId,
-        type: "commandExecution",
-        source: "unifiedExecStartup",
-        userInitiated: true,
-        command: command.join(" "),
-        cwd,
-        status: "inProgress",
-      },
-      processId,
-    );
-    this.setRequest<CommandExecResponse>(id, (message) => {
-      const result = message.result;
-      thread.addActivity(
-        {
-          id: processId,
-          type: "commandExecution",
-          source: "unifiedExecStartup",
-          userInitiated: true,
-          command: command.join(" "),
-          cwd,
-          status: message.error ? "failed" : result?.exitCode === 0 ? "completed" : "failed",
-          exitCode: result?.exitCode,
-          aggregatedOutput: [result?.stdout, result?.stderr].filter(Boolean).join("\n"),
-        },
-        processId,
-      );
-      this.threadManager.clearExecProcess(processId);
-      if (!thread.state.activeTurnId) {
-        thread.setStatus("idle");
-      }
-      this.notifyStateChanged();
-    });
-    this.send({
-      method: "command/exec",
-      id,
-      params: {
-        command,
-        processId,
-        cwd,
-      },
-    } satisfies CommandExecRequest);
-    thread.setStatus("working");
-    this.notifyStateChanged();
-    return true;
-  }
-  /** Queues text and image inputs while preserving attachment metadata locally. */
-  private queuePromptInput(
-    input: UserInput[],
-    prompt: string,
-    queuedImageMetadata?: Array<{ url: string; name?: string }>,
-  ): boolean {
-    const thread = this.threadManager.activeThread;
-    if (
-      !this.threadManager.selectedThreadId ||
-      !this.isOpen() ||
-      (thread.state.status !== "working" && thread.state.status !== "waiting")
-    )
-      return false;
-    const queuedImages =
-      queuedImageMetadata ??
-      input
-        .filter((item): item is Extract<UserInput, { type: "image" }> => item.type === "image")
-        .map(({ url }) => ({ url }));
-    const clientUserMessageId = randomUUID();
-    const id = ++this.nextId;
-    const threadId = this.threadManager.selectedThreadId;
-    this.setRequest<LocalQueueAddResponse>(id, (message) => {
-      const submission = message.result?.queuedSubmission;
-      if (!submission) return;
-      this.threadManager.withThread(threadId, (targetThread) => {
-        targetThread.resolveQueuedSubmission(clientUserMessageId, {
-          id: submission.id,
-          text: prompt,
-          ...(queuedImages.length ? { images: queuedImages } : {}),
-          clientUserMessageId,
-        });
-        this.notifyStateChanged();
-      });
-    });
-    this.send({
-      method: "thread/queue/add",
-      id,
-      params: {
-        threadId: this.threadManager.selectedThreadId,
-        input,
-        clientUserMessageId,
-      },
-    });
-    thread.queuePending({
-      id: `pending-${clientUserMessageId}`,
-      text: prompt,
-      ...(queuedImages.length ? { images: queuedImages } : {}),
-      clientUserMessageId,
-    });
-    this.notifyStateChanged();
-    return true;
   }
 
   /** Requests the first page of the queue for one thread. */
@@ -794,26 +454,7 @@ export class CodexController {
 
   /** Sends an approval response for an app-server request. */
   respondPermission(requestId: RequestId, optionId: string): void {
-    const key = requestIdKey(requestId);
-    const thread = this.threadManager.activeThread;
-    const pending = thread.state.pendingApprovals.get(key);
-    const decision = pending?.decisions.get(optionId);
-    if (!pending || decision === undefined) return;
-    this.send({
-      id: requestId,
-      result: {
-        decision,
-      },
-    } satisfies JsonRpcResponse<PermissionApprovalResponse>);
-    const resolution = thread.resolveApprovalSelection(key, optionId);
-    if (!resolution) return;
-    this.clearAttention(thread.id);
-    this.notifyStateChanged();
-    if (!resolution.hasPending) {
-      this.options.onAttentionCleared?.();
-    }
-    thread.setStatus("working");
-    this.notifyStateChanged();
+    this.interaction.respondPermission(requestId, optionId);
   }
 
   private handleSocketOpen(): void {
@@ -1327,17 +968,4 @@ export class CodexController {
       this.notifyStateChanged();
     }
   }
-}
-
-function imageInputs(images: Array<{ url: string; name: string }>): UserInput[] {
-  return images.map(({ url }) => ({
-    type: "image",
-    url,
-  }));
-}
-
-function imageMetadata(
-  images: Array<{ url: string; name: string }>,
-): Array<{ url: string; name?: string }> {
-  return images.map(({ url, name }) => ({ url, name }));
 }

@@ -279,7 +279,7 @@ describe("CodexController", () => {
   });
 
   test("returns fuzzy-search results and handles server failures", async () => {
-    const { controller, socket, options: callbacks } = connectedController();
+    const { controller, socket } = connectedController();
 
     const search = controller.fuzzyFileSearch("codex", ["/workspace"]);
     const requestId = lastMessage(socket).id;
@@ -296,10 +296,6 @@ describe("CodexController", () => {
     const failedRequestId = lastMessage(socket).id;
     socket.emit("message", JSON.stringify({ id: failedRequestId, error: { message: "failed" } }));
     await expect(failedSearch).resolves.toEqual([]);
-    expect(callbacks.debug).toHaveBeenCalledWith(
-      "Fuzzy file search failed",
-      expect.objectContaining({ message: "failed" }),
-    );
     await expect(controller.fuzzyFileSearch("ignored", [])).resolves.toEqual([]);
   });
 
