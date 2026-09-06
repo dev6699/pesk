@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import type { JsonRpcResponse } from "./protocol";
 
 export interface ProjectManagerOptions {
-  request: <TResult>(request: ProjectRequestInput) => Promise<JsonRpcResponse<TResult> | undefined>;
+  request: <TResult>(
+    request: ProjectRequestInput,
+    callback: (message: JsonRpcResponse<TResult>) => void,
+  ) => boolean;
   publishRendererState: () => void;
   setCommandNotice: (notice: string) => void;
   setConnectionError: (error: string) => void;
@@ -189,7 +192,7 @@ export class CodexProjectManager {
   /** Defers a full project refresh so notifications do not reorder requests. */
   scheduleRefresh(): void {
     setTimeout(() => {
-      void this.listProjects();
+      this.listProjects();
     }, 0);
   }
 
@@ -350,9 +353,12 @@ export class CodexProjectManager {
     request: ProjectRequestInput,
     handle: (message: JsonRpcResponse<TResult>) => boolean,
   ): Promise<boolean> {
-    return this.options
-      .request<TResult>(request)
-      .then((message) => (message ? handle(message) : false));
+    return new Promise((resolve) => {
+      const accepted = this.options.request<TResult>(request, (message) => {
+        resolve(handle(message));
+      });
+      if (!accepted) resolve(false);
+    });
   }
 }
 

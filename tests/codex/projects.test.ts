@@ -25,18 +25,19 @@ test("validates project request inputs", () => {
 
 function projectManagerHarness() {
   let nextId = 0;
+  let acceptsRequests = true;
   const requests = new Map<number, (message: JsonRpcResponse<unknown>) => void>();
   const sent: Array<{ method: string; params: unknown }> = [];
   const setCommandNotice = jest.fn();
   const setConnectionError = jest.fn();
   const publishRendererState = jest.fn();
   const manager = new CodexProjectManager({
-    request: async (request) => {
+    request: (request, callback) => {
+      if (!acceptsRequests) return false;
       const id = ++nextId;
       sent.push(request);
-      return new Promise((resolve) =>
-        requests.set(id, resolve as (message: JsonRpcResponse<unknown>) => void),
-      );
+      requests.set(id, callback as (message: JsonRpcResponse<unknown>) => void);
+      return true;
     },
     publishRendererState,
     setCommandNotice,
@@ -49,6 +50,9 @@ function projectManagerHarness() {
     setCommandNotice,
     setConnectionError,
     publishRendererState,
+    setRequestAccepted: (accepted: boolean) => {
+      acceptsRequests = accepted;
+    },
   };
 }
 
@@ -127,10 +131,15 @@ test("handles project commands through the manager", async () => {
   await Promise.resolve();
 
   expect(harness.manager.manageProject("create New Project /new-project")).toBe(true);
-  harness.requests.get(4)!({ id: 4, result: { project } });
+  harness.requests.get(4)!({ id: 4, result: { project: managedProject } });
+  await Promise.resolve();
   await Promise.resolve();
   expect(harness.manager.manageProject("rename project-1 Renamed")).toBe(true);
-  harness.requests.get(5)!({ id: 5, result: { project: { ...project, name: "Renamed" } } });
+  harness.requests.get(5)!({
+    id: 5,
+    result: { project: { ...managedProject, name: "Renamed" } },
+  });
+  await Promise.resolve();
   await Promise.resolve();
   expect(harness.manager.manageProject("remove-root project-1 /workspace")).toBe(true);
   harness.requests.get(6)!({ id: 6, result: { project } });
@@ -222,4 +231,12 @@ test("reports malformed and failed project responses", async () => {
   harness.requests.get(7)!({ id: 7, error: "failed" });
   await expect(failedDelete).resolves.toBe(false);
   expect(harness.setConnectionError).toHaveBeenCalledWith("Unable to delete project.");
+});
+
+test("resolves false when the project request transport rejects a request", async () => {
+  const harness = projectManagerHarness();
+  harness.setRequestAccepted(false);
+
+  await expect(harness.manager.listProjects()).resolves.toBe(false);
+  expect(harness.sent).toHaveLength(0);
 });

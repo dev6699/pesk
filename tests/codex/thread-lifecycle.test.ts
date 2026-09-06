@@ -11,7 +11,7 @@ import type { JsonRpcResponse } from "../../src/codex/protocol";
 function fixture(requestAccepted = true) {
   const threadManager = new CodexThreadManager();
   const projectManager = new CodexProjectManager({
-    request: jest.fn(() => Promise.resolve(undefined)),
+    request: jest.fn(() => true),
     publishRendererState: jest.fn(),
     setCommandNotice: jest.fn(),
     setConnectionError: jest.fn(),

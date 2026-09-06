@@ -23,7 +23,7 @@ import { CodexWebSocketTransport, type CodexSocketTransport } from "./websocket"
 import { CodexThread, parseTokenUsageValue, approvalOptions } from "./thread";
 import { CodexThreadManager } from "./thread-manager";
 import { randomUUID } from "node:crypto";
-import { CodexProjectManager, type ProjectRequestInput } from "./projects";
+import { CodexProjectManager } from "./projects";
 import type {
   TurnStartResponse,
   ReviewStartResponse,
@@ -115,7 +115,7 @@ export class CodexController {
     this.options = options;
     this.socket = socket;
     this.projectManager = new CodexProjectManager({
-      request: (request) => this.requestProject(request),
+      request: (request, callback) => this.request(request, callback),
       publishRendererState: () => this.notifyStateChanged(),
       setCommandNotice: (notice) => this.threadManager.activeThread.setCommandNotice(notice),
       setConnectionError: (error) => {
@@ -235,17 +235,6 @@ export class CodexController {
     this.socket.setRequest(id, callback);
   }
 
-  private requestProject<TResult>(
-    request: ProjectRequestInput,
-  ): Promise<JsonRpcResponse<TResult> | undefined> {
-    if (!this.initialized) return Promise.resolve(undefined);
-    const id = ++this.nextId;
-    return new Promise((resolve) => {
-      this.setRequest<TResult>(id, resolve);
-      this.send({ ...request, id } as never);
-    });
-  }
-
   private request<TResult>(
     request: OutgoingRequestInput,
     callback: (message: JsonRpcResponse<TResult>) => void,
@@ -273,11 +262,6 @@ export class CodexController {
   /** Lists authoritative projects, optionally appending a server cursor page. */
   listProjects(cursor: string | null = null): Promise<boolean> {
     return this.projectManager.listProjects(cursor);
-  }
-
-  /** Defers notification-driven refresh so it cannot reorder thread requests. */
-  private scheduleProjectRefresh(): void {
-    this.projectManager.scheduleRefresh();
   }
 
   /** Reads one project and replaces its cached entry without changing thread state. */
@@ -845,7 +829,7 @@ export class CodexController {
       this.notifyStateChanged();
       this.lifecycle.resetTransportState();
       this.lifecycle.discover();
-      this.scheduleProjectRefresh();
+      this.projectManager.scheduleRefresh();
     });
     this.send({
       method: "initialize",
@@ -978,7 +962,7 @@ export class CodexController {
         this.refreshQueue(message.params.threadId);
         break;
       case "project/changed":
-        this.scheduleProjectRefresh();
+        this.projectManager.scheduleRefresh();
         break;
       case "thread/project/updated":
         this.lifecycle.handleProjectUpdated(message, thread);
