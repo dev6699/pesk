@@ -29,6 +29,11 @@ class FakeElement {
   }
 }
 
+class FakeImage extends FakeElement {
+  hidden = true;
+  src = "";
+}
+
 function createStatusSound(): HTMLAudioElement {
   return {
     currentTime: 0,
@@ -42,7 +47,7 @@ function createStatusSound(): HTMLAudioElement {
 
 function createRenderer(sound = createStatusSound()) {
   return new PetRenderer({
-    image: new FakeElement() as never,
+    image: new FakeImage() as never,
     pet: new FakeElement() as never,
     status: new FakeElement() as never,
     statusLabel: { textContent: "" } as unknown as HTMLElement,
@@ -60,6 +65,66 @@ beforeEach(() => {
 });
 
 describe("PetRenderer", () => {
+  test("hides the fallback until the selected animation is loaded", async () => {
+    let resolveAnimations!: (animations: AnimationFrames[]) => void;
+    const getAnimations = jest.fn(
+      () => new Promise<AnimationFrames[]>((resolve) => (resolveAnimations = resolve)),
+    );
+    window.peskApi.getAnimations = getAnimations;
+    const image = new FakeImage();
+    const renderer = new PetRenderer({
+      image: image as never,
+      pet: new FakeElement() as never,
+      status: new FakeElement() as never,
+      statusLabel: { textContent: "" } as unknown as HTMLElement,
+      statusSound: createStatusSound(),
+      chatOnly: false,
+      state: defaultRendererState(),
+    });
+
+    renderer.updateState({
+      ...defaultRendererState(),
+      settings: { ...defaultRendererState().settings, animation: "happy" },
+    });
+    const loading = renderer.loadAnimations();
+
+    expect(image.hidden).toBe(true);
+    expect(getAnimations).toHaveBeenCalledTimes(1);
+
+    resolveAnimations([{ name: "happy", frames: ["happy-1.svg"], fps: 8, size: 200 }]);
+    await loading;
+
+    expect(image.hidden).toBe(false);
+    expect(image.src).toBe("happy-1.svg");
+  });
+
+  test("uses the cached animation list for later state changes", async () => {
+    const getAnimations = jest.fn(async () => [
+      { name: "idle", frames: ["idle-1.svg"], fps: 6, size: 180 },
+      { name: "happy", frames: ["happy-1.svg"], fps: 8, size: 200 },
+    ]);
+    window.peskApi.getAnimations = getAnimations;
+    const image = new FakeImage();
+    const renderer = new PetRenderer({
+      image: image as never,
+      pet: new FakeElement() as never,
+      status: new FakeElement() as never,
+      statusLabel: { textContent: "" } as unknown as HTMLElement,
+      statusSound: createStatusSound(),
+      chatOnly: false,
+      state: defaultRendererState(),
+    });
+
+    await renderer.loadAnimations();
+    renderer.updateState({
+      ...defaultRendererState(),
+      settings: { ...defaultRendererState().settings, animation: "happy" },
+    });
+
+    expect(getAnimations).toHaveBeenCalledTimes(1);
+    expect(image.src).toBe("happy-1.svg");
+  });
+
   test("does not play automatically when working becomes idle or waiting", () => {
     const sound = createStatusSound();
     const renderer = createRenderer(sound);

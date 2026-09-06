@@ -22,6 +22,8 @@ export class PetRenderer {
   private animationFps = 6;
   private configuredPetSize = 180;
   private availableAnimations: AnimationFrames[] = [];
+  private animationLoadPromise: Promise<void> | undefined;
+  private animationsLoaded = false;
   private currentAnimationName = "idle";
   private focused = false;
   private statusTimer: number | undefined;
@@ -67,8 +69,11 @@ export class PetRenderer {
     this.updateStatusSound(next.assets.codexStatusSoundUrl);
     this.updateStatus(next);
     this.updateAggregateStatus(next);
-    if (animationChanged || (modeChanged && next.settings.animationMode === "selected")) {
-      void this.selectAnimation(next.settings.animation);
+    if (
+      this.animationsLoaded &&
+      (animationChanged || (modeChanged && next.settings.animationMode === "selected"))
+    ) {
+      this.selectAnimation(next.settings.animation);
     }
     this.resizeElement();
   }
@@ -95,12 +100,23 @@ export class PetRenderer {
   }
 
   async loadAnimations(): Promise<void> {
-    const animations = await window.peskApi.getAnimations();
-    this.availableAnimations = animations;
-    const selected =
-      animations.find((animation) => animation.name === this.state.settings.animation) ??
-      animations[0];
-    if (selected?.frames.length) this.applyAnimation(selected);
+    if (this.animationLoadPromise) return this.animationLoadPromise;
+    this.animationLoadPromise = window.peskApi
+      .getAnimations()
+      .then((animations) => {
+        this.availableAnimations = animations;
+        this.animationsLoaded = true;
+        const selected =
+          animations.find((animation) => animation.name === this.state.settings.animation) ??
+          animations[0];
+        if (selected?.frames.length) this.applyAnimation(selected);
+        else this.showFallbackAnimation();
+      })
+      .catch(() => {
+        this.animationsLoaded = true;
+        this.showFallbackAnimation();
+      });
+    return this.animationLoadPromise;
   }
 
   animate(now: number): void {
@@ -122,10 +138,8 @@ export class PetRenderer {
     }
   }
 
-  private async selectAnimation(name: string): Promise<void> {
-    const animations = await window.peskApi.getAnimations();
-    this.availableAnimations = animations;
-    const selected = animations.find((animation) => animation.name === name);
+  private selectAnimation(name: string): void {
+    const selected = this.availableAnimations.find((animation) => animation.name === name);
     if (!selected?.frames.length) return;
     this.applyAnimation(selected);
   }
@@ -138,6 +152,11 @@ export class PetRenderer {
     this.configuredPetSize = selected.size;
     this.resizeElement();
     this.options.image.src = this.animationFrames[0];
+    this.options.image.hidden = false;
+  }
+
+  private showFallbackAnimation(): void {
+    this.options.image.hidden = false;
   }
 
   private resizeElement(): void {
