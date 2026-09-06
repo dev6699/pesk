@@ -27,13 +27,13 @@ export class CodexThreadManager {
   private pendingThreadResumeId: string | undefined;
   private publicationSuppression = 0;
 
-  /** Server thread metadata in renderer display order. */
+  /** Server thread metadata in the controller's display order. */
   readonly threads: Thread[] = [];
 
-  /** The ID of the thread currently selected by the renderer. */
+  /** The ID of the currently selected thread. */
   private selectedId: string | undefined;
 
-  /** Returns the ID of the thread currently selected by the renderer. */
+  /** Returns the ID of the currently selected thread. */
   get selectedThreadId(): string | undefined {
     return this.selectedId;
   }
@@ -43,7 +43,7 @@ export class CodexThreadManager {
     this.select(threadId);
   }
 
-  /** Whether background-thread updates should be hidden from renderer publication. */
+  /** Whether background-thread updates should be hidden from publication. */
   get isPublicationSuppressed(): boolean {
     return this.publicationSuppression > 0;
   }
@@ -63,7 +63,7 @@ export class CodexThreadManager {
     return this.selectedId === threadId;
   }
 
-  /** Reports whether the renderer currently has a selected thread. */
+  /** Reports whether a thread is currently selected. */
   hasSelectedThread(): boolean {
     return this.selectedId !== undefined;
   }
@@ -83,7 +83,7 @@ export class CodexThreadManager {
     if (this.selectedId) this.thread(this.selectedId).captureLiveHistoryForReload();
   }
 
-  /** Changes the renderer's selected thread without creating a thread instance. */
+  /** Changes the selected thread without creating a thread instance. */
   select(threadId: string | undefined): void {
     this.selectedId = threadId;
   }
@@ -106,7 +106,7 @@ export class CodexThreadManager {
     return this.threadInstances.has(threadId);
   }
 
-  /** Runs work against a thread while suppressing renderer publication for background threads. */
+  /** Runs work against a thread while suppressing publication for background threads. */
   withThread<T>(threadId: string, callback: (thread: CodexThread) => T): T {
     const thread = this.thread(threadId);
     if (this.selectedId === threadId) return callback(thread);
@@ -118,7 +118,7 @@ export class CodexThreadManager {
     }
   }
 
-  /** Replaces the server thread metadata shown by the renderer. */
+  /** Replaces the server thread metadata collection. */
   replaceThreads(threads: Thread[]): void {
     this.threads.splice(0, this.threads.length, ...threads);
   }
@@ -136,7 +136,7 @@ export class CodexThreadManager {
     ]);
   }
 
-  /** Removes one server thread from the renderer metadata list. */
+  /** Removes one server thread from the metadata collection. */
   removeThread(threadId: string): void {
     this.replaceThreads(this.threads.filter((thread) => thread.id !== threadId));
   }
@@ -243,7 +243,7 @@ export class CodexThreadManager {
     if (!this.backgroundWork.has(threadId)) this.backgroundWork.set(threadId, "working");
   }
 
-  /** Marks background work complete while retaining it for the renderer summary. */
+  /** Marks background work complete while retaining its status. */
   completeBackgroundWork(threadId: string): void {
     if (threadId !== this.selectedThreadId) {
       this.trackBackgroundWork(threadId);
@@ -357,7 +357,7 @@ export class CodexThreadManager {
     return this.threadInstances;
   }
 
-  /** Builds renderer activity summaries from server metadata and local state. */
+  /** Builds thread activity summaries from server metadata and local state. */
   getThreadActivities(): CodexThreadActivity[] {
     const known = new Map<string, Thread | undefined>(
       this.threads.map((thread) => [thread.id, thread]),
