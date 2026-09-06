@@ -54,11 +54,10 @@ function lastMessage(socket: FakeWebSocket): Record<string, any> {
 
 function controllerOptions() {
   return {
-    publishRendererState: jest.fn(),
-    publishStreamDelta: jest.fn(),
-    handleNotification: jest.fn(),
-    isChatVisible: jest.fn(() => false),
-    clearNotification: jest.fn(),
+    onStateChanged: jest.fn(),
+    onStreamDelta: jest.fn(),
+    onAttention: jest.fn(),
+    onAttentionCleared: jest.fn(),
     debug: jest.fn(),
   };
 }
@@ -425,24 +424,12 @@ describe("CodexController goal integration", () => {
     const failedSetId = lastMessage(socket).id;
     socket.emit("message", JSON.stringify({ id: failedSetId, error: { message: "denied" } }));
     expect(controller.getState().error).toContain("Unable to create the goal");
-    expect(callbacks.publishRendererState).toHaveBeenCalled();
+    expect(callbacks.onStateChanged).toHaveBeenCalled();
 
     expect(controller.submitPrompt("/goal clear")).toBe(true);
     const clearId = lastMessage(socket).id;
     socket.emit("message", JSON.stringify({ id: clearId, result: { cleared: false } }));
     expect(controller.getState().goal).toBeUndefined();
-
-    const internal = controller as unknown as { restoreGoal: (threadId: string) => void };
-    internal.restoreGoal("thread-1");
-    const restoreId = lastMessage(socket).id;
-    socket.emit(
-      "message",
-      JSON.stringify({
-        id: restoreId,
-        result: { goal: { threadId: "thread-1", objective: "restored", status: "active" } },
-      }),
-    );
-    expect(controller.getState().goal?.objective).toBe("restored");
   });
 
   test("does not synthesize a visible continuation prompt after an idle turn", () => {

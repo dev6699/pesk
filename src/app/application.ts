@@ -132,7 +132,6 @@ export class PeskApplication implements ApplicationContext {
       isChatFocused: () => this.chat.window?.isFocused() ?? false,
     });
     this._focus = new FocusController(this.chat, this.pet);
-    this.notifications = new NotificationController(this.pet, this.chat, this.webServer);
     this._menu = new MenuController({
       getSettings: () => this.settings,
       getPetWindow: () => this.pet.window,
@@ -144,18 +143,21 @@ export class PeskApplication implements ApplicationContext {
     });
     this._codex = new CodexController(
       {
-        publishRendererState: () => this.state.publish(),
-        publishStreamDelta: (delta) => this.state.publishStreamDelta(delta),
-        handleNotification: (request) => this.notifications.handle(request),
-        isChatVisible: () => this.chat.window?.isVisible() ?? false,
-        clearNotification: () => this.notifications.clear(),
+        onStateChanged: (state) => this.state.publishCodex(state),
+        onStreamDelta: (delta) => this.state.publishStreamDelta(delta),
+        onAttention: (event) => this.notifications.handle(event),
+        onAttentionCleared: () => this.notifications.clear(),
         debug,
       },
       new CodexWebSocketTransport(config.codexAppServerUrl),
     );
+    this.notifications = new NotificationController(this.pet, this.chat, this.webServer, {
+      codex: this.codex,
+      isChatVisible: () => this.chat.window?.isVisible() ?? false,
+    });
     this._state = new RendererStatePublisher(
-      () => this.settings,
       this.codex,
+      () => this.settings,
       () => this.statusSoundUrl,
       () => this.theme,
       () => this.themeName,

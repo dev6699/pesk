@@ -56,11 +56,10 @@ function respondHistoryPage(socket: FakeWebSocket, turns: unknown[]): void {
 
 function options() {
   return {
-    publishRendererState: jest.fn(),
-    publishStreamDelta: jest.fn(),
-    handleNotification: jest.fn(),
-    isChatVisible: jest.fn(() => false),
-    clearNotification: jest.fn(),
+    onStateChanged: jest.fn(),
+    onStreamDelta: jest.fn(),
+    onAttention: jest.fn(),
+    onAttentionCleared: jest.fn(),
     debug: jest.fn(),
   };
 }
@@ -276,7 +275,7 @@ describe("CodexController", () => {
     expect(controller.getState().rateLimits).toEqual({
       primary: { usedPercent: 42 },
     });
-    expect(callbacks.publishRendererState).toHaveBeenCalled();
+    expect(callbacks.onStateChanged).toHaveBeenLastCalledWith(controller.getState());
   });
 
   test("returns fuzzy-search results and handles server failures", async () => {
@@ -1233,8 +1232,8 @@ describe("CodexController", () => {
 
   test("publishes assistant completion before the next tool item update", () => {
     const { socket, options: callbacks } = connectedController();
-    callbacks.publishRendererState.mockClear();
-    callbacks.publishStreamDelta.mockClear();
+    callbacks.onStateChanged.mockClear();
+    callbacks.onStreamDelta.mockClear();
 
     socket.emit(
       "message",
@@ -1277,15 +1276,15 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(callbacks.publishStreamDelta).toHaveBeenCalledWith({
+    expect(callbacks.onStreamDelta).toHaveBeenCalledWith({
       threadId: "thread-1",
       itemId: "assistant-1",
       kind: "assistant",
       delta: "",
       completed: true,
     });
-    expect(callbacks.publishStreamDelta.mock.invocationCallOrder[0]).toBeLessThan(
-      callbacks.publishRendererState.mock.invocationCallOrder.at(-1) ?? Infinity,
+    expect(callbacks.onStreamDelta.mock.invocationCallOrder[0]).toBeLessThan(
+      callbacks.onStateChanged.mock.invocationCallOrder.at(-1) ?? Infinity,
     );
   });
 
@@ -2492,7 +2491,7 @@ describe("CodexController", () => {
       requestId: "request-1",
       isBlocking: true,
     });
-    expect(controllerOptions.handleNotification).toHaveBeenCalledWith(
+    expect(controllerOptions.onAttention).toHaveBeenCalledWith(
       expect.objectContaining({
         event: "userInputRequested",
         threadId: "thread-1",
@@ -2524,7 +2523,7 @@ describe("CodexController", () => {
       ...internal.threadManager.threads,
       { id: "other-thread", status: { type: "idle" } },
     ];
-    controllerOptions.handleNotification.mockClear();
+    controllerOptions.onAttention.mockClear();
 
     socket.emit(
       "message",
@@ -2550,11 +2549,12 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("other-thread");
+    expect(controller.getState().threadId).toBe("thread-1");
+    controller.selectThread("other-thread", false);
     expect(controller.getState().pendingUserInput).toMatchObject({
       requestId: "background-request",
     });
-    expect(controllerOptions.handleNotification).toHaveBeenCalledWith(
+    expect(controllerOptions.onAttention).toHaveBeenCalledWith(
       expect.objectContaining({ event: "userInputRequested" }),
     );
 
@@ -2574,7 +2574,6 @@ describe("CodexController", () => {
       ...internal.threadManager.threads,
       { id: "other-thread", status: { type: "idle" } },
     ];
-    controllerOptions.isChatVisible.mockReturnValue(true);
 
     socket.emit(
       "message",
@@ -2590,7 +2589,7 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().threadId).toBe("thread-1");
-    expect(controllerOptions.handleNotification).toHaveBeenCalledWith(
+    expect(controllerOptions.onAttention).toHaveBeenCalledWith(
       expect.objectContaining({
         event: "approvalRequested",
         threadId: "other-thread",
@@ -2622,7 +2621,8 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("other-thread");
+    expect(controller.getState().threadId).toBe("thread-1");
+    controller.selectThread("other-thread", false);
     expect(controller.getState().pendingApproval).toMatchObject({
       requestId: "background-approval",
     });
@@ -2637,7 +2637,6 @@ describe("CodexController", () => {
       ...internal.threadManager.threads,
       { id: "other-thread", status: { type: "idle" } },
     ];
-    controllerOptions.isChatVisible.mockReturnValue(true);
 
     socket.emit(
       "message",
@@ -2700,7 +2699,6 @@ describe("CodexController", () => {
       ...internal.threadManager.threads,
       { id: "other-thread", status: { type: "idle" } },
     ];
-    controllerOptions.isChatVisible.mockReturnValue(true);
 
     socket.emit(
       "message",
@@ -2733,7 +2731,6 @@ describe("CodexController", () => {
       ...internal.threadManager.threads,
       { id: "other-thread", status: { type: "idle" } },
     ];
-    controllerOptions.isChatVisible.mockReturnValue(true);
 
     const statusChanged = () =>
       socket.emit(
@@ -2783,8 +2780,8 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("other-thread");
-    expect(controllerOptions.handleNotification).toHaveBeenCalledWith(
+    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controllerOptions.onAttention).toHaveBeenCalledWith(
       expect.objectContaining({ event: "turnCompleted" }),
     );
   });
@@ -3113,8 +3110,8 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState().status).toBe("waiting");
-    expect(controllerOptions.publishRendererState.mock.invocationCallOrder[0]).toBeLessThan(
-      controllerOptions.handleNotification.mock.invocationCallOrder[0],
+    expect(controllerOptions.onStateChanged.mock.invocationCallOrder[0]).toBeLessThan(
+      controllerOptions.onAttention.mock.invocationCallOrder[0],
     );
     expect(controller.getState().pendingApproval).toMatchObject({
       requestId: 88,
@@ -3142,7 +3139,7 @@ describe("CodexController", () => {
       id: 88,
       result: { decision: "accept" },
     });
-    expect(controllerOptions.clearNotification).toHaveBeenCalledTimes(1);
+    expect(controllerOptions.onAttentionCleared).toHaveBeenCalledTimes(1);
     expect(controller.getState().status).toBe("working");
   });
 
@@ -3384,7 +3381,7 @@ describe("CodexController", () => {
 
   test("does not publish selected state for background streaming deltas", () => {
     const { controller, socket, options: controllerOptions } = connectedController();
-    controllerOptions.publishRendererState.mockClear();
+    controllerOptions.onStateChanged.mockClear();
 
     socket.emit(
       "message",
@@ -3394,13 +3391,13 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controllerOptions.publishRendererState).not.toHaveBeenCalled();
+    expect(controllerOptions.onStateChanged).not.toHaveBeenCalled();
   });
 
   test("publishes selected assistant deltas without a full state snapshot", () => {
     const { controller, socket, options: controllerOptions } = connectedController();
-    controllerOptions.publishRendererState.mockClear();
-    controllerOptions.publishStreamDelta.mockClear();
+    controllerOptions.onStateChanged.mockClear();
+    controllerOptions.onStreamDelta.mockClear();
 
     socket.emit(
       "message",
@@ -3410,13 +3407,13 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controllerOptions.publishStreamDelta).toHaveBeenCalledWith({
+    expect(controllerOptions.onStreamDelta).toHaveBeenCalledWith({
       threadId: "thread-1",
       kind: "assistant",
       itemId: "assistant-1",
       delta: "selected",
     });
-    expect(controllerOptions.publishRendererState).not.toHaveBeenCalled();
+    expect(controllerOptions.onStateChanged).not.toHaveBeenCalled();
   });
 
   test("bounds inactive thread history retention", () => {

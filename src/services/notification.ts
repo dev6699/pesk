@@ -1,16 +1,11 @@
 import type { ChatWindowController } from "../windows/chat";
 import type { ChatWebServer } from "./chat-web-server";
 import type { PetWindowController } from "../windows/pet";
+import type { CodexController, CodexAttentionEvent } from "../codex/controller";
 
-export type NotificationEvent = "turnCompleted" | "approvalRequested" | "userInputRequested";
-
-export interface NotificationRequest {
-  event: NotificationEvent;
-  threadId: string;
-  selectedThreadId?: string;
-  requestId?: string | number;
-  command?: string;
-  reason?: string;
+export interface NotificationControllerOptions {
+  codex: Pick<CodexController, "selectThread" | "selectNextAttentionThread">;
+  isChatVisible: () => boolean;
 }
 
 /** Decides and coordinates all user-facing effects for Codex attention. */
@@ -19,12 +14,16 @@ export class NotificationController {
     private readonly pet: PetWindowController,
     private readonly chat: ChatWindowController,
     private readonly webServer: ChatWebServer,
+    private readonly options?: NotificationControllerOptions,
   ) {}
 
-  handle(request: NotificationRequest): void {
+  handle(event: CodexAttentionEvent): void {
+    if (!this.options?.isChatVisible()) {
+      this.options?.codex.selectThread(event.threadId, false);
+    }
     const focused = this.isFocused();
     const shouldAlert = !focused;
-    const kind = this.kindFor(request.event);
+    const kind = this.kindFor(event.event);
     if (shouldAlert) this.pet.setBackgroundAttention(true);
 
     if (kind === "finished") {
@@ -49,6 +48,9 @@ export class NotificationController {
 
   clear(): void {
     this.pet.setCodexUpdateIndicator(false);
+    if (this.options && !this.options.isChatVisible()) {
+      this.options.codex.selectNextAttentionThread();
+    }
   }
 
   private showPetForUpdate(): void {
@@ -61,7 +63,7 @@ export class NotificationController {
     return Boolean(this.pet.window?.isFocused() || this.chat.window?.isFocused());
   }
 
-  private kindFor(event: NotificationEvent): "finished" | "approval" | "input" {
+  private kindFor(event: CodexAttentionEvent["event"]): "finished" | "approval" | "input" {
     if (event === "turnCompleted") return "finished";
     if (event === "userInputRequested") return "input";
     return "approval";

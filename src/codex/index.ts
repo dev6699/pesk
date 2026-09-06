@@ -1,4 +1,8 @@
-export { CodexController } from "./controller";
+export {
+  CodexController,
+  type CodexAttentionEvent,
+  type CodexControllerOptions,
+} from "./controller";
 export { CodexThread } from "./thread";
 export { CodexThreadManager, type HistoryPaginationState } from "./thread-manager";
 export { CodexProjectManager, type ProjectManagerOptions } from "./projects";

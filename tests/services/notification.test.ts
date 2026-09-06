@@ -21,12 +21,19 @@ function createController() {
     focusForUserInput: jest.fn(),
   };
   const webServer = { notifyCodexAttention: jest.fn() };
-  const controller = new NotificationController(pet as never, chat as never, webServer as never);
-  return { controller, pet, chat, webServer };
+  const codex = {
+    selectThread: jest.fn(),
+    selectNextAttentionThread: jest.fn(),
+  };
+  const controller = new NotificationController(pet as never, chat as never, webServer as never, {
+    codex,
+    isChatVisible: () => chat.window.isVisible(),
+  });
+  return { controller, pet, chat, webServer, codex };
 }
 
 test("coordinates every background attention effect", () => {
-  const { controller, pet, chat, webServer } = createController();
+  const { controller, pet, chat, webServer, codex } = createController();
 
   controller.handle({
     event: "approvalRequested",
@@ -39,6 +46,20 @@ test("coordinates every background attention effect", () => {
   expect(chat.showInactive).toHaveBeenCalled();
   expect(pet.playCodexStatusSound).toHaveBeenCalled();
   expect(webServer.notifyCodexAttention).toHaveBeenCalledWith("approval");
+  expect(codex.selectThread).toHaveBeenCalledWith("background", false);
+});
+
+test("does not change the selected thread while chat is visible", () => {
+  const { controller, chat, codex } = createController();
+  chat.window.isVisible.mockReturnValue(true);
+
+  controller.handle({
+    event: "userInputRequested",
+    threadId: "background",
+    selectedThreadId: "selected",
+  });
+
+  expect(codex.selectThread).not.toHaveBeenCalled();
 });
 
 test("does not alert for a focused selected thread", () => {
@@ -121,9 +142,10 @@ test("alerts again while an unfocused background update is already blue", () => 
 });
 
 test("clears the pet attention indicator", () => {
-  const { controller, pet } = createController();
+  const { controller, pet, codex } = createController();
 
   controller.clear();
 
   expect(pet.setCodexUpdateIndicator).toHaveBeenCalledWith(false);
+  expect(codex.selectNextAttentionThread).toHaveBeenCalled();
 });

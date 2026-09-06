@@ -13,7 +13,6 @@ import {
   stringValue,
 } from "./protocol";
 
-import type { NotificationRequest } from "../services/notification";
 import type {
   JsonRpcResponse,
   OutgoingRequestInput,
@@ -63,25 +62,31 @@ Steer message:
 `;
 const HISTORY_PAGE_LIMIT = 5;
 
-/** Codex-related settings persisted alongside the pet settings. */
-interface Options {
-  publishRendererState: () => void;
-  publishStreamDelta?: (delta: CodexStreamDelta) => void;
-  handleNotification: (request: NotificationRequest) => void;
-  isChatVisible: () => boolean;
-  clearNotification?: () => void;
+export interface CodexControllerOptions {
+  onStateChanged: (state: CodexState) => void;
+  onStreamDelta?: (delta: CodexStreamDelta) => void;
+  onAttention: (event: CodexAttentionEvent) => void;
+  onAttentionCleared?: () => void;
   debug: (...values: unknown[]) => void;
+}
+
+export interface CodexAttentionEvent {
+  event: "turnCompleted" | "approvalRequested" | "userInputRequested";
+  threadId: string;
+  selectedThreadId?: string;
+  requestId?: string | number;
+  command?: string;
+  reason?: string;
 }
 
 /**
  * Owns the Codex app-server connection and translates protocol events into
- * renderer-friendly conversation and status state.
- *
- * Window management remains in main.ts; callbacks notify it about UI changes.
+ * application-friendly conversation and status state. UI and window effects
+ * are owned by the application layer consuming these callbacks.
  */
 export class CodexController {
   private readonly socket: CodexSocketTransport;
-  /** Human-readable transport error shown by the renderer. */
+  /** Human-readable transport error exposed through the Codex state. */
   private connectionError: string | undefined;
   /** Server-owned project operations and collection, separate from thread selection. */
   private readonly projectManager: CodexProjectManager;
@@ -89,7 +94,7 @@ export class CodexController {
   private startingNewThread = false;
   /** Latest account-wide ChatGPT rate-limit snapshot. */
   private rateLimits: RateLimitSnapshot | undefined;
-  /** Prevents duplicate initial rate-limit reads from multiple renderer windows. */
+  /** Prevents duplicate initial rate-limit reads from concurrent callers. */
   private rateLimitsReadPending = false;
   /** Whether initialize/initialized completed on the current socket. */
   private initialized = false;
@@ -101,26 +106,18 @@ export class CodexController {
   private readonly modelManager: CodexModelManager;
   private readonly goalManager: CodexGoalManager;
   private readonly lifecycle: CodexThreadLifecycle;
+  private readonly options: CodexControllerOptions;
 
-  /** Creates a controller with callbacks for renderer and window updates. */
-  constructor(options: Options, socket: CodexSocketTransport = new CodexWebSocketTransport()) {
-    this.options = {
-      ...options,
-      publishRendererState: () => {
-        if (!this.threadManager.isPublicationSuppressed) {
-          options.publishRendererState();
-        }
-      },
-      handleNotification: (request) => {
-        if (!this.threadManager.isPublicationSuppressed) {
-          options.handleNotification(request);
-        }
-      },
-    };
+  /** Creates a controller with application-level event callbacks. */
+  constructor(
+    options: CodexControllerOptions,
+    socket: CodexSocketTransport = new CodexWebSocketTransport(),
+  ) {
+    this.options = options;
     this.socket = socket;
     this.projectManager = new CodexProjectManager({
       request: (request) => this.requestProject(request),
-      publishRendererState: () => this.options.publishRendererState(),
+      publishRendererState: () => this.notifyStateChanged(),
       setCommandNotice: (notice) => this.threadManager.activeThread.setCommandNotice(notice),
       setConnectionError: (error) => {
         this.connectionError = error;
@@ -129,14 +126,14 @@ export class CodexController {
     this.modelManager = new CodexModelManager({
       request: (request, callback) => this.request(request, callback),
       getSelectedThreadId: () => this.threadManager.selectedThreadId,
-      publishRendererState: () => this.options.publishRendererState(),
+      publishRendererState: () => this.notifyStateChanged(),
       setCommandNotice: (notice) => this.threadManager.activeThread.setCommandNotice(notice),
     });
     this.goalManager = new CodexGoalManager({
       request: (request, callback) => this.request(request, callback),
       setGoal: (threadId, goal) =>
         this.threadManager.withThread(threadId, (targetThread) => targetThread.setGoal(goal)),
-      publishRendererState: () => this.options.publishRendererState(),
+      publishRendererState: () => this.notifyStateChanged(),
       setCommandNotice: (notice) => this.threadManager.activeThread.setCommandNotice(notice),
       setConnectionError: (error) => {
         this.connectionError = error;
@@ -147,7 +144,7 @@ export class CodexController {
       threadManager: this.threadManager,
       projectManager: this.projectManager,
       request: (message, callback) => this.request(message, callback),
-      publishRendererState: () => this.options.publishRendererState(),
+      publishRendererState: () => this.notifyStateChanged(),
       onThreadHydrated: (threadId) => {
         this.refreshQueue(threadId);
         this.goalManager.restore(threadId);
@@ -166,9 +163,15 @@ export class CodexController {
       .on("debug", (values) => this.options.debug(...values));
   }
 
-  private readonly options: Options;
+  private notifyStateChanged(): void {
+    if (!this.threadManager.isPublicationSuppressed) this.options.onStateChanged(this.getState());
+  }
 
-  /** Returns the current state snapshot for renderer IPC responses. */
+  private notifyAttention(event: CodexAttentionEvent): void {
+    if (!this.threadManager.isPublicationSuppressed) this.options.onAttention(event);
+  }
+
+  /** Returns the current Codex state snapshot for application consumers. */
   getState(): CodexState {
     const thread = this.threadManager.activeThread.snapshot();
     const pagination = this.threadManager.selectedHistoryState();
@@ -263,13 +266,17 @@ export class CodexController {
     return true;
   }
 
-  private restoreGoal(threadId: string): void {
-    this.goalManager.restore(threadId);
+  /** Selects a known Codex thread and resumes it. */
+  selectThread(id: string, focus = true): void {
+    this.lifecycle.select(id, focus);
   }
 
-  /** Selects a known Codex thread and resumes it. */
-  selectThread(id: string): void {
-    this.lifecycle.select(id);
+  /** Selects the next queued attention thread when the application allows it. */
+  selectNextAttentionThread(): boolean {
+    const threadId = this.threadManager.nextAttention();
+    if (typeof threadId !== "string" || this.threadManager.isSelected(threadId)) return false;
+    this.lifecycle.select(threadId, false);
+    return true;
   }
 
   /** Lists authoritative projects, optionally appending a server cursor page. */
@@ -330,7 +337,7 @@ export class CodexController {
   setCollaborationMode(mode: "default" | "plan"): void {
     const thread = this.threadManager.activeThread;
     thread.setCollaborationMode(mode);
-    this.options.publishRendererState();
+    this.notifyStateChanged();
   }
 
   /** Handles the native /goal command and its lifecycle controls. */
@@ -378,8 +385,7 @@ export class CodexController {
     thread.addMessage("user", answerText || "No answer provided.", pending.turnId);
     thread.clearUserInput();
     this.clearAttention(pending.threadId);
-    this.options.publishRendererState();
-    this.routeNextAttention();
+    this.notifyStateChanged();
     return true;
   }
 
@@ -392,7 +398,7 @@ export class CodexController {
       this.rateLimitsReadPending = false;
       if (message.result?.rateLimits) {
         this.rateLimits = message.result.rateLimits;
-        this.options.publishRendererState();
+        this.notifyStateChanged();
       }
     });
     this.send({
@@ -402,7 +408,7 @@ export class CodexController {
     } satisfies AccountRateLimitsRequest);
   }
 
-  /** Searches files below the requested roots for the renderer's picker. */
+  /** Searches files below the requested roots for application consumers. */
   fuzzyFileSearch(query: string, roots: string[]): Promise<FuzzyFileSearchResult[]> {
     if (!this.initialized || !this.isOpen() || !roots.length) {
       return Promise.resolve([]);
@@ -480,7 +486,7 @@ export class CodexController {
         targetThread.setActiveTurn(message.result?.turn.id);
         if (message.error) {
           targetThread.completeTurn(false);
-          this.options.publishRendererState();
+          this.notifyStateChanged();
         }
       });
     });
@@ -494,7 +500,7 @@ export class CodexController {
       },
     } satisfies ReviewStartRequest);
     thread.setStatus("working");
-    this.options.publishRendererState();
+    this.notifyStateChanged();
     return true;
   }
 
@@ -515,7 +521,7 @@ export class CodexController {
     }
     const steerPrompt = `${STEER_INSTRUCTIONS}${prompt}`;
     thread.addUserMessage(steerPrompt);
-    this.options.publishRendererState();
+    this.notifyStateChanged();
     const id = ++this.nextId;
     thread.rememberPrompt(prompt);
     thread.rememberPrompt(steerPrompt);
@@ -610,7 +616,7 @@ export class CodexController {
 
     thread.prepareTurn();
     thread.addUserMessage(prompt, undefined, imageMetadata(images));
-    this.options.publishRendererState();
+    this.notifyStateChanged();
     thread.rememberPrompt(prompt);
     const threadId = this.threadManager.selectedThreadId;
     if (threadId) {
@@ -634,18 +640,18 @@ export class CodexController {
         params: { threadId, command },
       } satisfies ThreadShellCommandRequest);
       this.threadManager.thread(threadId).setStatus("working");
-      this.options.publishRendererState();
+      this.notifyStateChanged();
     };
     if (this.threadManager.selectedThreadId) {
       this.threadManager.selectedThread().addUserMessage(`!${command}`);
-      this.options.publishRendererState();
+      this.notifyStateChanged();
       sendCommand(this.threadManager.selectedThreadId);
       return true;
     }
     const thread = this.threadManager.activeThread;
     if (thread.state.status !== "idle") return false;
     thread.addUserMessage(`!${command}`);
-    this.options.publishRendererState();
+    this.notifyStateChanged();
     return this.lifecycle.startShell((createdThread) => sendCommand(createdThread.id));
   }
 
@@ -696,7 +702,7 @@ export class CodexController {
       if (!thread.state.activeTurnId) {
         thread.setStatus("idle");
       }
-      this.options.publishRendererState();
+      this.notifyStateChanged();
     });
     this.send({
       method: "command/exec",
@@ -708,7 +714,7 @@ export class CodexController {
       },
     } satisfies CommandExecRequest);
     thread.setStatus("working");
-    this.options.publishRendererState();
+    this.notifyStateChanged();
     return true;
   }
   /** Queues text and image inputs while preserving attachment metadata locally. */
@@ -742,7 +748,7 @@ export class CodexController {
           ...(queuedImages.length ? { images: queuedImages } : {}),
           clientUserMessageId,
         });
-        this.options.publishRendererState();
+        this.notifyStateChanged();
       });
     });
     this.send({
@@ -760,7 +766,7 @@ export class CodexController {
       ...(queuedImages.length ? { images: queuedImages } : {}),
       clientUserMessageId,
     });
-    this.options.publishRendererState();
+    this.notifyStateChanged();
     return true;
   }
 
@@ -771,7 +777,7 @@ export class CodexController {
     this.setRequest<LocalQueueListResponse>(id, (message) => {
       this.threadManager.withThread(threadId, (targetThread) => {
         targetThread.replaceQueueFromServer(message.result?.data ?? []);
-        this.options.publishRendererState();
+        this.notifyStateChanged();
         if (message.result?.nextCursor) {
           this.refreshQueuePage(threadId, message.result.nextCursor);
         }
@@ -790,7 +796,7 @@ export class CodexController {
     this.setRequest<LocalQueueListResponse>(id, (message) => {
       this.threadManager.withThread(threadId, (targetThread) => {
         targetThread.appendQueueFromServer(message.result?.data ?? []);
-        this.options.publishRendererState();
+        this.notifyStateChanged();
         if (message.result?.nextCursor) this.refreshQueuePage(threadId, message.result.nextCursor);
       });
     });
@@ -827,18 +833,17 @@ export class CodexController {
     const resolution = thread.resolveApprovalSelection(key, optionId);
     if (!resolution) return;
     this.clearAttention(thread.id);
-    this.options.publishRendererState();
+    this.notifyStateChanged();
     if (!resolution.hasPending) {
-      this.options.clearNotification?.();
+      this.options.onAttentionCleared?.();
     }
     thread.setStatus("working");
-    this.options.publishRendererState();
-    this.routeNextAttention();
+    this.notifyStateChanged();
   }
 
   private handleSocketOpen(): void {
     this.connectionError = undefined;
-    this.options.publishRendererState();
+    this.notifyStateChanged();
     const id = ++this.nextId;
     this.setRequest<InitializeResponse>(id, () => {
       this.send({ method: "initialized" } satisfies ClientNotification);
@@ -846,7 +851,7 @@ export class CodexController {
       this.threadManager.activeThread.resetTransportState();
       this.threadManager.select(undefined);
       this.threadManager.setPendingResume(undefined);
-      this.options.publishRendererState();
+      this.notifyStateChanged();
       this.lifecycle.resetTransportState();
       this.lifecycle.discover();
       this.scheduleProjectRefresh();
@@ -865,7 +870,7 @@ export class CodexController {
     if (this.connectionError === details) return;
     this.connectionError = details;
     this.options.debug("Codex socket error", details);
-    this.options.publishRendererState();
+    this.notifyStateChanged();
   }
 
   /** Clears controller and thread state after a socket closes; the transport reconnects. */
@@ -892,7 +897,7 @@ export class CodexController {
     this.projectManager.reset();
     this.threadManager.clearTransportState();
     selectedThread.setStatus("idle");
-    this.options.publishRendererState();
+    this.notifyStateChanged();
   }
 
   /** Routes a thread-scoped event into the owning thread. */
@@ -923,10 +928,9 @@ export class CodexController {
       }
       if (wasBackgroundThread && message.method === "turn/completed") {
         this.threadManager.completeBackgroundWork(threadId);
-        if (!this.options.isChatVisible()) this.lifecycle.select(threadId, false);
       }
       if (message.method === "turn/completed") {
-        this.options.handleNotification({
+        this.notifyAttention({
           event: "turnCompleted",
           threadId,
           selectedThreadId: previousSelectedThread,
@@ -935,14 +939,14 @@ export class CodexController {
         message.method === "item/commandExecution/requestApproval" ||
         message.method === "item/fileChange/requestApproval"
       ) {
-        this.options.handleNotification({
+        this.notifyAttention({
           event: "approvalRequested",
           threadId,
           selectedThreadId: previousSelectedThread,
           requestId: message.id,
         });
       } else if (message.method === "item/tool/requestUserInput") {
-        this.options.handleNotification({
+        this.notifyAttention({
           event: "userInputRequested",
           threadId,
           selectedThreadId: previousSelectedThread,
@@ -962,7 +966,7 @@ export class CodexController {
           message.method === "item/fileChange/requestApproval" ||
           message.method === "item/tool/requestUserInput" ||
           message.method === "thread/status/changed");
-      if (shouldPublish) this.options.publishRendererState();
+      if (shouldPublish) this.notifyStateChanged();
       return;
     }
     this.handleServerMessageInternal(message, this.threadManager.activeThread);
@@ -1008,7 +1012,7 @@ export class CodexController {
         break;
       case "account/rateLimits/updated":
         this.rateLimits = message.params.rateLimits;
-        this.options.publishRendererState();
+        this.notifyStateChanged();
         break;
       case "model/rerouted":
         this.lifecycle.handleModelRerouted(message, thread);
@@ -1030,7 +1034,7 @@ export class CodexController {
         break;
       case "item/plan/delta":
         thread.appendPlanDelta(message.params.itemId, message.params.delta);
-        this.options.publishRendererState();
+        this.notifyStateChanged();
         break;
       case "item/commandExecution/outputDelta":
         this.handleCommandOutputDelta(message, thread);
@@ -1054,9 +1058,8 @@ export class CodexController {
           thread.clearUserInput();
           if (threadId) {
             this.clearAttention(threadId);
-            this.routeNextAttention();
           }
-          this.options.publishRendererState();
+          this.notifyStateChanged();
         }
         break;
     }
@@ -1072,11 +1075,11 @@ export class CodexController {
       thread.setActiveTurn(turnId);
       thread.ensureWorking();
       thread.setStatus("working");
-      this.options.publishRendererState();
+      this.notifyStateChanged();
       return;
     }
     thread.startTurn(turnId);
-    this.options.publishRendererState();
+    this.notifyStateChanged();
   }
 
   /** Adds echoed user input and visible activity from a started item. */
@@ -1086,7 +1089,7 @@ export class CodexController {
   ): void {
     const threadId = message.params.threadId;
     thread.setStatus("working");
-    this.options.publishRendererState();
+    this.notifyStateChanged();
     const item = isRecord(message.params.item)
       ? (message.params.item as Record<string, unknown>)
       : undefined;
@@ -1107,7 +1110,7 @@ export class CodexController {
     if (typeof message.params.threadId !== "string") {
       thread.completeTurn(message.params.turn?.status === "interrupted");
       thread.setStatus("idle");
-      this.options.publishRendererState();
+      this.notifyStateChanged();
       const legacyTurn = isRecord(message.params.turn)
         ? (message.params.turn as Record<string, unknown>)
         : undefined;
@@ -1119,7 +1122,7 @@ export class CodexController {
     this.clearAttention(message.params.threadId);
     thread.completeTurn(message.params.turn?.status === "interrupted");
     this.refreshQueue(message.params.threadId);
-    this.options.publishRendererState();
+    this.notifyStateChanged();
     const turn = isRecord(message.params.turn)
       ? (message.params.turn as Record<string, unknown>)
       : undefined;
@@ -1130,7 +1133,7 @@ export class CodexController {
         source: "turn/completed",
         usage,
       });
-      this.options.publishRendererState();
+      this.notifyStateChanged();
     }
   }
 
@@ -1149,7 +1152,7 @@ export class CodexController {
         turnId,
         usage,
       });
-      this.options.publishRendererState();
+      this.notifyStateChanged();
     }
   }
 
@@ -1164,7 +1167,7 @@ export class CodexController {
         message.params.itemId,
         message.params.turnId,
       );
-      this.options.publishStreamDelta?.({
+      this.options.onStreamDelta?.({
         kind: "assistant",
         itemId: message.params.itemId,
         delta: message.params.delta,
@@ -1173,7 +1176,7 @@ export class CodexController {
     }
     thread.appendAssistantDelta(message.params.delta, message.params.itemId, message.params.turnId);
     if (this.threadManager.isSelected(message.params.threadId)) {
-      this.options.publishStreamDelta?.({
+      this.options.onStreamDelta?.({
         threadId: message.params.threadId,
         kind: "assistant",
         itemId: message.params.itemId,
@@ -1190,7 +1193,7 @@ export class CodexController {
     if (this.threadManager.selectedThreadId || thread.id !== "standalone") {
       thread.appendActivityOutput(message.params.itemId, message.params.delta);
       if (!this.threadManager.selectedThreadId || this.threadManager.isSelected(thread.id)) {
-        this.options.publishStreamDelta?.({
+        this.options.onStreamDelta?.({
           threadId: thread.id === "standalone" ? this.threadManager.selectedThreadId : thread.id,
           kind: "command",
           itemId: message.params.itemId,
@@ -1200,7 +1203,7 @@ export class CodexController {
     }
   }
 
-  /** Stores a server request_user_input request for the renderer. */
+  /** Stores a server request_user_input request in the owning thread. */
   private handleUserInputRequest(
     message: Extract<ServerMessage, { method: "item/tool/requestUserInput" }>,
     thread: CodexThread,
@@ -1216,15 +1219,14 @@ export class CodexController {
     thread.setUserInput(pending);
     thread.setStatus("waiting");
     this.noteAttention(pending.threadId, "userInput");
-    this.routeAttention(pending.threadId);
     if (!messageThreadId(message)) {
-      this.options.handleNotification({
+      this.notifyAttention({
         event: "userInputRequested",
         threadId: pending.threadId,
         selectedThreadId: this.threadManager.selectedThreadId,
       });
     }
-    this.options.publishRendererState();
+    this.notifyStateChanged();
   }
 
   /** Commits a completed assistant or activity item to conversation history. */
@@ -1236,7 +1238,7 @@ export class CodexController {
     if (item) {
       thread.processCompletedItem(item);
       if (item.type === "agentMessage") {
-        this.options.publishStreamDelta?.({
+        this.options.onStreamDelta?.({
           threadId: messageThreadId(message),
           itemId: stringValue(item.id),
           kind: "assistant",
@@ -1245,7 +1247,7 @@ export class CodexController {
         });
       }
     }
-    this.options.publishRendererState();
+    this.notifyStateChanged();
   }
 
   /** Displays a pending approval and changes the controller to waiting status. */
@@ -1276,9 +1278,8 @@ export class CodexController {
     };
     thread.addApproval(requestIdKey(id), approval, displayed);
     this.noteAttention(message.params.threadId, "approval");
-    this.routeAttention(message.params.threadId);
     if (!messageThreadId(message)) {
-      this.options.handleNotification({
+      this.notifyAttention({
         event: "approvalRequested",
         threadId: message.params.threadId,
         selectedThreadId: this.threadManager.selectedThreadId,
@@ -1288,32 +1289,15 @@ export class CodexController {
       });
     }
     thread.setStatus("waiting");
-    this.options.publishRendererState();
+    this.notifyStateChanged();
   }
 
   private noteAttention(threadId: string, type: "approval" | "userInput"): void {
     this.threadManager.noteAttention(threadId, type);
   }
 
-  private routeAttention(threadId: string): void {
-    const nextThreadId = this.threadManager.nextAttention();
-    if (
-      typeof nextThreadId !== "string" ||
-      this.threadManager.isSelected(nextThreadId) ||
-      this.options.isChatVisible()
-    ) {
-      return;
-    }
-    this.lifecycle.select(nextThreadId, false);
-  }
-
   private clearAttention(threadId: string): void {
     this.threadManager.clearAttention(threadId);
-  }
-
-  private routeNextAttention(): void {
-    const nextThreadId = this.threadManager.nextAttention();
-    if (typeof nextThreadId === "string") this.routeAttention(nextThreadId);
   }
 
   /** Starts a text turn and creates a temporary working message. */
@@ -1326,7 +1310,7 @@ export class CodexController {
         targetThread.setActiveTurn(message.result?.turn.id);
         if (message.error) {
           targetThread.setStatus("idle");
-          this.options.publishRendererState();
+          this.notifyStateChanged();
         }
       });
     });
@@ -1353,7 +1337,7 @@ export class CodexController {
     if (!this.threadManager.isSelected(threadId)) this.threadManager.trackBackgroundWork(threadId);
     this.threadManager.withThread(threadId, (targetThread) => {
       targetThread.setStatus("working");
-      this.options.publishRendererState();
+      this.notifyStateChanged();
     });
   }
 
@@ -1365,7 +1349,7 @@ export class CodexController {
     const thread = this.threadManager.execThread(message.params.processId);
     if (thread) {
       thread.appendActivityOutput(message.params.processId, delta);
-      this.options.publishRendererState();
+      this.notifyStateChanged();
     }
   }
 }
