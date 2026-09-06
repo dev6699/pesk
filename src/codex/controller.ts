@@ -1,42 +1,30 @@
 import type {
   ClientNotification,
+  FuzzyFileSearchResult,
   InitializeResponse,
   RequestId,
-  FuzzyFileSearchResult,
 } from "../codex-schema";
-import {
-  approvalDecisions,
-  isRecord,
-  messageThreadId,
-  requestIdKey,
-  stringValue,
-} from "./protocol";
-
-import type { JsonRpcResponse, OutgoingRequestInput, ServerMessage } from "./protocol";
-import { CodexWebSocketTransport, type CodexSocketTransport } from "./websocket";
-import { CodexThread, parseTokenUsageValue, approvalOptions } from "./thread";
-import { CodexThreadManager } from "./thread-manager";
-import { CodexProjectManager } from "./projects";
+import { messageThreadId } from "./protocol";
 import type {
-  GetAccountRateLimitsResponse,
-  RateLimitSnapshot,
-  TurnStartResponse,
-} from "../codex-schema/v2";
-import type { UserInput } from "../codex-schema/v2/UserInput";
-import type { CodexState, CodexStreamDelta } from "./types";
-import type {
-  AccountRateLimitsRequest,
   InitializeRequest,
-  LocalQueueListResponse,
   OutgoingMessage,
-  PlanTurnStartParams,
-  TurnStartRequest,
+  JsonRpcResponse,
+  OutgoingRequestInput,
+  ServerMessage,
 } from "./protocol";
-import { CodexModelManager } from "./model";
 import { CodexGoalManager } from "./goal";
-import { CodexThreadLifecycle } from "./thread-lifecycle";
 import { CodexInteraction } from "./interaction";
+import { CodexModelManager } from "./model";
+import { CodexProjectManager } from "./projects";
+import { CodexQueueManager } from "./queue";
+import { CodexRateLimitManager } from "./rate-limits";
+import { CodexThread } from "./thread";
+import { CodexThreadLifecycle } from "./thread-lifecycle";
+import { CodexThreadManager } from "./thread-manager";
+import { CodexTurnManager } from "./turn";
+import type { CodexState, CodexStreamDelta } from "./types";
 import { parsePrompt, type PromptImages } from "./prompt";
+import { CodexWebSocketTransport, type CodexSocketTransport } from "./websocket";
 
 export interface CodexControllerOptions {
   onStateChanged: (state: CodexState) => void;
@@ -61,30 +49,26 @@ export interface CodexAttentionEvent {
  * are owned by the application layer consuming these callbacks.
  */
 export class CodexController {
+  private readonly options: CodexControllerOptions;
   private readonly socket: CodexSocketTransport;
+
   /** Human-readable transport error exposed through the Codex state. */
   private connectionError: string | undefined;
-  /** Server-owned project operations and collection, separate from thread selection. */
-  private readonly projectManager: CodexProjectManager;
-  /** True while /new is replacing the selected thread. */
-  private startingNewThread = false;
-  /** Latest account-wide ChatGPT rate-limit snapshot. */
-  private rateLimits: RateLimitSnapshot | undefined;
-  /** Prevents duplicate initial rate-limit reads from concurrent callers. */
-  private rateLimitsReadPending = false;
-  /** Prevents duplicate initial rate-limit reads from concurrent callers. */
-  /** Whether initialize/initialized completed on the current socket. */
   private initialized = false;
   /** Monotonic JSON-RPC request id for this controller instance. */
   private nextId = 0;
-  /** Prevents duplicate thread discovery requests. */
-  /** Per-thread instances and lifecycle bookkeeping. */
+  /** True while /new is replacing the selected thread. */
+  private startingNewThread = false;
+
   private readonly threadManager = new CodexThreadManager();
+  private readonly projectManager: CodexProjectManager;
   private readonly modelManager: CodexModelManager;
   private readonly goalManager: CodexGoalManager;
   private readonly lifecycle: CodexThreadLifecycle;
   private readonly interaction: CodexInteraction;
-  private readonly options: CodexControllerOptions;
+  private readonly queueManager: CodexQueueManager;
+  private readonly rateLimitManager: CodexRateLimitManager;
+  private readonly turnManager: CodexTurnManager;
 
   /** Creates a controller with application-level event callbacks. */
   constructor(
@@ -93,6 +77,20 @@ export class CodexController {
   ) {
     this.options = options;
     this.socket = socket;
+    this.queueManager = new CodexQueueManager({
+      request: (request, callback) => this.request(request, callback),
+      threadManager: this.threadManager,
+      publishRendererState: () => this.notifyStateChanged(),
+    });
+    this.rateLimitManager = new CodexRateLimitManager({
+      request: (request, callback) => this.request(request, callback),
+      publishRendererState: () => this.notifyStateChanged(),
+    });
+    this.turnManager = new CodexTurnManager({
+      threadManager: this.threadManager,
+      request: (request, callback) => this.request(request, callback),
+      publishRendererState: () => this.notifyStateChanged(),
+    });
     this.projectManager = new CodexProjectManager({
       request: (request, callback) => this.request(request, callback),
       publishRendererState: () => this.notifyStateChanged(),
@@ -124,14 +122,14 @@ export class CodexController {
       request: (message, callback) => this.request(message, callback),
       publishRendererState: () => this.notifyStateChanged(),
       onThreadHydrated: (threadId) => {
-        this.refreshQueue(threadId);
+        this.queueManager.refresh(threadId);
         this.goalManager.restore(threadId);
       },
       cancelModelPicker: () => this.modelManager.cancel(),
       setStarting: (value) => {
         this.startingNewThread = value;
       },
-      startTurn: (threadId, prompt) => this.startTurn(threadId, prompt),
+      startTurn: (threadId, prompt) => this.turnManager.start(threadId, prompt),
     });
     this.interaction = new CodexInteraction({
       threadManager: this.threadManager,
@@ -139,9 +137,10 @@ export class CodexController {
       request: (request, callback) => this.request(request, callback),
       requestWithId: (buildRequest, callback) => this.requestWithId(buildRequest, callback),
       sendResponse: (id, result) => this.sendResponse(id, result),
-      startTurn: (threadId, prompt, extraInput) => this.startTurn(threadId, prompt, extraInput),
+      startTurn: (threadId, prompt, extraInput) =>
+        this.turnManager.start(threadId, prompt, extraInput),
       onChanged: () => this.notifyStateChanged(),
-      clearAttention: (threadId) => this.clearAttention(threadId),
+      clearAttention: (threadId) => this.threadManager.clearAttention(threadId),
       onAttentionCleared: options.onAttentionCleared,
     });
     this.socket
@@ -152,10 +151,12 @@ export class CodexController {
       .on("debug", (values) => this.options.debug(...values));
   }
 
+  /** Publishes the current renderer state unless background work is suppressed. */
   private notifyStateChanged(): void {
     if (!this.threadManager.isPublicationSuppressed) this.options.onStateChanged(this.getState());
   }
 
+  /** Publishes an attention event unless the target update is suppressed. */
   private notifyAttention(event: CodexAttentionEvent): void {
     if (!this.threadManager.isPublicationSuppressed) this.options.onAttention(event);
   }
@@ -185,7 +186,7 @@ export class CodexController {
       interrupted: thread.interrupted,
       tokenUsage: thread.tokenUsage,
       modelInfo: thread.modelInfo,
-      rateLimits: this.rateLimits,
+      rateLimits: this.rateLimitManager.getSnapshot(),
       collaborationMode: thread.collaborationMode,
       pendingUserInput: thread.pendingUserInput,
       pendingApproval: thread.pendingApproval,
@@ -197,33 +198,34 @@ export class CodexController {
     };
   }
 
-  /** Loads the next older persisted history page for the selected thread. */
-  loadOlderHistory(): Promise<boolean> {
-    return this.lifecycle.loadOlderHistory();
-  }
-
+  /** Starts the Codex app-server transport and its reconnect loop. */
   start(): void {
     this.socket.start();
   }
 
+  /** Stops the Codex app-server transport and its reconnect loop. */
   stop(): void {
     this.socket.stop();
   }
 
+  /** Reports whether the underlying transport is currently writable. */
   private isOpen(): boolean {
     return this.socket.isOpen();
   }
 
+  /** Sends one already-identified protocol message through the transport. */
   private send(message: OutgoingMessage): void {
     this.socket.send(message);
   }
 
+  /** Answers an app-server request while the initialized transport is available. */
   private sendResponse(id: RequestId, result: unknown): boolean {
     if (!this.initialized || !this.isOpen()) return false;
     this.send({ id, result } as JsonRpcResponse<unknown>);
     return true;
   }
 
+  /** Registers a response callback for one transport request ID. */
   private setRequest<TResult>(
     id: number,
     callback: (message: JsonRpcResponse<TResult>) => void,
@@ -231,6 +233,7 @@ export class CodexController {
     this.socket.setRequest(id, callback);
   }
 
+  /** Sends a request after assigning its JSON-RPC ID and response callback. */
   private request<TResult>(
     request: OutgoingRequestInput,
     callback: (message: JsonRpcResponse<TResult>) => void,
@@ -238,6 +241,7 @@ export class CodexController {
     return this.requestWithId(() => request, callback);
   }
 
+  /** Sends a request whose builder needs the assigned JSON-RPC ID. */
   private requestWithId<TResult>(
     buildRequest: (id: number) => OutgoingRequestInput,
     callback: (message: JsonRpcResponse<TResult>) => void,
@@ -247,6 +251,11 @@ export class CodexController {
     this.setRequest<TResult>(id, callback);
     this.send({ ...buildRequest(id), id } as never);
     return true;
+  }
+
+  /** Starts the model picker for the currently selected thread. */
+  private beginModelPicker(): boolean {
+    return this.modelManager.begin();
   }
 
   /** Selects a known Codex thread and resumes it. */
@@ -260,6 +269,11 @@ export class CodexController {
     if (typeof threadId !== "string" || this.threadManager.isSelected(threadId)) return false;
     this.lifecycle.select(threadId, false);
     return true;
+  }
+
+  /** Loads the next older persisted history page for the selected thread. */
+  loadOlderHistory(): Promise<boolean> {
+    return this.lifecycle.loadOlderHistory();
   }
 
   /** Lists authoritative projects, optionally appending a server cursor page. */
@@ -311,6 +325,16 @@ export class CodexController {
     return this.projectManager.deleteProject(projectId);
   }
 
+  /** Applies a model and reasoning effort selected in the model picker. */
+  selectModel(model: string, effort: string): void {
+    this.modelManager.select(model, effort);
+  }
+
+  /** Cancels the active model picker. */
+  cancelModelPicker(): void {
+    this.modelManager.cancel();
+  }
+
   /** Selects the collaboration mode used for the next turn. */
   setCollaborationMode(mode: "default" | "plan"): void {
     this.interaction.setCollaborationMode(mode);
@@ -334,21 +358,7 @@ export class CodexController {
 
   /** Requests the complete account-wide rate-limit snapshot. */
   refreshRateLimits(): void {
-    if (!this.initialized || this.rateLimitsReadPending) return;
-    this.rateLimitsReadPending = true;
-    const id = ++this.nextId;
-    this.setRequest<GetAccountRateLimitsResponse>(id, (message) => {
-      this.rateLimitsReadPending = false;
-      if (message.result?.rateLimits) {
-        this.rateLimits = message.result.rateLimits;
-        this.notifyStateChanged();
-      }
-    });
-    this.send({
-      method: "account/rateLimits/read",
-      id,
-      params: undefined,
-    } satisfies AccountRateLimitsRequest);
+    this.rateLimitManager.refresh();
   }
 
   /** Searches files below the requested roots for application consumers. */
@@ -371,23 +381,12 @@ export class CodexController {
     return this.interaction.steerPrompt(value);
   }
 
-  /** Starts a turn while idle or persists a follow-up while a turn is active. */
-  private beginModelPicker(): boolean {
-    return this.modelManager.begin();
-  }
-
-  selectModel(model: string, effort: string): void {
-    this.modelManager.select(model, effort);
-  }
-
-  cancelModelPicker(): void {
-    this.modelManager.cancel();
-  }
-
+  /** Parses and submits a prompt without image attachments. */
   submitPrompt(value: string): boolean {
     return this.submitPromptWithImages(value, []);
   }
 
+  /** Parses and submits a prompt with optional image attachments. */
   submitPromptWithImages(value: string, images: PromptImages): boolean {
     if ((!value.trim() && !images.length) || !this.initialized) return false;
     const parsed = parsePrompt(value, images);
@@ -405,43 +404,6 @@ export class CodexController {
     }
   }
 
-  /** Requests the first page of the queue for one thread. */
-  private refreshQueue(threadId: string): void {
-    if (!this.initialized || !this.isOpen()) return;
-    const id = ++this.nextId;
-    this.setRequest<LocalQueueListResponse>(id, (message) => {
-      this.threadManager.withThread(threadId, (targetThread) => {
-        targetThread.replaceQueueFromServer(message.result?.data ?? []);
-        this.notifyStateChanged();
-        if (message.result?.nextCursor) {
-          this.refreshQueuePage(threadId, message.result.nextCursor);
-        }
-      });
-    });
-    this.send({
-      method: "thread/queue/list",
-      id,
-      params: { threadId, limit: 100 },
-    });
-  }
-
-  /** Requests a subsequent queue page for one thread. */
-  private refreshQueuePage(threadId: string, cursor: string): void {
-    const id = ++this.nextId;
-    this.setRequest<LocalQueueListResponse>(id, (message) => {
-      this.threadManager.withThread(threadId, (targetThread) => {
-        targetThread.appendQueueFromServer(message.result?.data ?? []);
-        this.notifyStateChanged();
-        if (message.result?.nextCursor) this.refreshQueuePage(threadId, message.result.nextCursor);
-      });
-    });
-    this.send({
-      method: "thread/queue/list",
-      id,
-      params: { threadId, cursor, limit: 100 },
-    });
-  }
-
   /** Starts and selects a fresh Codex session without sending a prompt. */
   startNewThread(workingDirectory?: string, initialPrompt?: string): boolean {
     return this.lifecycle.startNew(workingDirectory, initialPrompt);
@@ -457,6 +419,7 @@ export class CodexController {
     this.interaction.respondPermission(requestId, optionId);
   }
 
+  /** Initializes the app-server session after the transport opens. */
   private handleSocketOpen(): void {
     this.connectionError = undefined;
     this.notifyStateChanged();
@@ -482,6 +445,7 @@ export class CodexController {
     } satisfies InitializeRequest);
   }
 
+  /** Records a transport error for renderer consumers. */
   private handleSocketError(details: string): void {
     if (this.connectionError === details) return;
     this.connectionError = details;
@@ -506,7 +470,7 @@ export class CodexController {
       this.threadManager.standaloneThread.replaceHistory(selectedThread.snapshot().history);
     }
     this.initialized = false;
-    this.rateLimitsReadPending = false;
+    this.rateLimitManager.resetTransportState();
     selectedThread.resetTransportState();
     this.threadManager.select(undefined);
     this.threadManager.clearThreads();
@@ -517,6 +481,7 @@ export class CodexController {
   }
 
   /** Routes a thread-scoped event into the owning thread. */
+  /** Routes an inbound protocol message to its owning thread and manager. */
   private handleServerMessage(message: ServerMessage): void {
     const threadId = messageThreadId(message);
     if (threadId && message.method !== "thread/started") {
@@ -588,7 +553,7 @@ export class CodexController {
     this.handleServerMessageInternal(message, this.threadManager.activeThread);
   }
 
-  /** Routes an app-server notification or request to its protocol handler. */
+  /** Dispatches one inbound message to the manager that owns its domain. */
   private handleServerMessageInternal(message: ServerMessage, thread: CodexThread): void {
     const method = message.method;
     if (!method.startsWith("item")) {
@@ -600,7 +565,7 @@ export class CodexController {
         this.lifecycle.handleThreadStarted(message);
         break;
       case "thread/queue/changed":
-        this.refreshQueue(message.params.threadId);
+        this.queueManager.refresh(message.params.threadId);
         break;
       case "project/changed":
         this.projectManager.scheduleRefresh();
@@ -615,20 +580,26 @@ export class CodexController {
         this.lifecycle.handleThreadRemoved(message.params.threadId);
         break;
       case "turn/started":
-        this.handleTurnStarted(message, thread);
+        this.turnManager.handleStarted(message, thread);
+        this.notifyStateChanged();
         break;
       case "item/started":
-        this.handleItemStarted(message, thread);
+        this.threadManager.handleItemStarted(message, thread);
+        this.notifyStateChanged();
         break;
-      case "turn/completed":
-        this.handleTurnCompleted(message, thread);
+      case "turn/completed": {
+        const result = this.turnManager.handleCompleted(message, thread, this.startingNewThread);
+        this.notifyStateChanged();
+        if (result.queueRefresh) this.queueManager.refresh(result.queueRefresh);
         break;
+      }
       case "thread/tokenUsage/updated":
-        this.handleTokenUsageUpdated(message, thread);
+        if (this.threadManager.handleTokenUsageUpdated(message, thread, this.startingNewThread)) {
+          this.notifyStateChanged();
+        }
         break;
       case "account/rateLimits/updated":
-        this.rateLimits = message.params.rateLimits;
-        this.notifyStateChanged();
+        this.rateLimitManager.handleUpdated(message.params.rateLimits);
         break;
       case "model/rerouted":
         this.lifecycle.handleModelRerouted(message, thread);
@@ -646,326 +617,62 @@ export class CodexController {
         this.lifecycle.handleStatusChanged(message, thread);
         break;
       case "item/agentMessage/delta":
-        this.handleAgentMessageDelta(message, thread);
+        {
+          const result = this.threadManager.handleAgentMessageDelta(message, thread);
+          if (result.streamDelta) this.options.onStreamDelta?.(result.streamDelta);
+        }
         break;
       case "item/plan/delta":
-        thread.appendPlanDelta(message.params.itemId, message.params.delta);
+        this.threadManager.handlePlanDelta(message, thread);
         this.notifyStateChanged();
         break;
       case "item/commandExecution/outputDelta":
-        this.handleCommandOutputDelta(message, thread);
+        {
+          const result = this.threadManager.handleCommandOutputDelta(message, thread);
+          if (result.streamDelta) this.options.onStreamDelta?.(result.streamDelta);
+        }
         break;
       case "command/exec/outputDelta":
-        this.handleExecOutputDelta(message);
+        if (this.threadManager.handleExecOutputDelta(message)) this.notifyStateChanged();
         break;
-      case "item/completed":
-        this.handleItemCompleted(message, thread);
+      case "item/completed": {
+        const result = this.threadManager.handleItemCompleted(message, thread);
+        this.notifyStateChanged();
+        if (result.completedStreamDelta) {
+          this.options.onStreamDelta?.(result.completedStreamDelta);
+        }
         break;
+      }
       case "item/commandExecution/requestApproval":
       case "item/fileChange/requestApproval":
-        this.handleApprovalRequest(message, thread);
+        this.threadManager.handleApprovalRequest(message, thread);
+        this.notifyStateChanged();
+        if (!messageThreadId(message)) {
+          this.notifyAttention({
+            event: "approvalRequested",
+            threadId: message.params.threadId,
+            selectedThreadId: this.threadManager.selectedThreadId,
+            requestId: message.id,
+            command: "command" in message.params ? (message.params.command ?? "") : "",
+            reason: message.params.reason ?? "",
+          });
+        }
         break;
       case "item/tool/requestUserInput":
-        this.handleUserInputRequest(message, thread);
+        this.threadManager.handleUserInputRequest(message, thread);
+        this.notifyStateChanged();
+        if (!messageThreadId(message)) {
+          this.notifyAttention({
+            event: "userInputRequested",
+            threadId: message.params.threadId,
+            selectedThreadId: this.threadManager.selectedThreadId,
+          });
+        }
         break;
       case "serverRequest/resolved":
-        if (thread.state.pendingUserInput?.requestId === message.params.requestId) {
-          const threadId = thread.state.pendingUserInput?.threadId;
-          thread.clearUserInput();
-          if (threadId) {
-            this.clearAttention(threadId);
-          }
-          this.notifyStateChanged();
-        }
+        this.threadManager.handleServerRequestResolved(message, thread);
+        this.notifyStateChanged();
         break;
-    }
-  }
-
-  /** Tracks the active turn and associates it with the latest user message. */
-  private handleTurnStarted(
-    message: Extract<ServerMessage, { method: "turn/started" }>,
-    thread: CodexThread,
-  ): void {
-    const turnId = message.params.turn.id;
-    if (typeof message.params.threadId !== "string") {
-      thread.setActiveTurn(turnId);
-      thread.ensureWorking();
-      thread.setStatus("working");
-      this.notifyStateChanged();
-      return;
-    }
-    thread.startTurn(turnId);
-    this.notifyStateChanged();
-  }
-
-  /** Adds echoed user input and visible activity from a started item. */
-  private handleItemStarted(
-    message: Extract<ServerMessage, { method: "item/started" }>,
-    thread: CodexThread,
-  ): void {
-    const threadId = message.params.threadId;
-    thread.setStatus("working");
-    this.notifyStateChanged();
-    const item = isRecord(message.params.item)
-      ? (message.params.item as Record<string, unknown>)
-      : undefined;
-    if (item) {
-      thread.processStartedItem(
-        item,
-        message.params.turnId,
-        thread.state.reviewInProgress && item.type === "userMessage",
-      );
-    }
-  }
-
-  /** Finalizes turn state and records token usage from a completed turn. */
-  private handleTurnCompleted(
-    message: Extract<ServerMessage, { method: "turn/completed" }>,
-    thread: CodexThread,
-  ): void {
-    if (typeof message.params.threadId !== "string") {
-      thread.completeTurn(message.params.turn?.status === "interrupted");
-      thread.setStatus("idle");
-      this.notifyStateChanged();
-      const legacyTurn = isRecord(message.params.turn)
-        ? (message.params.turn as Record<string, unknown>)
-        : undefined;
-      const legacyUsage = parseTokenUsageValue(legacyTurn?.tokenUsage ?? legacyTurn?.usage);
-      if (legacyUsage) thread.setTokenUsage(legacyUsage);
-      return;
-    }
-    thread.clearUserInput();
-    this.clearAttention(message.params.threadId);
-    thread.completeTurn(message.params.turn?.status === "interrupted");
-    this.refreshQueue(message.params.threadId);
-    this.notifyStateChanged();
-    const turn = isRecord(message.params.turn)
-      ? (message.params.turn as Record<string, unknown>)
-      : undefined;
-    const usage = parseTokenUsageValue(turn?.tokenUsage ?? turn?.usage);
-    if (usage && !this.startingNewThread) {
-      thread.setTokenUsage(usage);
-      this.options.debug("Pesk Codex token usage", {
-        source: "turn/completed",
-        usage,
-      });
-      this.notifyStateChanged();
-    }
-  }
-
-  /** Updates the selected thread's token usage from a live notification. */
-  private handleTokenUsageUpdated(
-    message: Extract<ServerMessage, { method: "thread/tokenUsage/updated" }>,
-    thread: CodexThread,
-  ): void {
-    const { threadId, turnId, tokenUsage } = message.params;
-    const usage = parseTokenUsageValue(tokenUsage);
-    if (usage && !this.startingNewThread) {
-      thread.setTokenUsage(usage);
-      this.options.debug("Pesk Codex token usage", {
-        source: "thread/tokenUsage/updated",
-        threadId,
-        turnId,
-        usage,
-      });
-      this.notifyStateChanged();
-    }
-  }
-
-  /** Appends streamed assistant text to the conversation. */
-  private handleAgentMessageDelta(
-    message: Extract<ServerMessage, { method: "item/agentMessage/delta" }>,
-    thread: CodexThread,
-  ): void {
-    if (typeof message.params.threadId !== "string") {
-      thread.appendAssistantDelta(
-        message.params.delta,
-        message.params.itemId,
-        message.params.turnId,
-      );
-      this.options.onStreamDelta?.({
-        kind: "assistant",
-        itemId: message.params.itemId,
-        delta: message.params.delta,
-      });
-      return;
-    }
-    thread.appendAssistantDelta(message.params.delta, message.params.itemId, message.params.turnId);
-    if (this.threadManager.isSelected(message.params.threadId)) {
-      this.options.onStreamDelta?.({
-        threadId: message.params.threadId,
-        kind: "assistant",
-        itemId: message.params.itemId,
-        delta: message.params.delta,
-      });
-    }
-  }
-
-  /** Appends streamed command output to its activity message. */
-  private handleCommandOutputDelta(
-    message: Extract<ServerMessage, { method: "item/commandExecution/outputDelta" }>,
-    thread: CodexThread,
-  ): void {
-    if (this.threadManager.selectedThreadId || thread.id !== "standalone") {
-      thread.appendActivityOutput(message.params.itemId, message.params.delta);
-      if (!this.threadManager.selectedThreadId || this.threadManager.isSelected(thread.id)) {
-        this.options.onStreamDelta?.({
-          threadId: thread.id === "standalone" ? this.threadManager.selectedThreadId : thread.id,
-          kind: "command",
-          itemId: message.params.itemId,
-          delta: message.params.delta,
-        });
-      }
-    }
-  }
-
-  /** Stores a server request_user_input request in the owning thread. */
-  private handleUserInputRequest(
-    message: Extract<ServerMessage, { method: "item/tool/requestUserInput" }>,
-    thread: CodexThread,
-  ): void {
-    const pending = {
-      requestId: message.id,
-      threadId: message.params.threadId,
-      turnId: message.params.turnId,
-      itemId: message.params.itemId,
-      questions: message.params.questions,
-      isBlocking: message.params.isBlocking,
-    };
-    thread.setUserInput(pending);
-    thread.setStatus("waiting");
-    this.noteAttention(pending.threadId, "userInput");
-    if (!messageThreadId(message)) {
-      this.notifyAttention({
-        event: "userInputRequested",
-        threadId: pending.threadId,
-        selectedThreadId: this.threadManager.selectedThreadId,
-      });
-    }
-    this.notifyStateChanged();
-  }
-
-  /** Commits a completed assistant or activity item to conversation history. */
-  private handleItemCompleted(
-    message: Extract<ServerMessage, { method: "item/completed" }>,
-    thread: CodexThread,
-  ): void {
-    const item = isRecord(message.params.item) ? message.params.item : undefined;
-    if (item) {
-      thread.processCompletedItem(item);
-      if (item.type === "agentMessage") {
-        this.options.onStreamDelta?.({
-          threadId: messageThreadId(message),
-          itemId: stringValue(item.id),
-          kind: "assistant",
-          delta: "",
-          completed: true,
-        });
-      }
-    }
-    this.notifyStateChanged();
-  }
-
-  /** Displays a pending approval and changes the controller to waiting status. */
-  private handleApprovalRequest(
-    message: Extract<
-      ServerMessage,
-      {
-        method: "item/commandExecution/requestApproval" | "item/fileChange/requestApproval";
-      }
-    >,
-    thread: CodexThread,
-  ): void {
-    const id = message.id;
-    const decisions = approvalDecisions(message);
-    const command = "command" in message.params ? (message.params.command ?? "") : "";
-    const reason = message.params.reason ?? "";
-    const approval = {
-      requestId: id,
-      command,
-      reason,
-      decisions,
-    };
-    const displayed = {
-      requestId: id,
-      command,
-      reason,
-      options: approvalOptions(decisions),
-    };
-    thread.addApproval(requestIdKey(id), approval, displayed);
-    this.noteAttention(message.params.threadId, "approval");
-    if (!messageThreadId(message)) {
-      this.notifyAttention({
-        event: "approvalRequested",
-        threadId: message.params.threadId,
-        selectedThreadId: this.threadManager.selectedThreadId,
-        requestId: id,
-        command,
-        reason,
-      });
-    }
-    thread.setStatus("waiting");
-    this.notifyStateChanged();
-  }
-
-  private noteAttention(threadId: string, type: "approval" | "userInput"): void {
-    this.threadManager.noteAttention(threadId, type);
-  }
-
-  private clearAttention(threadId: string): void {
-    this.threadManager.clearAttention(threadId);
-  }
-
-  /** Starts a text turn and creates a temporary working message. */
-  private startTurn(threadId: string, prompt: string, extraInput: UserInput[] = []): void {
-    const thread = this.threadManager.thread(threadId);
-    thread.prepareTurn();
-    const id = ++this.nextId;
-    this.setRequest<TurnStartResponse>(id, (message) => {
-      this.threadManager.withThread(threadId, (targetThread) => {
-        targetThread.setActiveTurn(message.result?.turn.id);
-        if (message.error) {
-          targetThread.setStatus("idle");
-          this.notifyStateChanged();
-        }
-      });
-    });
-    const params: PlanTurnStartParams = {
-      threadId,
-      input: [
-        ...(prompt ? [{ type: "text" as const, text: prompt, text_elements: [] }] : []),
-        ...extraInput,
-      ],
-    };
-    params.collaborationMode = {
-      mode: thread.state.collaborationMode,
-      settings: {
-        model: thread.state.modelInfo?.model ?? "gpt-5.1-codex",
-        reasoning_effort: thread.state.collaborationMode === "plan" ? "medium" : null,
-        developer_instructions: null,
-      },
-    };
-    this.send({
-      method: "turn/start",
-      id,
-      params,
-    } satisfies TurnStartRequest);
-    if (!this.threadManager.isSelected(threadId)) this.threadManager.trackBackgroundWork(threadId);
-    this.threadManager.withThread(threadId, (targetThread) => {
-      targetThread.setStatus("working");
-      this.notifyStateChanged();
-    });
-  }
-
-  /** Appends base64-decoded output from a standalone command/exec request. */
-  private handleExecOutputDelta(
-    message: Extract<ServerMessage, { method: "command/exec/outputDelta" }>,
-  ): void {
-    const delta = Buffer.from(message.params.deltaBase64, "base64").toString();
-    const thread = this.threadManager.execThread(message.params.processId);
-    if (thread) {
-      thread.appendActivityOutput(message.params.processId, delta);
-      this.notifyStateChanged();
     }
   }
 }

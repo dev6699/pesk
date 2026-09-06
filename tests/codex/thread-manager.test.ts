@@ -115,4 +115,22 @@ describe("CodexThreadManager", () => {
     expect(manager.execThread("process-2")).toBeUndefined();
     expect(manager.selectedThreadId).toBeUndefined();
   });
+
+  test("applies live token usage unless a new thread is starting", () => {
+    const manager = new CodexThreadManager();
+    const thread = manager.thread("thread-1");
+    const message = {
+      method: "thread/tokenUsage/updated",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        tokenUsage: { total: { inputTokens: 3, outputTokens: 2, totalTokens: 5 } },
+      },
+    } as never;
+
+    expect(manager.handleTokenUsageUpdated(message, thread, true)).toBe(false);
+    expect(thread.state.tokenUsage).toBeUndefined();
+    expect(manager.handleTokenUsageUpdated(message, thread, false)).toBe(true);
+    expect(thread.state.tokenUsage).toMatchObject({ total: { totalTokens: 5 } });
+  });
 });

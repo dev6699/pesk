@@ -1,6 +1,14 @@
 import type { Thread } from "../codex-schema/v2";
-import { CodexThread } from "./thread";
-import type { CodexThreadActivity } from "./types";
+import { approvalOptions, CodexThread, parseTokenUsageValue } from "./thread";
+import {
+  approvalDecisions,
+  isRecord,
+  messageThreadId,
+  requestIdKey,
+  stringValue,
+  type ServerMessage,
+} from "./protocol";
+import type { CodexStreamDelta, CodexThreadActivity } from "./types";
 
 const MAX_CACHED_THREADS = 16;
 
@@ -9,6 +17,12 @@ export interface HistoryPaginationState {
   loading: boolean;
   hasOlderHistory: boolean;
   paginated: boolean;
+}
+
+export interface ThreadEventResult {
+  streamDelta?: CodexStreamDelta;
+  completedStreamDelta?: CodexStreamDelta;
+  queueRefresh?: string;
 }
 
 /** Owns local Codex thread instances and the state associated with each thread. */
@@ -286,6 +300,167 @@ export class CodexThreadManager {
     if (!thread.state.pendingApproval && !thread.state.pendingUserInput) {
       this.attentionQueue.delete(threadId);
     }
+  }
+
+  /** Applies an item-started notification and normalizes its visible content. */
+  handleItemStarted(
+    message: Extract<ServerMessage, { method: "item/started" }>,
+    thread: CodexThread,
+  ): void {
+    thread.setStatus("working");
+    const item = isRecord(message.params.item)
+      ? (message.params.item as Record<string, unknown>)
+      : undefined;
+    if (item) {
+      thread.processStartedItem(
+        item,
+        message.params.turnId,
+        thread.state.reviewInProgress && item.type === "userMessage",
+      );
+    }
+  }
+
+  /** Applies a live thread token-usage update. */
+  handleTokenUsageUpdated(
+    message: Extract<ServerMessage, { method: "thread/tokenUsage/updated" }>,
+    thread: CodexThread,
+    ignoreUsage: boolean,
+  ): boolean {
+    if (ignoreUsage) return false;
+    const usage = parseTokenUsageValue(message.params.tokenUsage);
+    if (!usage) return false;
+    thread.setTokenUsage(usage);
+    return true;
+  }
+
+  /** Appends an assistant stream delta and returns selected-thread publication data. */
+  handleAgentMessageDelta(
+    message: Extract<ServerMessage, { method: "item/agentMessage/delta" }>,
+    thread: CodexThread,
+  ): ThreadEventResult {
+    thread.appendAssistantDelta(message.params.delta, message.params.itemId, message.params.turnId);
+    if (typeof message.params.threadId !== "string" || this.isSelected(thread.id)) {
+      return {
+        streamDelta: {
+          ...(typeof message.params.threadId === "string"
+            ? { threadId: message.params.threadId }
+            : {}),
+          kind: "assistant",
+          itemId: message.params.itemId,
+          delta: message.params.delta,
+        },
+      };
+    }
+    return {};
+  }
+
+  /** Appends command activity output and returns selected-thread publication data. */
+  handleCommandOutputDelta(
+    message: Extract<ServerMessage, { method: "item/commandExecution/outputDelta" }>,
+    thread: CodexThread,
+  ): ThreadEventResult {
+    if (!this.selectedThreadId && thread.id === "standalone") return {};
+    if (this.selectedThreadId && !this.isSelected(thread.id)) return {};
+    thread.appendActivityOutput(message.params.itemId, message.params.delta);
+    return {
+      streamDelta: {
+        threadId: thread.id === "standalone" ? this.selectedThreadId : thread.id,
+        kind: "command",
+        itemId: message.params.itemId,
+        delta: message.params.delta,
+      },
+    };
+  }
+
+  /** Appends streamed plan text to its owning activity item. */
+  handlePlanDelta(
+    message: Extract<ServerMessage, { method: "item/plan/delta" }>,
+    thread: CodexThread,
+  ): void {
+    thread.appendPlanDelta(message.params.itemId, message.params.delta);
+  }
+
+  /** Commits a completed item and returns an optional stream completion event. */
+  handleItemCompleted(
+    message: Extract<ServerMessage, { method: "item/completed" }>,
+    thread: CodexThread,
+  ): ThreadEventResult {
+    const item = isRecord(message.params.item) ? message.params.item : undefined;
+    if (!item) return {};
+    thread.processCompletedItem(item);
+    if (item.type !== "agentMessage") return {};
+    return {
+      completedStreamDelta: {
+        threadId: messageThreadId(message),
+        itemId: stringValue(item.id),
+        kind: "assistant",
+        delta: "",
+        completed: true,
+      },
+    };
+  }
+
+  /** Stores a pending user-input request and records thread attention. */
+  handleUserInputRequest(
+    message: Extract<ServerMessage, { method: "item/tool/requestUserInput" }>,
+    thread: CodexThread,
+  ): void {
+    const pending = {
+      requestId: message.id,
+      threadId: message.params.threadId,
+      turnId: message.params.turnId,
+      itemId: message.params.itemId,
+      questions: message.params.questions,
+      isBlocking: message.params.isBlocking,
+    };
+    thread.setUserInput(pending);
+    thread.setStatus("waiting");
+    this.noteAttention(pending.threadId, "userInput");
+  }
+
+  /** Stores a pending approval request and records thread attention. */
+  handleApprovalRequest(
+    message: Extract<
+      ServerMessage,
+      { method: "item/commandExecution/requestApproval" | "item/fileChange/requestApproval" }
+    >,
+    thread: CodexThread,
+  ): void {
+    const id = message.id;
+    const decisions = approvalDecisions(message);
+    const command = "command" in message.params ? (message.params.command ?? "") : "";
+    const reason = message.params.reason ?? "";
+    thread.addApproval(
+      requestIdKey(id),
+      { requestId: id, command, reason, decisions },
+      { requestId: id, command, reason, options: approvalOptions(decisions) },
+    );
+    this.noteAttention(message.params.threadId, "approval");
+    thread.setStatus("waiting");
+  }
+
+  /** Resolves a pending user-input request notification. */
+  handleServerRequestResolved(
+    message: Extract<ServerMessage, { method: "serverRequest/resolved" }>,
+    thread: CodexThread,
+  ): void {
+    if (thread.state.pendingUserInput?.requestId !== message.params.requestId) return;
+    const threadId = thread.state.pendingUserInput.threadId;
+    thread.clearUserInput();
+    this.clearAttention(threadId);
+  }
+
+  /** Appends standalone command output to the thread owning its process. */
+  handleExecOutputDelta(
+    message: Extract<ServerMessage, { method: "command/exec/outputDelta" }>,
+  ): boolean {
+    const thread = this.execThread(message.params.processId);
+    if (!thread) return false;
+    thread.appendActivityOutput(
+      message.params.processId,
+      Buffer.from(message.params.deltaBase64, "base64").toString(),
+    );
+    return true;
   }
 
   /** Marks or clears app-server ownership state for a thread. */
