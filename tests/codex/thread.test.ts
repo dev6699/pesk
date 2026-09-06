@@ -244,6 +244,7 @@ describe("CodexThread", () => {
 
     thread.restoreTurns([
       {
+        id: "turn-1",
         createdAt: 1_700_000_000,
         items: [
           { type: "userMessage", content: [{ text: "persisted prompt" }] },
@@ -268,6 +269,7 @@ describe("CodexThread", () => {
 
     thread.restoreTurns([
       {
+        id: "turn-1",
         createdAt: 1_700_000_000,
         items: [
           { type: "userMessage", content: [{ text: "older prompt" }] },
@@ -359,13 +361,15 @@ describe("CodexThread", () => {
 
     thread.restoreTurns([
       {
+        id: "turn-1",
         createdAt: 1_700_000_000,
         tokenUsage: {
           total: { inputTokens: 4, outputTokens: 2, totalTokens: 6 },
           last: { inputTokens: 4, outputTokens: 2, totalTokens: 6 },
         },
         items: [
-          { type: "enteredReviewMode", review: "review this" },
+          { type: "commandExecution", id: "review-command", command: "npm test" },
+          { type: "enteredReviewMode", id: "review-enter", review: "review this" },
           { type: "agentMessage", text: "review result" },
           { type: "userMessage", content: [{ text: "actual request" }] },
           { type: "userMessage", content: [{ text: "review this" }] },
@@ -375,12 +379,45 @@ describe("CodexThread", () => {
 
     expect(thread.state.history[0]).toEqual(
       expect.objectContaining({
+        itemId: "review-enter",
         activity: expect.objectContaining({ label: "enteredReviewMode" }),
       }),
     );
-    expect(thread.state.history[1]).toEqual(expect.objectContaining({ text: "review result" }));
-    expect(thread.state.history[2]).toEqual(expect.objectContaining({ text: "actual request" }));
+    expect(thread.state.history[1]).toEqual(
+      expect.objectContaining({ itemId: "review-command", turnId: "turn-1" }),
+    );
+    expect(thread.state.history[2]).toEqual(expect.objectContaining({ text: "review result" }));
+    expect(thread.state.history[3]).toEqual(expect.objectContaining({ text: "actual request" }));
     expect(thread.state.tokenUsage?.total.totalTokens).toBe(6);
+  });
+
+  test("restores persisted turns chronologically before rendering review activity", () => {
+    const thread = new CodexThread("thread-1");
+
+    thread.restoreTurns([
+      {
+        id: "turn-command",
+        startedAt: 2,
+        items: [{ type: "commandExecution", id: "command-1", command: "npm test" }],
+      },
+      {
+        id: "turn-review",
+        startedAt: 1,
+        items: [
+          { type: "enteredReviewMode", id: "review-1", review: "review this" },
+          { type: "exitedReviewMode", id: "review-completed", review: "completed" },
+          { type: "agentMessage", id: "review-report", text: "report" },
+        ],
+      },
+    ]);
+
+    expect(thread.state.history.map((message) => message.itemId)).toEqual([
+      "review-1",
+      "command-1",
+      "review-completed",
+      "review-report",
+    ]);
+    expect(thread.state.history[2]?.activity?.status).toBe("completed");
   });
 
   test("maps server lifecycle status to isolated runtime status", () => {

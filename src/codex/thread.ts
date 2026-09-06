@@ -284,7 +284,11 @@ export class CodexThread {
       userInitiated: item.userInitiated === true || item.source === "userShell",
       label: type,
       status:
-        typeof item.status === "string" ? item.status : kind === "plan" ? "completed" : undefined,
+        typeof item.status === "string"
+          ? item.status
+          : isReviewCompletion || kind === "plan"
+            ? "completed"
+            : undefined,
       command: typeof item.command === "string" ? item.command : undefined,
       cwd: typeof item.cwd === "string" ? item.cwd : undefined,
       summary:
@@ -475,7 +479,7 @@ export class CodexThread {
     }
 
     const reviewPromptTexts = new Set<string>();
-    for (const turn of turns) {
+    for (const turn of [...turns].sort(comparePersistedTurns)) {
       for (const item of records(turn.items)) {
         if (
           (item.type === "enteredReviewMode" || item.type === "exitedReviewMode") &&
@@ -488,7 +492,7 @@ export class CodexThread {
     }
 
     const restored: CodexMessage[] = [];
-    for (const turn of turns) {
+    for (const turn of [...turns].sort(comparePersistedTurns)) {
       const turnId = stringValue(turn.id);
       const timestamp =
         typeof turn.createdAt === "number"
@@ -497,6 +501,7 @@ export class CodexThread {
             : turn.createdAt
           : Date.now();
       const items = records(turn.items);
+      const turnRestored: CodexMessage[] = [];
       for (const item of items) {
         if (item.type === "userMessage") {
           const contents = records(item.content);
@@ -513,7 +518,7 @@ export class CodexThread {
             )
             .map((content) => ({ url: content.url as string }));
           if ((text && !reviewPromptTexts.has(text)) || images.length) {
-            restored.push({
+            turnRestored.push({
               role: "user",
               text,
               timestamp,
@@ -531,7 +536,7 @@ export class CodexThread {
                   .map((part) => (typeof part.text === "string" ? part.text : ""))
                   .join("");
           if (text.trim()) {
-            restored.push({
+            turnRestored.push({
               role: "assistant",
               text: text.trim(),
               timestamp,
@@ -540,9 +545,20 @@ export class CodexThread {
             });
           }
         }
-        if (isActivityItem(item)) restored.push(this.activityMessage(item, timestamp));
+        if (isActivityItem(item)) {
+          turnRestored.push({ ...this.activityMessage(item, timestamp), turnId });
+        }
       }
+      const reviewStartIndex = turnRestored.findIndex(
+        (message) => message.activity?.label === "enteredReviewMode",
+      );
+      if (reviewStartIndex > 0) {
+        const [reviewStart] = turnRestored.splice(reviewStartIndex, 1);
+        turnRestored.unshift(reviewStart);
+      }
+      restored.push(...turnRestored);
     }
+    moveReviewCompletionsToEnd(restored);
 
     const restoredUserIdentities = new Set(
       restored
@@ -941,6 +957,62 @@ export class CodexThread {
         };
       })
       .filter((submission): submission is CodexQueuedSubmission => Boolean(submission));
+  }
+}
+
+function comparePersistedTurns(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): number {
+  const leftTime = numberValue(left.startedAt ?? left.createdAt);
+  const rightTime = numberValue(right.startedAt ?? right.createdAt);
+  if (leftTime !== undefined && rightTime !== undefined && leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+  const leftId = stringValue(left.id);
+  const rightId = stringValue(right.id);
+  if (leftId && rightId && leftId !== rightId) return leftId.localeCompare(rightId);
+  return 0;
+}
+
+function moveReviewCompletionsToEnd(history: CodexMessage[]): void {
+  let searchIndex = 0;
+  while (searchIndex < history.length) {
+    const reviewStart = history.findIndex(
+      (message, index) => index >= searchIndex && message.activity?.label === "enteredReviewMode",
+    );
+    if (reviewStart < 0) return;
+    const nextUserMessage = history.findIndex(
+      (message, index) => index > reviewStart && message.role === "user",
+    );
+    const blockEnd = nextUserMessage >= 0 ? nextUserMessage : history.length;
+    const reviewCompletion = history.findIndex(
+      (message, index) =>
+        index > reviewStart && index < blockEnd && message.activity?.label === "exitedReviewMode",
+    );
+    if (reviewCompletion < 0) return;
+    const block = history.slice(reviewStart, blockEnd);
+    const reviewStartMessage = block[0];
+    const reviewCompletionMessage = block.find(
+      (message) => message.activity?.label === "exitedReviewMode",
+    );
+    if (!reviewStartMessage || !reviewCompletionMessage) return;
+    const commands = block.filter((message) => message.activity?.kind === "command");
+    const remaining = block.filter(
+      (message) =>
+        message !== reviewStartMessage &&
+        message !== reviewCompletionMessage &&
+        message.activity?.kind !== "command",
+    );
+    history.splice(
+      reviewStart,
+      block.length,
+      reviewStartMessage,
+      ...commands,
+      reviewCompletionMessage,
+      ...remaining,
+    );
+    searchIndex = reviewStart + commands.length + remaining.length + 2;
   }
 }
 

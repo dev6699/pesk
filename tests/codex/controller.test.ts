@@ -1787,6 +1787,20 @@ describe("CodexController", () => {
     socket.emit(
       "message",
       JSON.stringify({
+        method: "item/started",
+        params: {
+          turnId: "review-turn",
+          item: {
+            id: "review-enter",
+            type: "enteredReviewMode",
+            review: "Review report should be shown once",
+          },
+        },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
         method: "item/completed",
         params: {
           item: {
