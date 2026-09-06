@@ -13,7 +13,6 @@ function codexState(threadId: string): CodexState {
     error: undefined,
     commandNotice: undefined,
     status: "idle",
-    aggregateStatus: "idle",
     connected: true,
     history: [],
     projects: [],

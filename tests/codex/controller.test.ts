@@ -2679,7 +2679,6 @@ describe("CodexController", () => {
 
     expect(controller.getState().threadId).toBe("thread-1");
     expect(controller.getState().status).toBe("idle");
-    expect(controller.getState().aggregateStatus).toBe("working");
     expect(controller.getState().threadActivities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

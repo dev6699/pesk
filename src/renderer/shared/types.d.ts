@@ -176,7 +176,6 @@ interface CodexRuntimeState {
   cwd?: string;
   error?: string;
   status: "idle" | "working" | "waiting";
-  aggregateStatus: "idle" | "working" | "waiting";
   connected: boolean;
   history: CodexHistoryItem[];
   threads: Array<{ id: string; preview?: string; status?: unknown; projectId?: string | null }>;

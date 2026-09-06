@@ -46,7 +46,6 @@ function state(): RendererState {
     },
     codex: {
       status: "idle",
-      aggregateStatus: "idle",
       connected: true,
       readOnly: false,
       threads: [],

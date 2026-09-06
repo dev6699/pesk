@@ -120,7 +120,6 @@ export interface CodexState {
   cwd?: string;
   error?: string;
   status: "idle" | "working" | "waiting";
-  aggregateStatus: "idle" | "working" | "waiting";
   connected: boolean;
   history: CodexMessage[];
   threads: Thread[];

@@ -13,7 +13,6 @@ export function defaultPeskSettings(): SavedPeskSettings {
 export function defaultCodexRuntimeState(): CodexRuntimeState {
   return {
     status: "idle",
-    aggregateStatus: "idle",
     connected: false,
     readOnly: false,
     history: [],

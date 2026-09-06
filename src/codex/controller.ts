@@ -60,7 +60,6 @@ If the steer is materially ambiguous, ask one concise clarifying question. Other
 
 Steer message:
 `;
-const HISTORY_PAGE_LIMIT = 5;
 
 export interface CodexControllerOptions {
   onStateChanged: (state: CodexState) => void;
@@ -177,13 +176,6 @@ export class CodexController {
     const pagination = this.threadManager.selectedHistoryState();
     const threadActivities = this.threadManager.getThreadActivities();
     const backgroundWork = this.threadManager.backgroundWorkSnapshot();
-    const aggregateStatus: CodexState["status"] = threadActivities.some(
-      (activity) => activity.status === "waiting",
-    )
-      ? "waiting"
-      : threadActivities.some((activity) => activity.status === "working")
-        ? "working"
-        : "idle";
     return {
       threadId: this.threadManager.selectedThreadId,
       projectId: thread.projectId,
@@ -192,7 +184,6 @@ export class CodexController {
       error: this.connectionError,
       commandNotice: thread.commandNotice,
       status: thread.status,
-      aggregateStatus,
       connected: thread.connected,
       history: thread.history,
       threads: this.threadManager.threads,
