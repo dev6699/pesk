@@ -146,14 +146,17 @@ body {
   width: 180px;
   height: 180px;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   cursor: pointer;
 }
 
 #pet::after {
   content: "";
   position: absolute;
-  inset: 6% 4% 4%;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--pet-art-size, 180px) * 0.86);
+  height: calc(var(--pet-art-size, 180px) * 0.86);
   z-index: 0;
   border-radius: 50%;
   background:
@@ -263,12 +266,12 @@ body.chat-only #codex-chat {
   0%,
   100% {
     opacity: 0.72;
-    transform: scale(0.94);
+    transform: translate(-50%, -50%) scale(0.9);
   }
 
   50% {
     opacity: 1;
-    transform: scale(1.02);
+    transform: translate(-50%, -50%) scale(0.98);
   }
 }
 
@@ -276,6 +279,7 @@ body.chat-only #codex-chat {
   position: absolute;
   left: 4px;
   top: 4px;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 0;

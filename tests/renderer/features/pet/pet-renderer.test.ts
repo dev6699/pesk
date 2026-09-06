@@ -308,6 +308,32 @@ describe("PetRenderer", () => {
     expect(window.peskApi.resizePetContent).toHaveBeenCalledWith(284, 180);
   });
 
+  test("keeps the art size square when status content is wider at small scale", () => {
+    const pet = new FakeElement();
+    const status = new FakeElement();
+    status.getBoundingClientRect.mockReturnValue({ width: 276, height: 28 } as DOMRect);
+    const renderer = new PetRenderer({
+      image: new FakeElement() as never,
+      pet: pet as never,
+      status: status as never,
+      statusLabel: { textContent: "" } as never,
+      statusSound: createStatusSound(),
+      chatOnly: false,
+      state: {
+        ...defaultRendererState(),
+        settings: { ...defaultRendererState().settings, scale: 0.25 },
+      },
+    });
+
+    renderer.updateState({
+      ...defaultRendererState(),
+      settings: { ...defaultRendererState().settings, scale: 0.25 },
+    });
+
+    expect(pet.style.setProperty).toHaveBeenCalledWith("--pet-art-size", "45px");
+    expect(window.peskApi.resizePetContent).toHaveBeenCalledWith(284, 45);
+  });
+
   test("uses one focused class and accessible label for pet focus", () => {
     const pet = new FakeElement();
     const renderer = new PetRenderer({
