@@ -50,6 +50,7 @@ function makeRenderer(
     commandMode: HTMLElement;
     modeToggle: HTMLElement;
     steerButton: HTMLButtonElement;
+    rateLimit: HTMLElement;
   };
 } {
   document.body.className = webChat ? "web-chat" : "";
@@ -58,6 +59,7 @@ function makeRenderer(
     <select id="select"></select>
     <button id="copy">Copy</button>
     <div id="error"></div>
+    <div id="rate-limit"></div>
     <div id="history"></div>
     <div id="codex-status-dock" hidden>
       <div id="codex-command-notice" hidden></div>
@@ -93,6 +95,7 @@ function makeRenderer(
     commandMode: document.querySelector("#command-mode") as HTMLElement,
     modeToggle: document.querySelector("#mode-toggle") as HTMLElement,
     steerButton: document.querySelector("#steer") as HTMLButtonElement,
+    rateLimit: document.querySelector("#rate-limit") as HTMLElement,
   };
   Object.defineProperties(elements.history, {
     clientHeight: { configurable: true, value: 300 },
@@ -155,7 +158,7 @@ function makeRenderer(
     elements.form,
     elements.input,
     settings,
-    undefined,
+    elements.rateLimit,
     elements.suggestions,
     elements.modeToggle,
     elements.userInput,
@@ -4016,6 +4019,77 @@ test("renders complete usage, rate-limit, and goal details", () => {
     "codex-context-high",
   );
   expect((renderer as any).goal.textContent).toContain("Improve coverage");
+  const primaryProgress = elements.rateLimit.querySelector(
+    ".codex-rate-limit-primary .codex-rate-limit-progress",
+  );
+  const secondaryProgress = elements.rateLimit.querySelector(
+    ".codex-rate-limit-secondary .codex-rate-limit-progress",
+  );
+  expect(primaryProgress?.textContent).toContain("85% used");
+  expect(secondaryProgress?.textContent).toContain("20% used");
+  expect(primaryProgress?.querySelector(".codex-rate-limit-progress-label")?.textContent).toBe(
+    "Primary: 85% used",
+  );
+  expect(secondaryProgress?.querySelector(".codex-rate-limit-progress-label")?.textContent).toBe(
+    "Secondary: 20% used",
+  );
+  expect(elements.rateLimit.querySelector(".codex-rate-limit-window-reset")?.textContent).toContain(
+    "Reset:",
+  );
+  expect(elements.rateLimit.querySelector(".codex-rate-limit-details")?.textContent).not.toContain(
+    "Plan:",
+  );
+  expect(
+    elements.rateLimit.querySelector(".codex-rate-limit-window-reset")?.parentElement?.className,
+  ).toBe("codex-rate-limit-progress");
+  expect(
+    (
+      elements.rateLimit.querySelector(
+        ".codex-rate-limit-primary .codex-rate-limit-progress-fill",
+      ) as HTMLElement
+    ).style.width,
+  ).toBe("85.4%");
+  expect(
+    (
+      elements.rateLimit.querySelector(
+        ".codex-rate-limit-secondary .codex-rate-limit-progress-fill",
+      ) as HTMLElement
+    ).style.width,
+  ).toBe("20%");
+});
+
+test("clamps quota progress bars and hides an unavailable secondary window", () => {
+  const { renderer, elements } = makeRenderer();
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      account: {
+        ...defaultRendererState().codex.account,
+        rateLimits: {
+          primary: { usedPercent: 125, windowDurationMins: 60, resetsAt: null },
+          secondary: null,
+          credits: { hasCredits: true, unlimited: false, balance: "7" },
+          individualLimit: null,
+          spendControlReached: false,
+          planType: null,
+          rateLimitReachedType: null,
+        },
+      },
+    },
+  });
+
+  expect(elements.rateLimit.querySelector(".codex-rate-limit-secondary")).toBeNull();
+  expect(elements.rateLimit.querySelector(".codex-rate-limit-details")?.textContent).toContain(
+    "Credits: 7",
+  );
+  expect(
+    (
+      elements.rateLimit.querySelector(
+        ".codex-rate-limit-primary .codex-rate-limit-progress-fill",
+      ) as HTMLElement
+    ).style.width,
+  ).toBe("100%");
 });
 
 test("colors the context usage indicator by threshold", () => {

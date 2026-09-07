@@ -424,7 +424,7 @@ body.chat-only #codex-chat {
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  padding: 0;
+  padding: 0 4px;
   border: 0;
   background: transparent;
   font: inherit;
@@ -636,6 +636,26 @@ body.chat-only #codex-chat {
   scrollbar-color: var(--border-subtle) transparent;
 }
 
+.codex-approval-command::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+}
+
+.codex-approval-command::-webkit-scrollbar-button,
+.codex-approval-command::-webkit-scrollbar-corner {
+  display: none;
+  background: transparent;
+}
+
+.codex-approval-command::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.codex-approval-command::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--border-subtle);
+}
+
 .codex-approval-command:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
@@ -770,16 +790,97 @@ body.chat-only #codex-chat {
   width: 100%;
   min-height: 18px;
   margin: -2px 2px 6px;
-  padding: 2px 4px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--surface-input);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text-primary);
   font:
     700 10px/14px system-ui,
     sans-serif;
   white-space: normal;
   text-shadow: 0 1px 2px var(--text-on-bright-surface);
+}
+
+.codex-rate-limit-windows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.codex-rate-limit-window {
+  min-width: 0;
+}
+
+.codex-rate-limit-progress {
+  position: relative;
+  height: 16px;
+  margin: 2px 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.codex-rate-limit-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 180ms ease-out;
+}
+
+.codex-rate-limit-progress-label {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  padding: 0 4px;
+  color: var(--text-primary);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px var(--text-on-bright-surface);
+  white-space: nowrap;
+}
+
+.codex-rate-limit-window-reset {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  max-width: 50%;
+  overflow: hidden;
+  padding: 0 4px;
+  color: var(--text-primary);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: right;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px var(--text-on-bright-surface);
+  white-space: nowrap;
+}
+
+.codex-rate-limit-primary .codex-rate-limit-progress-fill {
+  background: var(--action-primary);
+}
+
+.codex-rate-limit-secondary .codex-rate-limit-progress-fill {
+  background: var(--action-secondary);
+}
+
+.codex-rate-limit-details {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+  text-shadow: 0 1px 2px var(--text-on-bright-surface);
+}
+
+.codex-rate-limit-details {
+  margin-top: 2px;
+  text-align: left;
 }
 
 .codex-rate-limit-ok {

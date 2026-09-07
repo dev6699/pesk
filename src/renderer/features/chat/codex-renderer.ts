@@ -6,7 +6,12 @@ import { CodexPromptRenderer } from "./codex-prompt-renderer.js";
 import { CodexModelRenderer } from "./codex-model-renderer.js";
 import { CodexStatusRenderer } from "./codex-status-renderer.js";
 import { CodexSuggestionRenderer } from "./codex-suggestions-renderer.js";
-import { formatElapsed, formatRateLimitDetails, formatTokens } from "./codex-renderer-helpers.js";
+import {
+  formatElapsed,
+  formatRateLimitDetails,
+  formatReset,
+  formatTokens,
+} from "./codex-renderer-helpers.js";
 import { openProjectManager } from "./project-manager.js";
 import { openProjectThreadPrompt } from "./project-thread-renderer.js";
 
@@ -860,19 +865,73 @@ export class CodexRenderer {
     const primary = limits?.primary;
     if (!primary) {
       this.rateLimit.hidden = true;
+      this.rateLimit.replaceChildren();
       this.rateLimit.textContent = "";
       return;
     }
     const used = Math.round(primary.usedPercent);
     const reached = Boolean(limits?.rateLimitReachedType || limits?.spendControlReached);
     const details = formatRateLimitDetails(limits);
-    this.rateLimit.textContent = details.join(" · ");
     this.rateLimit.className = reached
       ? "codex-rate-limit-reached"
       : used >= 80
         ? "codex-rate-limit-warning"
         : "codex-rate-limit-ok";
     this.rateLimit.setAttribute("aria-label", details.join("; "));
+    this.rateLimit.replaceChildren();
+
+    const windows = document.createElement("div");
+    windows.className = "codex-rate-limit-windows";
+    const appendWindow = (
+      label: string,
+      window: NonNullable<typeof limits.primary> | null,
+      colorClass: string,
+    ): void => {
+      if (!window) return;
+      const percentage = Math.max(0, Math.min(100, window.usedPercent));
+      const panel = document.createElement("div");
+      panel.className = `codex-rate-limit-window ${colorClass}`;
+
+      const progress = document.createElement("div");
+      progress.className = "codex-rate-limit-progress";
+      progress.setAttribute("role", "progressbar");
+      progress.setAttribute("aria-label", `${label} quota used`);
+      progress.setAttribute("aria-valuemin", "0");
+      progress.setAttribute("aria-valuemax", "100");
+      progress.setAttribute("aria-valuenow", String(Math.round(percentage)));
+      const fill = document.createElement("div");
+      fill.className = "codex-rate-limit-progress-fill";
+      fill.style.width = `${percentage}%`;
+      const progressLabel = document.createElement("span");
+      progressLabel.className = "codex-rate-limit-progress-label";
+      progressLabel.textContent = `${label}: ${Math.round(window.usedPercent)}% used`;
+
+      const reset = document.createElement("span");
+      reset.className = "codex-rate-limit-window-reset";
+      reset.textContent = window.resetsAt ? `Reset: ${formatReset(window.resetsAt)}` : "";
+      progress.append(fill, progressLabel, reset);
+      panel.append(progress);
+      windows.append(panel);
+    };
+
+    appendWindow("Primary", primary, "codex-rate-limit-primary");
+    appendWindow("Secondary", limits.secondary, "codex-rate-limit-secondary");
+    this.rateLimit.append(windows);
+
+    const extraDetails = details
+      .filter(
+        (detail) =>
+          !detail.startsWith("Quota:") &&
+          !detail.startsWith("Secondary:") &&
+          !detail.startsWith("Plan:"),
+      )
+      .join(" · ");
+    if (extraDetails) {
+      const metadata = document.createElement("div");
+      metadata.className = "codex-rate-limit-details";
+      metadata.textContent = extraDetails;
+      this.rateLimit.append(metadata);
+    }
     this.rateLimit.hidden = false;
   }
 }
