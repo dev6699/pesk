@@ -169,6 +169,50 @@ function makeRenderer(
   return { renderer, elements };
 }
 
+test("supports keyboard navigation and selection in the session picker", () => {
+  const { renderer, elements } = makeRenderer();
+  const base = defaultRendererState();
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      threads: {
+        ...base.codex.threads,
+        selectedId: "thread-1",
+        items: [
+          { id: "thread-1", preview: "First thread" },
+          { id: "thread-2", preview: "Second thread" },
+        ],
+      },
+    },
+  });
+
+  const trigger = document.querySelector<HTMLButtonElement>(".codex-session-trigger");
+  const menu = document.querySelector<HTMLElement>(".codex-session-menu");
+  expect(trigger).not.toBeNull();
+  expect(menu).not.toBeNull();
+  trigger?.focus();
+  trigger?.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+  );
+  expect(menu?.hidden).toBe(false);
+  expect(trigger?.getAttribute("aria-activedescendant")).toBe("codex-session-option-0");
+
+  const scrollIntoView = HTMLElement.prototype.scrollIntoView as jest.Mock;
+  scrollIntoView.mockClear();
+  trigger?.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+  );
+  expect(trigger?.getAttribute("aria-activedescendant")).toBe("codex-session-option-1");
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  trigger?.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+  );
+
+  expect(window.peskApi.selectCodexThread).toHaveBeenCalledWith("thread-2");
+  expect(menu?.hidden).toBe(true);
+});
+
 afterEach(() => {
   jest.useRealTimers();
   document.body.replaceChildren();

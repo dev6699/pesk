@@ -392,11 +392,22 @@ body.chat-only #codex-chat {
   text-shadow: 0 1px 2px var(--text-on-bright-surface);
 }
 
-#codex-session-select {
-  width: 0;
+.codex-session-picker {
+  position: relative;
+  width: 100%;
   min-width: 0;
-  max-width: none;
-  flex: 1 1 0;
+  max-width: 520px;
+  flex: 0 1 520px;
+}
+
+#codex-session-select {
+  display: none;
+}
+
+.codex-session-trigger {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   box-sizing: border-box;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -409,8 +420,56 @@ body.chat-only #codex-chat {
   background: var(--surface-input);
   color: var(--text-primary);
   font:
-    10px/1.2 system-ui,
+    9px/1.15 system-ui,
     sans-serif;
+  text-align: left;
+  text-shadow: 0 1px 2px var(--text-on-bright-surface);
+  cursor: pointer;
+}
+
+.codex-session-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  max-height: 240px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-focus);
+  box-shadow: 0 6px 16px var(--shadow-heavy);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.codex-session-menu [role="option"] {
+  padding: 5px 7px;
+  text-shadow: 0 1px 2px var(--text-on-bright-surface);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.codex-session-thread-title {
+  font:
+    9px/1.15 system-ui,
+    sans-serif;
+}
+
+.codex-session-thread-project {
+  margin-top: 2px;
+  color: var(--status-info);
+  font:
+    8px/1.15 system-ui,
+    sans-serif;
+}
+
+.codex-session-menu [role="option"]:hover,
+.codex-session-menu [role="option"][aria-selected="true"],
+.codex-session-menu .codex-session-option-active {
+  background: var(--action-secondary);
 }
 
 #web-connection-status {

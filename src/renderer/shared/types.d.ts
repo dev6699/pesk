@@ -174,7 +174,13 @@ interface CodexRuntimeState {
   account: { rateLimits?: CodexRateLimits };
   threads: {
     selectedId?: string;
-    items: Array<{ id: string; preview?: string; status?: unknown; projectId?: string | null }>;
+    items: Array<{
+      id: string;
+      preview?: string;
+      status?: unknown;
+      projectId?: string | null;
+      recencyAt?: number | null;
+    }>;
     activities: CodexThreadActivity[];
     backgroundWork: { completed: number; total: number };
     current: {

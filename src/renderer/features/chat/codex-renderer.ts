@@ -30,6 +30,10 @@ export class CodexRenderer {
   private sessionNavigationIds: string[] = [];
   private renderedSessionOptionsKey = "";
   private pendingSessionId: string | undefined;
+  private readonly sessionPicker: HTMLElement;
+  private readonly sessionTrigger: HTMLButtonElement;
+  private readonly sessionMenu: HTMLElement;
+  private sessionMenuIndex = -1;
   private readonly dismissedPlanConfirmations = new Set<string>();
   private activePlanConfirmation: { key: string; planText: string } | undefined;
   private readonly imageAttachments = document.getElementById("codex-image-attachments");
@@ -141,6 +145,24 @@ export class CodexRenderer {
       this.commandNotice,
       () => this.state,
     );
+    this.sessionPicker = document.createElement("div");
+    this.sessionPicker.className = "codex-session-picker";
+    this.sessionTrigger = document.createElement("button");
+    this.sessionTrigger.type = "button";
+    this.sessionTrigger.className = "codex-session-trigger";
+    this.sessionTrigger.setAttribute("aria-haspopup", "listbox");
+    this.sessionTrigger.setAttribute("aria-expanded", "false");
+    this.sessionMenu = document.createElement("div");
+    this.sessionMenu.className = "codex-session-menu";
+    this.sessionMenu.id = "codex-session-menu";
+    this.sessionMenu.setAttribute("role", "listbox");
+    this.sessionTrigger.setAttribute("aria-controls", this.sessionMenu.id);
+    this.sessionMenu.hidden = true;
+    const sessionParent = this.sessionSelect.parentElement;
+    sessionParent?.replaceChild(this.sessionPicker, this.sessionSelect);
+    this.sessionPicker.append(this.sessionTrigger, this.sessionMenu, this.sessionSelect);
+    this.sessionSelect.hidden = true;
+    this.sessionSelect.setAttribute("aria-hidden", "true");
     this.statusRenderer.update();
     this.inputController.setup();
     this.inputController.renderCommandMode();
@@ -152,10 +174,129 @@ export class CodexRenderer {
 
   /** Wires session selection and session-copy controls. */
   private setupSessionControls(): void {
+    this.sessionTrigger.addEventListener("click", () => {
+      this.toggleSessionMenu();
+    });
+    this.sessionTrigger.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !this.sessionMenu.hidden) {
+        event.preventDefault();
+        this.closeSessionMenu();
+        return;
+      }
+      if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+        event.preventDefault();
+        if (this.sessionMenu.hidden) this.toggleSessionMenu(true);
+        else if (event.key === "ArrowDown") this.moveSessionMenu(1);
+        else this.selectActiveSession();
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        if (this.sessionMenu.hidden) this.toggleSessionMenu(true);
+        else this.moveSessionMenu(-1);
+      }
+    });
+    this.sessionMenu.addEventListener("click", (event) => {
+      const option = (event.target as HTMLElement).closest<HTMLElement>("[role='option']");
+      if (!option || option.dataset.value === undefined) return;
+      this.selectSession(option.dataset.value);
+    });
+    document.addEventListener("click", (event) => {
+      if (!this.sessionPicker.contains(event.target as Node)) this.closeSessionMenu();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") this.closeSessionMenu();
+    });
     this.sessionSelect.addEventListener("change", () => {
-      if (this.sessionSelect.value) window.peskApi.selectCodexThread(this.sessionSelect.value);
+      this.renderSessionPicker();
     });
     this.sessionCopy.addEventListener("click", () => void this.copySessionId());
+  }
+
+  /** Opens or closes the custom session menu and initializes its keyboard highlight. */
+  private toggleSessionMenu(open = this.sessionMenu.hidden): void {
+    if (this.sessionTrigger.disabled) return;
+    this.sessionMenu.hidden = !open;
+    this.sessionTrigger.setAttribute("aria-expanded", String(open));
+    if (open) {
+      const selectedIndex = Array.from(this.sessionSelect.options).findIndex(
+        (option) => option.value === this.sessionSelect.value,
+      );
+      this.sessionMenuIndex = selectedIndex >= 0 ? selectedIndex : 0;
+      this.updateSessionMenuHighlight();
+    } else {
+      this.sessionTrigger.removeAttribute("aria-activedescendant");
+    }
+  }
+
+  /** Moves the active option while the custom session menu is open. */
+  private moveSessionMenu(direction: 1 | -1): void {
+    const optionCount = this.sessionMenu.querySelectorAll("[role='option']").length;
+    if (!optionCount) return;
+    this.sessionMenuIndex = (this.sessionMenuIndex + direction + optionCount) % optionCount;
+    this.updateSessionMenuHighlight();
+  }
+
+  /** Selects the option currently highlighted for keyboard interaction. */
+  private selectActiveSession(): void {
+    const option =
+      this.sessionMenu.querySelectorAll<HTMLElement>("[role='option']")[this.sessionMenuIndex];
+    if (option?.dataset.value !== undefined) this.selectSession(option.dataset.value);
+  }
+
+  /** Handles the active-descendant state used by keyboard users of the session menu. */
+  private updateSessionMenuHighlight(): void {
+    const options = Array.from(this.sessionMenu.querySelectorAll<HTMLElement>("[role='option']"));
+    options.forEach((option, index) => {
+      option.classList.toggle("codex-session-option-active", index === this.sessionMenuIndex);
+    });
+    const active = options[this.sessionMenuIndex];
+    if (active) {
+      this.sessionTrigger.setAttribute("aria-activedescendant", active.id);
+      active.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  /** Selects a thread from the bounded custom session menu. */
+  private selectSession(threadId: string): void {
+    this.sessionSelect.value = threadId;
+    this.closeSessionMenu();
+    if (threadId) window.peskApi.selectCodexThread(threadId);
+  }
+
+  /** Closes the custom session menu. */
+  private closeSessionMenu(): void {
+    this.toggleSessionMenu(false);
+  }
+
+  /** Mirrors native select options into the bounded custom menu. */
+  private renderSessionPicker(): void {
+    const selected = this.sessionSelect.selectedOptions[0];
+    this.sessionTrigger.textContent = selected?.textContent ?? "No active session";
+    this.sessionTrigger.title = selected?.textContent ?? "No active session";
+    this.sessionMenu.replaceChildren();
+    for (const [index, option] of Array.from(this.sessionSelect.options).entries()) {
+      const item = document.createElement("div");
+      item.id = `codex-session-option-${index}`;
+      item.setAttribute("role", "option");
+      item.dataset.value = option.value;
+      item.title = option.title;
+      item.setAttribute("aria-selected", String(option.value === this.sessionSelect.value));
+      const title = document.createElement("div");
+      title.className = "codex-session-thread-title";
+      title.textContent = option.textContent;
+      item.append(title);
+      if (option.dataset.projectName) {
+        const project = document.createElement("div");
+        project.className = "codex-session-thread-project";
+        project.textContent = [option.dataset.projectName, option.dataset.recency]
+          .filter(Boolean)
+          .join(" · ");
+        item.append(project);
+      }
+      this.sessionMenu.append(item);
+    }
+    if (!this.sessionMenu.hidden) this.updateSessionMenuHighlight();
   }
 
   /** Wires history scrolling and older-history pagination. */
@@ -243,7 +384,10 @@ export class CodexRenderer {
     this.error.hidden = !next.codex.connection.error;
     this.error.textContent = next.codex.connection.error ? "Codex connection error." : "";
     const sessionOptionsKey = displayedThreads
-      .map((thread) => `${thread.id}\u0000${thread.preview ?? ""}`)
+      .map(
+        (thread) =>
+          `${thread.id}\u0000${thread.preview ?? ""}\u0000${this.threadProjectId(thread)}\u0000${this.projectName(this.threadProjectId(thread))}\u0000${thread.recencyAt ?? ""}`,
+      )
       .join("\u0001");
     if (sessionOptionsKey !== this.renderedSessionOptionsKey) {
       this.renderedSessionOptionsKey = sessionOptionsKey;
@@ -259,12 +403,16 @@ export class CodexRenderer {
           option.value = thread.id;
           option.textContent = thread.preview ? `${thread.id} — ${thread.preview}` : thread.id;
           option.title = thread.id;
+          option.dataset.projectName = this.projectName(this.threadProjectId(thread));
+          option.dataset.recency = this.formatThreadTime(thread.recencyAt);
           this.sessionSelect.append(option);
         }
       }
     }
     this.sessionSelect.value = next.codex.threads.selectedId ?? "";
     this.sessionSelect.disabled = !displayedThreads.length;
+    this.renderSessionPicker();
+    this.sessionTrigger.disabled = !displayedThreads.length;
     this.sessionCopy.disabled = !next.codex.threads.selectedId;
     this.renderHistory(
       next.codex.threads.current.thread.messages,
@@ -313,6 +461,31 @@ export class CodexRenderer {
       this.modeToggle.classList.toggle("codex-mode-plan", plan);
       this.modeToggle.title = plan ? "Plan mode enabled for the next turn" : "Default mode";
     }
+  }
+
+  /** Returns the display name for a thread's project group. */
+  private projectName(projectId: string | null | undefined): string {
+    if (!projectId) return "No project";
+    return (
+      this.state.codex.projects.items.find((project) => project.id === projectId)?.name ??
+      "Unknown project"
+    );
+  }
+
+  /** Resolves a thread's project from server metadata or the selected-thread cache. */
+  private threadProjectId(thread: { id: string; projectId?: string | null }): string | null {
+    return thread.projectId ?? this.threadProjectIds.get(thread.id) ?? null;
+  }
+
+  /** Formats a Unix timestamp for the thread menu using the local timezone. */
+  private formatThreadTime(timestamp: number | null | undefined): string {
+    if (timestamp === null || timestamp === undefined) return "";
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(timestamp * 1000));
   }
 
   /** Applies an incremental Codex stream update to the active history. */
