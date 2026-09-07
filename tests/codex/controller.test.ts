@@ -173,9 +173,10 @@ describe("CodexController", () => {
       JSON.stringify({ id: startId, result: { thread: { id: "project-thread" } } }),
     );
     expect(controller.getState()).toMatchObject({
-      threadId: "project-thread",
-      projectId: "project-1",
-      cwd: "/shared",
+      threads: {
+        selectedId: "project-thread",
+        current: { thread: { projectId: "project-1", workingDirectory: "/shared" } },
+      },
     });
   });
 
@@ -199,11 +200,11 @@ describe("CodexController", () => {
     await listing;
 
     expect(controller.startProjectThread("project-1", "/missing")).toBe(false);
-    expect(controller.getState().commandNotice).toContain("not configured");
+    expect(controller.getState().threads.current.thread.commandNotice).toContain("not configured");
     expect(controller.startProjectThread("project-1", "/workspace")).toBe(true);
     const startId = lastMessage(socket).id;
     socket.emit("message", JSON.stringify({ id: startId, error: "start failed" }));
-    expect(controller.getState().commandNotice).toBe("start failed");
+    expect(controller.getState().threads.current.thread.commandNotice).toBe("start failed");
   });
 
   test("clears the selected session and history when the socket closes", () => {
@@ -222,11 +223,9 @@ describe("CodexController", () => {
     socket.emit("close", { code: 1006, reason: "server restarted" });
 
     expect(controller.getState()).toMatchObject({
-      threadId: undefined,
-      threads: [],
-      connected: false,
+      threads: { selectedId: undefined, items: [], current: { thread: { connected: false } } },
     });
-    expect(controller.getState().history).toEqual([
+    expect(controller.getState().threads.current.thread.messages).toEqual([
       { role: "assistant", text: "previous response" },
     ]);
     controller.stop();
@@ -250,8 +249,8 @@ describe("CodexController", () => {
     controller.submitPrompt("failed turn");
     const turnId = lastMessage(socket).id;
     socket.emit("message", JSON.stringify({ id: turnId, error: { message: "failed" } }));
-    expect(controller.getState().status).toBe("idle");
-    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().threads.current.thread.status).toBe("idle");
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
   });
 
   test("publishes a successful rate-limit refresh and suppresses duplicates", () => {
@@ -272,7 +271,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().rateLimits).toEqual({
+    expect(controller.getState().account.rateLimits).toEqual({
       primary: { usedPercent: 42 },
     });
     expect(callbacks.onStateChanged).toHaveBeenLastCalledWith(controller.getState());
@@ -307,7 +306,7 @@ describe("CodexController", () => {
     socket.emit("message", JSON.stringify({ id: requestId, error: { message: "review failed" } }));
 
     expect(controller.getState()).toMatchObject({
-      status: "idle",
+      threads: { current: { thread: { status: "idle" } } },
     });
   });
 
@@ -334,7 +333,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().history.at(-1)).toMatchObject({
+    expect(controller.getState().threads.current.thread.messages.at(-1)).toMatchObject({
       activity: { kind: "command", status: "failed", output: "partial" },
     });
   });
@@ -361,9 +360,9 @@ describe("CodexController", () => {
 
     expect(controller.submitPrompt("/plan")).toBe(true);
     expect(controller.getState()).toMatchObject({
-      status: "idle",
-      collaborationMode: "plan",
-      workingSince: undefined,
+      threads: {
+        current: { thread: { status: "idle", collaborationMode: "plan", workingSince: undefined } },
+      },
     });
   });
 
@@ -544,7 +543,9 @@ describe("CodexController", () => {
     internal.threadManager.selectedThreadId = undefined;
 
     expect(controller.submitPrompt("/compact")).toBe(false);
-    expect(controller.getState().commandNotice).toBe("No active thread to compact.");
+    expect(controller.getState().threads.current.thread.commandNotice).toBe(
+      "No active thread to compact.",
+    );
     expect(socket.sent.map((entry) => JSON.parse(entry).method)).not.toContain(
       "thread/compact/start",
     );
@@ -552,7 +553,7 @@ describe("CodexController", () => {
     internal.threadManager.selectedThreadId = "thread-1";
     threadInstance(controller).setStatus("working");
     expect(controller.submitPrompt("/compact")).toBe(false);
-    expect(controller.getState().commandNotice).toBe(
+    expect(controller.getState().threads.current.thread.commandNotice).toBe(
       "Wait for the current turn to finish before compacting.",
     );
     expect(socket.sent.map((entry) => JSON.parse(entry).method)).not.toContain(
@@ -571,7 +572,9 @@ describe("CodexController", () => {
     );
 
     expect(threadState(controller).status).toBe("idle");
-    expect(controller.getState().commandNotice).toBe("Unable to compact the current thread.");
+    expect(controller.getState().threads.current.thread.commandNotice).toBe(
+      "Unable to compact the current thread.",
+    );
   });
 
   test("rejects thread lifecycle commands without a selected thread", () => {
@@ -647,7 +650,7 @@ describe("CodexController", () => {
         ],
       }),
     );
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           role: "user",
@@ -671,9 +674,11 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(controller.getState().history.filter((message) => message.role === "user")).toHaveLength(
-      1,
-    );
+    expect(
+      controller
+        .getState()
+        .threads.current.thread.messages.filter((message) => message.role === "user"),
+    ).toHaveLength(1);
   });
 
   test("queues a normal prompt while a turn is active", () => {
@@ -695,7 +700,7 @@ describe("CodexController", () => {
         ],
       },
     });
-    expect(controller.getState().queuedSubmissions).toEqual([
+    expect(controller.getState().threads.current.thread.queuedSubmissions).toEqual([
       expect.objectContaining({
         text: "run this after the current turn",
       }),
@@ -716,7 +721,7 @@ describe("CodexController", () => {
         ],
       },
     });
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           text: "inspect this",
@@ -743,7 +748,7 @@ describe("CodexController", () => {
         ],
       },
     });
-    expect(controller.getState().queuedSubmissions).toEqual([
+    expect(controller.getState().threads.current.thread.queuedSubmissions).toEqual([
       expect.objectContaining({ images: [{ url: image.url, name: image.name }] }),
     ]);
 
@@ -763,7 +768,7 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           text: "inspect later",
@@ -801,7 +806,7 @@ describe("CodexController", () => {
       method: "turn/start",
       params: { threadId: "new-thread" },
     });
-    expect(controller.getState().connected).toBe(true);
+    expect(controller.getState().threads.current.thread.connected).toBe(true);
     expect(
       (threadState(controller, "new-thread") as { workingDirectory?: string }).workingDirectory,
     ).toBe("/workspace/new-project");
@@ -828,10 +833,10 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(controller.getState().tokenUsage?.total.totalTokens).toBe(1650);
+    expect(controller.getState().threads.current.thread.tokenUsage?.total.totalTokens).toBe(1650);
 
     expect(controller.startNewThread()).toBe(true);
-    expect(controller.getState().tokenUsage).toBeUndefined();
+    expect(controller.getState().threads.current.thread.tokenUsage).toBeUndefined();
 
     socket.emit(
       "message",
@@ -843,7 +848,7 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(controller.getState().tokenUsage).toBeUndefined();
+    expect(controller.getState().threads.current.thread.tokenUsage).toBeUndefined();
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/start",
       params: { serviceName: "pesk" },
@@ -865,12 +870,13 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(controller.getState().tokenUsage).toBeUndefined();
+    expect(controller.getState().threads.current.thread.tokenUsage).toBeUndefined();
 
     expect(controller.getState()).toMatchObject({
-      threadId: "new-thread",
-      history: [],
-      connected: true,
+      threads: { selectedId: "new-thread", current: { thread: { messages: [], connected: true } } },
+      connection: { status: "ready" },
+      account: {},
+      projects: { items: [] },
     });
   });
 
@@ -946,19 +952,28 @@ describe("CodexController", () => {
     );
 
     expect(controller.getState()).toMatchObject({
-      threadId: "forked-thread",
-      connected: true,
-      collaborationMode: "plan",
-      modelInfo: {
-        model: "gpt-5",
-        provider: "openai",
-        reasoningEffort: "high",
+      threads: {
+        selectedId: "forked-thread",
+        current: {
+          thread: {
+            connected: true,
+            collaborationMode: "plan",
+            modelInfo: {
+              model: "gpt-5",
+              provider: "openai",
+              reasoningEffort: "high",
+            },
+            commandNotice: "Thread forked — switched to forked-thread",
+            messages: [
+              expect.objectContaining({ role: "user", text: "copied prompt" }),
+              expect.objectContaining({ role: "assistant", text: "copied response" }),
+            ],
+          },
+        },
       },
-      commandNotice: "Thread forked — switched to forked-thread",
-      history: [
-        expect.objectContaining({ role: "user", text: "copied prompt" }),
-        expect.objectContaining({ role: "assistant", text: "copied response" }),
-      ],
+      connection: { status: "ready" },
+      account: {},
+      projects: { items: [] },
     });
   });
 
@@ -989,7 +1004,7 @@ describe("CodexController", () => {
       "message",
       JSON.stringify({ id: startId, result: { thread: { id: "new-thread" } } }),
     );
-    expect(controller.getState().threadId).toBe("new-thread");
+    expect(controller.getState().threads.selectedId).toBe("new-thread");
   });
 
   test("reuses the current thread working directory for a new thread", () => {
@@ -1037,11 +1052,11 @@ describe("CodexController", () => {
       },
     ]);
 
-    expect(controller.getState().history).toEqual([
+    expect(controller.getState().threads.current.thread.messages).toEqual([
       expect.objectContaining({ role: "user", text: "Remember this" }),
       expect.objectContaining({ role: "assistant", text: "I remember it" }),
     ]);
-    expect(controller.getState().tokenUsage?.total.totalTokens).toBe(1650);
+    expect(controller.getState().threads.current.thread.tokenUsage?.total.totalTokens).toBe(1650);
   });
 
   test("keeps generic activity after idle history reconciliation", () => {
@@ -1077,7 +1092,7 @@ describe("CodexController", () => {
       },
     ]);
 
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           itemId: "search-1",
@@ -1101,7 +1116,9 @@ describe("CodexController", () => {
     expect(
       controller
         .getState()
-        .history.filter((message) => message.role === "user" && message.text === "same prompt"),
+        .threads.current.thread.messages.filter(
+          (message) => message.role === "user" && message.text === "same prompt",
+        ),
     ).toHaveLength(2);
   });
 
@@ -1113,7 +1130,7 @@ describe("CodexController", () => {
     expect(
       controller
         .getState()
-        .history.filter(
+        .threads.current.thread.messages.filter(
           (message) => message.role === "user" && message.text === "repeat this message",
         ),
     ).toHaveLength(2);
@@ -1173,7 +1190,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ role: "user", text: "message from Pesk" }),
       ]),
@@ -1215,7 +1232,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ role: "user", text: "remote prompt" }),
         expect.objectContaining({
@@ -1296,7 +1313,7 @@ describe("CodexController", () => {
     );
 
     expect(lastMessage(socket).method).not.toBe("thread/resume");
-    expect(controller.getState().threadId).toBe("external-thread");
+    expect(controller.getState().threads.selectedId).toBe("external-thread");
 
     socket.emit(
       "message",
@@ -1362,7 +1379,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().modelInfo).toEqual({
+    expect(controller.getState().threads.current.thread.modelInfo).toEqual({
       model: "gpt-5",
       provider: "openai",
       reasoningEffort: "high",
@@ -1392,7 +1409,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().tokenUsage).toEqual({
+    expect(controller.getState().threads.current.thread.tokenUsage).toEqual({
       total: {
         inputTokens: 1200,
         cachedInputTokens: 300,
@@ -1429,8 +1446,10 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().tokenUsage?.total.totalTokens).toBe(2100);
-    expect(controller.getState().tokenUsage?.modelContextWindow).toBe(128000);
+    expect(controller.getState().threads.current.thread.tokenUsage?.total.totalTokens).toBe(2100);
+    expect(controller.getState().threads.current.thread.tokenUsage?.modelContextWindow).toBe(
+      128000,
+    );
   });
 
   test("stores token usage included in an interrupted turn completion", () => {
@@ -1450,7 +1469,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().tokenUsage).toBeUndefined();
+    expect(controller.getState().threads.current.thread.tokenUsage).toBeUndefined();
     expect(threadInstance(controller, "other-thread").state.tokenUsage?.total.totalTokens).toBe(
       900,
     );
@@ -1479,7 +1498,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().tokenUsage?.total.totalTokens).toBe(3200);
+    expect(controller.getState().threads.current.thread.tokenUsage?.total.totalTokens).toBe(3200);
   });
 
   test("accepts the current app-server token usage shape", () => {
@@ -1515,7 +1534,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().tokenUsage).toEqual({
+    expect(controller.getState().threads.current.thread.tokenUsage).toEqual({
       total: {
         totalTokens: 3200,
         inputTokens: 2000,
@@ -1562,7 +1581,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().status).toBe("waiting");
+    expect(controller.getState().threads.current.thread.status).toBe("waiting");
   });
 
   test("stays healthy when connected without an active session", () => {
@@ -1576,10 +1595,13 @@ describe("CodexController", () => {
     socket.emit("message", JSON.stringify({ id: 2, result: { data: [] } }));
 
     expect(controller.getState()).toMatchObject({
-      connected: false,
-      status: "idle",
-      threads: [],
-      history: [],
+      threads: {
+        current: { thread: { connected: false, status: "idle", messages: [] } },
+        items: [],
+      },
+      connection: { status: "ready" },
+      account: {},
+      projects: { items: [] },
     });
   });
 
@@ -1605,12 +1627,12 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threads).toEqual([
+    expect(controller.getState().threads.items).toEqual([
       { id: "active-1", preview: "Active", status: { type: "active" } },
       { id: "idle-1", status: { type: "idle" } },
       { id: "ignored", status: { type: "closed" } },
     ]);
-    expect(controller.getState().threadId).toBe("active-1");
+    expect(controller.getState().threads.selectedId).toBe("active-1");
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/resume",
       params: { threadId: "active-1" },
@@ -1638,8 +1660,8 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("selected");
-    expect(controller.getState().backgroundWork).toEqual({ completed: 0, total: 1 });
+    expect(controller.getState().threads.selectedId).toBe("selected");
+    expect(controller.getState().threads.backgroundWork).toEqual({ completed: 0, total: 1 });
   });
 
   test("keeps a session rejected by an active writer", () => {
@@ -1655,8 +1677,8 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
-    expect(controller.getState().connected).toBe(true);
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
+    expect(controller.getState().threads.current.thread.connected).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/read",
       params: { threadId: "thread-1" },
@@ -1666,11 +1688,12 @@ describe("CodexController", () => {
   test("discovers and resumes the loaded Codex session", () => {
     const { controller, socket } = connectedController();
 
-    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
     expect(controller.getState()).toMatchObject({
-      connected: true,
-      status: "idle",
-      threads: [{ id: "thread-1" }],
+      threads: {
+        items: [{ id: "thread-1" }],
+        current: { thread: { connected: true, status: "idle" } },
+      },
     });
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/turns/list",
@@ -1692,7 +1715,7 @@ describe("CodexController", () => {
       method: "turn/start",
       params: { threadId: "thread-1" },
     });
-    expect(controller.getState().status).toBe("working");
+    expect(controller.getState().threads.current.thread.status).toBe("working");
 
     socket.emit(
       "message",
@@ -1725,8 +1748,8 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState()).toMatchObject({ status: "idle" });
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.status).toBe("idle");
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ role: "user", text: "hello Codex" }),
         expect.objectContaining({
@@ -1736,7 +1759,9 @@ describe("CodexController", () => {
       ]),
     );
     expect(
-      controller.getState().history.filter((message) => message.role === "assistant"),
+      controller
+        .getState()
+        .threads.current.thread.messages.filter((message) => message.role === "assistant"),
     ).toHaveLength(1);
   });
 
@@ -1755,7 +1780,7 @@ describe("CodexController", () => {
         },
       },
     });
-    expect(controller.getState().status).toBe("working");
+    expect(controller.getState().threads.current.thread.status).toBe("working");
 
     socket.emit(
       "message",
@@ -1764,7 +1789,7 @@ describe("CodexController", () => {
         result: { turn: { id: "review-turn" }, reviewThreadId: "thread-1" },
       }),
     );
-    expect(controller.getState().history).toEqual([]);
+    expect(controller.getState().threads.current.thread.messages).toEqual([]);
 
     socket.emit(
       "message",
@@ -1780,9 +1805,11 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(controller.getState().history.filter((message) => message.role === "user")).toHaveLength(
-      0,
-    );
+    expect(
+      controller
+        .getState()
+        .threads.current.thread.messages.filter((message) => message.role === "user"),
+    ).toHaveLength(0);
 
     socket.emit(
       "message",
@@ -1813,7 +1840,7 @@ describe("CodexController", () => {
     );
     const reviewActivity = controller
       .getState()
-      .history.find((message) => message.itemId === "review-exit");
+      .threads.current.thread.messages.find((message) => message.itemId === "review-exit");
     expect(reviewActivity?.text).toContain("Review completed");
     expect(reviewActivity?.text).not.toContain("Review report should be shown once");
     const report = "finding ".repeat(1000).trim();
@@ -1827,11 +1854,14 @@ describe("CodexController", () => {
       }),
     );
     expect(
-      controller.getState().history.find((message) => message.itemId === "review-report")?.text,
+      controller
+        .getState()
+        .threads.current.thread.messages.find((message) => message.itemId === "review-report")
+        ?.text,
     ).toBe(report);
 
     socket.emit("message", JSON.stringify({ method: "turn/completed", params: {} }));
-    expect(controller.getState().status).toBe("idle");
+    expect(controller.getState().threads.current.thread.status).toBe("idle");
   });
 
   test("rejects a review while a turn is active", () => {
@@ -1908,7 +1938,7 @@ describe("CodexController", () => {
       },
     ]);
 
-    const history = controller.getState().history;
+    const history = controller.getState().threads.current.thread.messages;
     expect(history.filter((message) => message.role === "user")).toHaveLength(0);
     expect(history[0]?.itemId).toBe("review-enter");
     expect(history[1]?.itemId).toBe("review-exit");
@@ -1981,7 +2011,7 @@ describe("CodexController", () => {
       },
     ]);
 
-    const history = controller.getState().history;
+    const history = controller.getState().threads.current.thread.messages;
     expect(history.filter((message) => message.role === "user")).toHaveLength(0);
     expect(history.map((message) => message.itemId)).toEqual([
       "review-enter",
@@ -1997,7 +2027,7 @@ describe("CodexController", () => {
     const { controller, socket } = connectedController();
 
     expect(controller.submitPrompt(command)).toBe(true);
-    expect(controller.getState().collaborationMode).toBe(mode);
+    expect(controller.getState().threads.current.thread.collaborationMode).toBe(mode);
     expect(lastMessage(socket)).not.toMatchObject({ method: "turn/start" });
   });
 
@@ -2034,7 +2064,7 @@ describe("CodexController", () => {
         result: { exitCode: 0, stdout: "hello", stderr: "" },
       }),
     );
-    expect(controller.getState().history.at(-1)).toMatchObject({
+    expect(controller.getState().threads.current.thread.messages.at(-1)).toMatchObject({
       activity: { kind: "command", status: "completed", output: "hello" },
     });
   });
@@ -2076,7 +2106,7 @@ describe("CodexController", () => {
     expect(threadState(controller, "thread-1").history.at(-1)).toMatchObject({
       activity: { kind: "command", status: "completed", output: "hello" },
     });
-    expect(controller.getState().history).not.toEqual(
+    expect(controller.getState().threads.current.thread.messages).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ activity: expect.anything() })]),
     );
   });
@@ -2104,7 +2134,7 @@ describe("CodexController", () => {
   test("follows collaboration mode changes made in the Codex terminal", () => {
     const { controller, socket } = connectedController();
 
-    expect(controller.getState().collaborationMode).toBe("default");
+    expect(controller.getState().threads.current.thread.collaborationMode).toBe("default");
 
     socket.emit(
       "message",
@@ -2121,7 +2151,7 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(controller.getState().collaborationMode).toBe("plan");
+    expect(controller.getState().threads.current.thread.collaborationMode).toBe("plan");
 
     socket.emit(
       "message",
@@ -2138,7 +2168,7 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(controller.getState().collaborationMode).toBe("default");
+    expect(controller.getState().threads.current.thread.collaborationMode).toBe("default");
   });
 
   test("ignores collaboration mode changes for another thread", () => {
@@ -2155,7 +2185,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().collaborationMode).toBe("default");
+    expect(controller.getState().threads.current.thread.collaborationMode).toBe("default");
   });
 
   test("clears cached history when selecting another thread", () => {
@@ -2193,15 +2223,15 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
-    expect(controller.getState().history).not.toEqual(
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
+    expect(controller.getState().threads.current.thread.messages).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ text: "background output" })]),
     );
 
     controller.selectThread("other-thread");
-    expect(controller.getState().collaborationMode).toBe("plan");
-    expect(controller.getState().history).toEqual([]);
-    expect(controller.getState().historyLoading).toBe(true);
+    expect(controller.getState().threads.current.thread.collaborationMode).toBe("plan");
+    expect(controller.getState().threads.current.thread.messages).toEqual([]);
+    expect(controller.getState().threads.current.history.loading).toBe(true);
     expect(lastMessage(socket)).toMatchObject({
       method: "thread/resume",
       params: { threadId: "other-thread", excludeTurns: true },
@@ -2225,9 +2255,11 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
     controller.selectThread("external-thread");
-    expect(controller.getState().cwd).toBe("/workspace/external");
+    expect(controller.getState().threads.current.thread.workingDirectory).toBe(
+      "/workspace/external",
+    );
   });
 
   test("counts an active thread started by another client as background work", () => {
@@ -2247,8 +2279,8 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
-    expect(controller.getState().backgroundWork).toEqual({ completed: 0, total: 1 });
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
+    expect(controller.getState().threads.backgroundWork).toEqual({ completed: 0, total: 1 });
   });
 
   test("refreshes the queue for a background thread without selecting it", () => {
@@ -2292,7 +2324,7 @@ describe("CodexController", () => {
         result: { data: [], nextCursor: null },
       }),
     );
-    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
   });
 
   test("starts the next turn in Default mode explicitly", () => {
@@ -2345,7 +2377,7 @@ describe("CodexController", () => {
       },
     });
     expect(JSON.stringify(request)).not.toContain("1. Make the change");
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         { role: "assistant", text: "completed plan" },
         expect.objectContaining({
@@ -2425,7 +2457,7 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           itemId: "plan-1",
@@ -2453,7 +2485,7 @@ describe("CodexController", () => {
         },
       }),
     );
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           itemId: "plan-1",
@@ -2497,7 +2529,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().pendingUserInput).toMatchObject({
+    expect(controller.getState().threads.current.thread.pendingUserInput).toMatchObject({
       requestId: "request-1",
       isBlocking: true,
     });
@@ -2512,7 +2544,7 @@ describe("CodexController", () => {
       id: "request-1",
       result: { answers: { choice: { answers: ["Plan"] } } },
     });
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           role: "user",
@@ -2521,7 +2553,7 @@ describe("CodexController", () => {
         }),
       ]),
     );
-    expect(controller.getState().pendingUserInput).toBeUndefined();
+    expect(controller.getState().threads.current.thread.pendingUserInput).toBeUndefined();
   });
 
   test("switches to a background user-input request", () => {
@@ -2559,9 +2591,9 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
     controller.selectThread("other-thread", false);
-    expect(controller.getState().pendingUserInput).toMatchObject({
+    expect(controller.getState().threads.current.thread.pendingUserInput).toMatchObject({
       requestId: "background-request",
     });
     expect(controllerOptions.onAttention).toHaveBeenCalledWith(
@@ -2598,7 +2630,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
     expect(controllerOptions.onAttention).toHaveBeenCalledWith(
       expect.objectContaining({
         event: "approvalRequested",
@@ -2631,9 +2663,9 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
     controller.selectThread("other-thread", false);
-    expect(controller.getState().pendingApproval).toMatchObject({
+    expect(controller.getState().threads.current.thread.pendingApproval).toMatchObject({
       requestId: "background-approval",
     });
   });
@@ -2663,7 +2695,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
   });
 
   test("aggregates background thread activity without changing selected chat context", () => {
@@ -2687,9 +2719,9 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
-    expect(controller.getState().status).toBe("idle");
-    expect(controller.getState().threadActivities).toEqual(
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
+    expect(controller.getState().threads.current.thread.status).toBe("idle");
+    expect(controller.getState().threads.activities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           threadId: "other-thread",
@@ -2716,7 +2748,7 @@ describe("CodexController", () => {
         params: { threadId: "other-thread", status: { type: "active", activeFlags: [] } },
       }),
     );
-    expect(controller.getState().backgroundWork).toEqual({ completed: 0, total: 1 });
+    expect(controller.getState().threads.backgroundWork).toEqual({ completed: 0, total: 1 });
 
     socket.emit(
       "message",
@@ -2725,10 +2757,10 @@ describe("CodexController", () => {
         params: { threadId: "other-thread", turn: { status: "completed" } },
       }),
     );
-    expect(controller.getState().backgroundWork).toEqual({ completed: 1, total: 1 });
+    expect(controller.getState().threads.backgroundWork).toEqual({ completed: 1, total: 1 });
 
     controller.selectThread("other-thread");
-    expect(controller.getState().backgroundWork).toEqual({ completed: 0, total: 0 });
+    expect(controller.getState().threads.backgroundWork).toEqual({ completed: 0, total: 0 });
   });
 
   test("counts one background work entry per thread until selection", () => {
@@ -2761,12 +2793,12 @@ describe("CodexController", () => {
     statusChanged();
     completed();
     statusChanged();
-    expect(controller.getState().backgroundWork).toEqual({ completed: 1, total: 1 });
+    expect(controller.getState().threads.backgroundWork).toEqual({ completed: 1, total: 1 });
 
     controller.selectThread("other-thread");
     controller.selectThread("thread-1");
     statusChanged();
-    expect(controller.getState().backgroundWork).toEqual({ completed: 0, total: 1 });
+    expect(controller.getState().threads.backgroundWork).toEqual({ completed: 0, total: 1 });
   });
 
   test("switches to and focuses a background thread after turn completion", () => {
@@ -2789,7 +2821,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
     expect(controllerOptions.onAttention).toHaveBeenCalledWith(
       expect.objectContaining({ event: "turnCompleted" }),
     );
@@ -2835,11 +2867,11 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().pendingUserInput).toMatchObject({
+    expect(controller.getState().threads.current.thread.pendingUserInput).toMatchObject({
       requestId: "selected-request",
     });
     controller.selectThread("other-thread");
-    expect(controller.getState().pendingUserInput).toBeUndefined();
+    expect(controller.getState().threads.current.thread.pendingUserInput).toBeUndefined();
   });
 
   test("interrupts the active turn with its thread and turn ids", () => {
@@ -2875,15 +2907,15 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().interrupted).toBe(true);
+    expect(controller.getState().threads.current.thread.interrupted).toBe(true);
   });
 
   test("keeps working state separate from streamed assistant history", () => {
     const { controller, socket } = connectedController();
 
     controller.submitPrompt("hello");
-    expect(controller.getState().workingSince).toEqual(expect.any(Number));
-    expect(controller.getState().history).not.toEqual(
+    expect(controller.getState().threads.current.thread.workingSince).toEqual(expect.any(Number));
+    expect(controller.getState().threads.current.thread.messages).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ temporary: true })]),
     );
 
@@ -2895,13 +2927,13 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "assistant", text: "answer" })]),
     );
-    expect(controller.getState().workingSince).toEqual(expect.any(Number));
+    expect(controller.getState().threads.current.thread.workingSince).toEqual(expect.any(Number));
 
     socket.emit("message", JSON.stringify({ method: "turn/completed", params: {} }));
-    expect(controller.getState().workingSince).toBeUndefined();
+    expect(controller.getState().threads.current.thread.workingSince).toBeUndefined();
   });
 
   test("keeps the first prompt visible while its new thread starts", () => {
@@ -2921,7 +2953,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "user", text: "first prompt" })]),
     );
   });
@@ -2986,7 +3018,7 @@ describe("CodexController", () => {
       }),
     );
 
-    const history = controller.getState().history;
+    const history = controller.getState().threads.current.thread.messages;
     expect(history).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -3052,7 +3084,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           itemId: "search-1",
@@ -3067,7 +3099,9 @@ describe("CodexController", () => {
       ]),
     );
     expect(
-      controller.getState().history.filter((message) => message.itemId === "search-1"),
+      controller
+        .getState()
+        .threads.current.thread.messages.filter((message) => message.itemId === "search-1"),
     ).toHaveLength(1);
   });
 
@@ -3089,7 +3123,7 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().history).not.toEqual(
+    expect(controller.getState().threads.current.thread.messages).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ itemId: "reasoning-1" })]),
     );
   });
@@ -3118,16 +3152,16 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().status).toBe("waiting");
+    expect(controller.getState().threads.current.thread.status).toBe("waiting");
     expect(controllerOptions.onStateChanged.mock.invocationCallOrder[0]).toBeLessThan(
       controllerOptions.onAttention.mock.invocationCallOrder[0],
     );
-    expect(controller.getState().pendingApproval).toMatchObject({
+    expect(controller.getState().threads.current.thread.pendingApproval).toMatchObject({
       requestId: 88,
       command: "npm test",
       reason: "Run the tests",
     });
-    expect(controller.getState().history).not.toEqual(
+    expect(controller.getState().threads.current.thread.messages).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ approval: expect.anything() })]),
     );
 
@@ -3138,7 +3172,7 @@ describe("CodexController", () => {
         params: { turn: { id: "approval-turn" } },
       }),
     );
-    expect(controller.getState().pendingApproval).toMatchObject({
+    expect(controller.getState().threads.current.thread.pendingApproval).toMatchObject({
       requestId: 88,
     });
 
@@ -3149,7 +3183,7 @@ describe("CodexController", () => {
       result: { decision: "accept" },
     });
     expect(controllerOptions.onAttentionCleared).toHaveBeenCalledTimes(1);
-    expect(controller.getState().status).toBe("working");
+    expect(controller.getState().threads.current.thread.status).toBe("working");
   });
 
   test("keeps independent string and numeric approvals actionable", () => {
@@ -3183,8 +3217,8 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().status).toBe("waiting");
-    expect(controller.getState().pendingApproval).toMatchObject({
+    expect(controller.getState().threads.current.thread.status).toBe("waiting");
+    expect(controller.getState().threads.current.thread.pendingApproval).toMatchObject({
       requestId: 7,
     });
     expect(controller.submitPrompt("queue while approval is pending")).toBe(true);
@@ -3194,7 +3228,7 @@ describe("CodexController", () => {
       id: "approval-1",
       result: { decision: "decline" },
     });
-    expect(controller.getState().history).toEqual(
+    expect(controller.getState().threads.current.thread.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           approval: expect.objectContaining({
@@ -3204,17 +3238,17 @@ describe("CodexController", () => {
         }),
       ]),
     );
-    expect(controller.getState().pendingApproval).toMatchObject({
+    expect(controller.getState().threads.current.thread.pendingApproval).toMatchObject({
       requestId: 7,
     });
-    expect(controller.getState().status).toBe("waiting");
+    expect(controller.getState().threads.current.thread.status).toBe("waiting");
 
     controller.respondPermission(7, "accept");
     expect(lastMessage(socket)).toEqual({
       id: 7,
       result: { decision: "accept" },
     });
-    expect(controller.getState().status).toBe("working");
+    expect(controller.getState().threads.current.thread.status).toBe("working");
   });
 
   test("shows the next approval when it arrives after the current one is answered", () => {
@@ -3243,15 +3277,15 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().pendingApproval).toMatchObject({
+    expect(controller.getState().threads.current.thread.pendingApproval).toMatchObject({
       requestId: "approval-2",
       reason: "second permission",
     });
-    expect(controller.getState().status).toBe("waiting");
+    expect(controller.getState().threads.current.thread.status).toBe("waiting");
 
     controller.respondPermission("approval-2", "accept");
-    expect(controller.getState().pendingApproval).toBeUndefined();
-    expect(controller.getState().status).toBe("working");
+    expect(controller.getState().threads.current.thread.pendingApproval).toBeUndefined();
+    expect(controller.getState().threads.current.thread.status).toBe("working");
   });
 
   test("exposes and sends schema-backed command approval options", () => {
@@ -3270,7 +3304,7 @@ describe("CodexController", () => {
       }),
     );
 
-    const approval = controller.getState().pendingApproval;
+    const approval = controller.getState().threads.current.thread.pendingApproval;
     expect(approval?.options.map((option) => option.id)).toEqual(
       expect.arrayContaining([
         "accept",
@@ -3327,7 +3361,7 @@ describe("CodexController", () => {
         params: { reason: "edit files", changes: [] },
       }),
     );
-    expect(controller.getState().status).toBe("waiting");
+    expect(controller.getState().threads.current.thread.status).toBe("waiting");
 
     socket.emit(
       "message",
@@ -3337,14 +3371,14 @@ describe("CodexController", () => {
       }),
     );
 
-    expect(controller.getState().history).not.toEqual(
+    expect(controller.getState().threads.current.thread.messages).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           approval: { requestId: "stale-1", state: "pending" },
         }),
       ]),
     );
-    expect(controller.getState().status).toBe("working");
+    expect(controller.getState().threads.current.thread.status).toBe("working");
   });
 
   test("loads older history through cursor pagination", async () => {
@@ -3381,10 +3415,11 @@ describe("CodexController", () => {
     );
     await request;
 
-    expect(controller.getState().history.map((message) => message.text)).toEqual(["old", "new"]);
+    expect(
+      controller.getState().threads.current.thread.messages.map((message) => message.text),
+    ).toEqual(["old", "new"]);
     expect(controller.getState()).toMatchObject({
-      hasOlderHistory: false,
-      historyLoading: false,
+      threads: { current: { history: { hasOlder: false, loading: false } } },
     });
   });
 
@@ -3442,6 +3477,6 @@ describe("CodexController", () => {
 
     expect(internal.threadManager.getThreadMap().size).toBeLessThanOrEqual(16);
     expect(internal.threadManager.getThreadMap().has("thread-1")).toBe(true);
-    expect(controller.getState().backgroundWork).toEqual({ completed: 1, total: 1 });
+    expect(controller.getState().threads.backgroundWork).toEqual({ completed: 1, total: 1 });
   });
 });

@@ -167,9 +167,10 @@ export class CodexInputController {
     }
     if (!prompt && !this.attachmentRenderer.images.length) return;
     const state = this.callbacks.getState();
-    if (state.codex.readOnly) return;
+    if (state.codex.threads.current.readOnly) return;
     if (/^\/review$/i.test(prompt)) {
-      if (state.codex.status !== "idle" || !state.codex.threadId) return;
+      if (state.codex.threads.current.thread.status !== "idle" || !state.codex.threads.selectedId)
+        return;
       this.rememberPrompt(prompt);
       this.input.value = "";
       this.hideSuggestions();
@@ -201,7 +202,8 @@ export class CodexInputController {
     const state = this.callbacks.getState();
     if (
       matchesShortcut(event, "interrupt") &&
-      (state.codex.status === "working" || state.codex.status === "waiting")
+      (state.codex.threads.current.thread.status === "working" ||
+        state.codex.threads.current.thread.status === "waiting")
     ) {
       event.preventDefault();
       void window.peskApi.interruptCodexTurn();
@@ -226,8 +228,9 @@ export class CodexInputController {
       const prompt = this.input.value.trim();
       if (
         prompt &&
-        (state.codex.status === "working" || state.codex.status === "waiting") &&
-        state.codex.threadId
+        (state.codex.threads.current.thread.status === "working" ||
+          state.codex.threads.current.thread.status === "waiting") &&
+        state.codex.threads.selectedId
       ) {
         void window.peskApi.steerCodexTurn(prompt).then((next) => {
           this.input.value = "";

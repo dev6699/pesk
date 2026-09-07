@@ -8,7 +8,7 @@ import {
   stringValue,
   type ServerMessage,
 } from "./protocol";
-import type { CodexStreamDelta, CodexThreadActivity } from "./types";
+import type { CodexStreamDelta, CodexThreadActivity, CodexThreadsSnapshot } from "./types";
 
 const MAX_CACHED_THREADS = 16;
 
@@ -46,6 +46,25 @@ export class CodexThreadManager {
 
   /** The ID of the currently selected thread. */
   private selectedId: string | undefined;
+
+  /** Captures collection and current-conversation state without exposing the cache. */
+  snapshot(): CodexThreadsSnapshot {
+    const pagination = this.selectedHistoryState();
+    return {
+      items: structuredClone(this.threads),
+      activities: this.getThreadActivities(),
+      backgroundWork: this.backgroundWorkSnapshot(),
+      selectedId: this.selectedId,
+      current: {
+        thread: this.activeThread.snapshot(),
+        readOnly: this.selectedIsReadOnly(),
+        history: {
+          loading: Boolean(pagination?.loading || this.selectedHistoryIsLoading()),
+          hasOlder: pagination?.hasOlderHistory ?? false,
+        },
+      },
+    };
+  }
 
   /** Returns the ID of the currently selected thread. */
   get selectedThreadId(): string | undefined {

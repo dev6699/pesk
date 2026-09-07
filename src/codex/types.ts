@@ -69,7 +69,7 @@ export interface CodexThreadActivity {
   attention?: "approval" | "userInput";
 }
 
-/** Incremental renderer update for high-frequency streamed output. */
+/** Incremental stream update for high-frequency output. */
 export interface CodexStreamDelta {
   threadId?: string;
   itemId?: string;
@@ -91,12 +91,12 @@ export interface CodexModelPicker {
   selectedModel?: Model;
 }
 
-/** Renderer-facing state owned by one thread runtime. */
+/** Conversation state owned by one thread runtime. */
 export interface CodexThreadSnapshot {
   projectId?: string | null;
   status: "idle" | "working" | "waiting";
   connected: boolean;
-  history: CodexMessage[];
+  messages: CodexMessage[];
   workingDirectory?: string;
   workingSince?: number;
   workedElapsed?: number;
@@ -109,41 +109,36 @@ export interface CodexThreadSnapshot {
   queuedSubmissions: CodexQueuedSubmission[];
   goal?: ThreadGoal;
   commandNotice?: string;
-  modelPicker?: CodexModelPicker;
 }
 
-/** Complete state published by the Codex controller to renderer clients. */
-export interface CodexState {
-  threadId?: string;
-  projectId?: string | null;
-  readOnly: boolean;
-  cwd?: string;
+export interface CodexConnectionSnapshot {
+  status: "disconnected" | "connecting" | "ready";
   error?: string;
-  status: "idle" | "working" | "waiting";
-  connected: boolean;
-  history: CodexMessage[];
-  threads: Thread[];
-  projects: Project[];
-  threadActivities: CodexThreadActivity[];
-  backgroundWork: {
-    completed: number;
-    total: number;
-  };
-  workingSince?: number;
-  workedElapsed?: number;
-  interrupted?: boolean;
-  tokenUsage?: ThreadTokenUsage;
-  modelInfo?: CodexModelInfo;
+}
+export interface CodexAccountSnapshot {
   rateLimits?: RateLimitSnapshot;
-  collaborationMode: "default" | "plan";
-  pendingUserInput?: CodexPendingUserInput;
-  pendingApproval?: CodexPendingApproval;
-  queuedSubmissions: CodexQueuedSubmission[];
-  goal?: ThreadGoal;
-  commandNotice?: string;
+}
+export interface CodexProjectsSnapshot {
+  items: Project[];
+}
+export interface CodexThreadsSnapshot {
+  items: Thread[];
+  activities: CodexThreadActivity[];
+  backgroundWork: { completed: number; total: number };
+  selectedId?: string;
+  current: {
+    thread: CodexThreadSnapshot;
+    readOnly: boolean;
+    history: { loading: boolean; hasOlder: boolean };
+  };
+}
+/** Component-owned snapshots published to application consumers. */
+export interface CodexState {
+  connection: CodexConnectionSnapshot;
+  account: CodexAccountSnapshot;
+  threads: CodexThreadsSnapshot;
+  projects: CodexProjectsSnapshot;
   modelPicker?: CodexModelPicker;
-  hasOlderHistory: boolean;
-  historyLoading: boolean;
 }
 
 export type ApprovalDecision = CommandExecutionApprovalDecision | FileChangeApprovalDecision;

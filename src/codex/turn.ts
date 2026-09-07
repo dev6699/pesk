@@ -16,7 +16,7 @@ export interface TurnManagerOptions {
     request: OutgoingRequestInput,
     callback: (message: JsonRpcResponse<TResult>) => void,
   ) => boolean;
-  publishRendererState: () => void;
+  onStateChanged: () => void;
 }
 
 export interface TurnCompletionResult {
@@ -93,7 +93,7 @@ export class CodexTurnManager {
         targetThread.setActiveTurn(message.result?.turn.id);
         if (message.error) {
           targetThread.setStatus("idle");
-          this.options.publishRendererState();
+          this.options.onStateChanged();
         }
       });
     });
@@ -102,7 +102,7 @@ export class CodexTurnManager {
     }
     this.options.threadManager.withThread(threadId, (targetThread) => {
       targetThread.setStatus("working");
-      this.options.publishRendererState();
+      this.options.onStateChanged();
     });
   }
 }

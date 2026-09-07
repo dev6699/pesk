@@ -1,13 +1,14 @@
 import type { Project, ProjectRoot, ProjectSortKey } from "../codex-schema/v2";
 import { randomUUID } from "node:crypto";
 import type { JsonRpcResponse } from "./protocol";
+import type { CodexProjectsSnapshot } from "./types";
 
 export interface ProjectManagerOptions {
   request: <TResult>(
     request: ProjectRequestInput,
     callback: (message: JsonRpcResponse<TResult>) => void,
   ) => boolean;
-  publishRendererState: () => void;
+  onStateChanged: () => void;
   setCommandNotice: (notice: string) => void;
   setConnectionError: (error: string) => void;
 }
@@ -106,9 +107,14 @@ export class CodexProjectManager {
 
   constructor(private readonly options: ProjectManagerOptions) {}
 
-  /** Returns the current server-owned project collection for renderer state. */
+  /** Captures projects without exposing the mutable server cache. */
+  snapshot(): CodexProjectsSnapshot {
+    return { items: structuredClone(this.projects) };
+  }
+
+  /** Returns the current server-owned project collection. */
   getProjects(): Project[] {
-    return this.projects;
+    return structuredClone(this.projects);
   }
 
   /** Finds a cached project by its app-server identifier. */
@@ -136,7 +142,7 @@ export class CodexProjectManager {
             ].join("\n")
           : "No projects are configured.",
       );
-      this.options.publishRendererState();
+      this.options.onStateChanged();
       void this.listProjects();
       return true;
     }
@@ -167,7 +173,7 @@ export class CodexProjectManager {
     this.options.setCommandNotice(
       "Usage: /project [list|create <name> <absolute-root>|rename <id> <name>|remove-root <id> <root>|delete <id>]",
     );
-    this.options.publishRendererState();
+    this.options.onStateChanged();
     return true;
   }
 
@@ -179,11 +185,11 @@ export class CodexProjectManager {
         const projects = message.result?.data;
         if (message.error || !Array.isArray(projects) || !projects.every(isProject)) {
           this.options.setCommandNotice("Unable to load projects.");
-          this.options.publishRendererState();
+          this.options.onStateChanged();
           return false;
         }
         this.projects = cursor ? [...this.projects, ...projects] : projects;
-        this.options.publishRendererState();
+        this.options.onStateChanged();
         return true;
       },
     );
@@ -208,7 +214,7 @@ export class CodexProjectManager {
           return false;
         }
         this.projects = this.projects.map((entry) => (entry.id === project.id ? project : entry));
-        this.options.publishRendererState();
+        this.options.onStateChanged();
         return true;
       },
     );
@@ -311,11 +317,11 @@ export class CodexProjectManager {
       (message) => {
         if (message.error) {
           this.options.setConnectionError("Unable to delete project.");
-          this.options.publishRendererState();
+          this.options.onStateChanged();
           return false;
         }
         this.projects = this.projects.filter((project) => project.id !== projectId);
-        this.options.publishRendererState();
+        this.options.onStateChanged();
         return true;
       },
     );
@@ -335,7 +341,7 @@ export class CodexProjectManager {
         this.options.setCommandNotice(
           `Unable to ${request.method.slice("project/".length)} project.`,
         );
-        this.options.publishRendererState();
+        this.options.onStateChanged();
         return false;
       }
       const index = this.projects.findIndex((entry) => entry.id === project.id);
@@ -343,7 +349,7 @@ export class CodexProjectManager {
         index < 0
           ? [...this.projects, project]
           : this.projects.map((entry, i) => (i === index ? project : entry));
-      this.options.publishRendererState();
+      this.options.onStateChanged();
       return true;
     });
   }

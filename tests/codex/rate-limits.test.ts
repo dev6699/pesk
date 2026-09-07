@@ -12,7 +12,7 @@ test("guards rate-limit reads and applies the response snapshot", () => {
       callbacks.push(callback as (message: JsonRpcResponse<any>) => void);
       return true;
     },
-    publishRendererState: publish,
+    onStateChanged: publish,
   });
   const snapshot = { primary: { usedPercent: 25 } } as never;
 
@@ -21,7 +21,8 @@ test("guards rate-limit reads and applies the response snapshot", () => {
   expect(callbacks).toHaveLength(1);
   callbacks[0]({ id: 1, result: { rateLimits: snapshot } });
 
-  expect(manager.getSnapshot()).toBe(snapshot);
+  expect(manager.getSnapshot()).toEqual(snapshot);
+  expect(manager.getSnapshot()).not.toBe(snapshot);
   expect(publish).toHaveBeenCalledTimes(1);
 });
 
@@ -29,13 +30,14 @@ test("accepts live rate-limit updates", () => {
   const publish = jest.fn();
   const manager = new CodexRateLimitManager({
     request: () => true,
-    publishRendererState: publish,
+    onStateChanged: publish,
   });
   const snapshot = { secondary: { usedPercent: 50 } } as never;
 
   manager.handleUpdated(snapshot);
 
-  expect(manager.getSnapshot()).toBe(snapshot);
+  expect(manager.getSnapshot()).toEqual(snapshot);
+  expect(manager.getSnapshot()).not.toBe(snapshot);
   expect(publish).toHaveBeenCalledTimes(1);
 });
 
@@ -46,7 +48,7 @@ test("clears a rejected read guard and ignores an empty response", () => {
       callbacks.push(callback as (message: JsonRpcResponse<unknown>) => void);
       return true;
     },
-    publishRendererState: jest.fn(),
+    onStateChanged: jest.fn(),
   });
 
   manager.refresh();

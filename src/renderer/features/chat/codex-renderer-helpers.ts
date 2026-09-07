@@ -1,6 +1,6 @@
 import { marked } from "../../vendor/marked.js";
 
-export type CodexHistory = RendererState["codex"]["history"];
+export type CodexHistory = RendererState["codex"]["threads"]["current"]["thread"]["messages"];
 export type CodexActivity = NonNullable<CodexHistory[number]["activity"]>;
 
 export function activityLabel(kind: CodexActivity["kind"]): string {
@@ -208,7 +208,7 @@ export function formatPlan(plan: string): string {
 }
 
 export function formatRateLimitDetails(
-  limits: NonNullable<RendererState["codex"]["rateLimits"]>,
+  limits: NonNullable<RendererState["codex"]["account"]["rateLimits"]>,
 ): string[] {
   const formatWindow = (label: string, window: typeof limits.primary): string => {
     if (!window) return `${label}: unavailable`;

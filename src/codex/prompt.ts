@@ -26,7 +26,7 @@ export type ParsedPrompt =
       metadata: Array<{ url: string; name?: string }>;
     };
 
-/** Converts renderer input into a command or a normal turn submission. */
+/** Converts client input into a command or a normal turn submission. */
 export function parsePrompt(value: string, images: PromptImages): ParsedPrompt {
   if (!value.trim() && !images.length) return { kind: "invalid" };
   const prompt = value.trim();

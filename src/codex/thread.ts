@@ -66,14 +66,14 @@ export class CodexThread {
     this.state.workingDirectory = workingDirectory;
   }
 
-  /** Returns the renderer-facing state for this thread without exposing internals. */
+  /** Captures conversation state without sharing mutable values with consumers. */
   snapshot(): CodexThreadSnapshot {
     const history = this.streamingAssistantHistory();
-    return {
+    return structuredClone({
       projectId: this.state.projectId,
       status: this.state.status,
       connected: this.state.connected,
-      history,
+      messages: history,
       workingDirectory: this.state.workingDirectory,
       workingSince: this.state.workingSince,
       workedElapsed: this.state.workedElapsed,
@@ -86,7 +86,7 @@ export class CodexThread {
       queuedSubmissions: [...this.state.queuedSubmissions],
       goal: this.state.goal,
       commandNotice: this.state.commandNotice,
-    };
+    });
   }
 
   /** Resets thread state while retaining the supplied conversation history. */
@@ -254,7 +254,7 @@ export class CodexThread {
     this.updateActivity(message, itemId);
   }
 
-  /** Converts a raw server item into a renderer activity message. */
+  /** Converts a raw server item into a structured activity message. */
   activityMessage(item: Record<string, unknown>, timestamp: number): CodexMessage {
     const type = typeof item.type === "string" ? item.type : "unknown";
     const isReviewCompletion = type === "exitedReviewMode";
@@ -322,7 +322,7 @@ export class CodexThread {
     const message = index === undefined ? undefined : this.state.history[index];
     if (!message?.activity) return;
     message.activity.output = `${message.activity.output ?? ""}${delta}`;
-    // The renderer reads command output from activity.output and updates its
+    // Consumers read command output from activity.output and update their
     // existing output node in place. Do not rebuild a second full copy of the
     // growing output string for message.text on every delta.
     if (message.activity.kind !== "command") {
@@ -468,7 +468,7 @@ export class CodexThread {
     }
   }
 
-  /** Restores renderer history from the app-server's persisted turn records. */
+  /** Restores conversation history from persisted turn records. */
   restoreTurns(turns: Array<Record<string, unknown>>, prepend = false): void {
     const restoredTokenUsage = [...turns]
       .reverse()
@@ -653,7 +653,7 @@ export class CodexThread {
     return hadHistory;
   }
 
-  /** Registers an approval request and exposes its renderer representation. */
+  /** Registers an approval request and exposes its structured representation. */
   addApproval(key: string, approval: PendingApproval, displayed: CodexPendingApproval): void {
     this.state.pendingApprovals.set(key, approval);
     this.state.pendingApproval = displayed;
@@ -725,7 +725,7 @@ export class CodexThread {
     return { decision, hasPending: this.state.pendingApprovals.size > 0 };
   }
 
-  /** Stores a blocking user-input request for the renderer. */
+  /** Stores a blocking user-input request. */
   setUserInput(request: CodexPendingUserInput): void {
     this.state.pendingUserInput = request;
   }
@@ -903,7 +903,7 @@ export class CodexThread {
     );
   }
 
-  /** Materializes only the active assistant stream for a renderer snapshot. */
+  /** Materializes only the active assistant stream for a state snapshot. */
   private streamingAssistantHistory(): CodexMessage[] {
     if (this.state.streamingAssistant < 0 || this.streamingAssistantChunks.length < 2) {
       return [...this.state.history];
@@ -932,7 +932,7 @@ export class CodexThread {
     if (this.state.status === "waiting") this.state.status = "working";
   }
 
-  /** Parses raw queue entries into renderer-safe submissions. */
+  /** Parses raw queue entries into safe submissions. */
   private parseQueue(value: unknown): CodexQueuedSubmission[] {
     return records(value)
       .map((submission) => {

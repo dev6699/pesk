@@ -1,7 +1,7 @@
 /** Guided project management rendered in the same inline prompt surface as questions. */
 export async function openProjectManager(container: HTMLElement): Promise<void> {
   let state = await window.peskApi.getSettings();
-  let projects = state.codex.projects ?? [];
+  let projects = state.codex.projects.items ?? [];
   const composer = document.getElementById("codex-chat-form");
   document.body.dataset.projectManager = "true";
   if (composer) composer.hidden = true;
@@ -111,9 +111,9 @@ export async function openProjectManager(container: HTMLElement): Promise<void> 
   const refreshProjects = async (): Promise<void> => {
     const previousId = project.value;
     const next = await window.peskApi.listCodexProjects();
-    if (next.codex.error) return;
+    if (next.codex.connection.error) return;
     state = next;
-    projects = next.codex.projects ?? [];
+    projects = next.codex.projects.items ?? [];
     project.replaceChildren(...projects.map((entry) => new Option(entry.name, entry.id)));
     project.value = projects.some((entry) => entry.id === previousId)
       ? previousId
@@ -153,14 +153,14 @@ export async function openProjectManager(container: HTMLElement): Promise<void> 
         return;
       }
       const result = await window.peskApi.deleteCodexProject(current.id);
-      if (!result.codex.error) {
+      if (!result.codex.connection.error) {
         await refreshProjects();
         message.textContent = "Project deleted successfully.";
         submit.disabled = false;
         cancel.textContent = "Cancel";
         delete form.dataset.confirmDelete;
         action.focus();
-      } else message.textContent = result.codex.error;
+      } else message.textContent = result.codex.connection.error;
       return;
     }
     let result: RendererState | undefined;
@@ -195,7 +195,7 @@ export async function openProjectManager(container: HTMLElement): Promise<void> 
       message.textContent = "Complete the required field.";
       return;
     }
-    if (result?.codex.error) message.textContent = result.codex.error;
+    if (result?.codex.connection.error) message.textContent = result.codex.connection.error;
     else {
       await refreshProjects();
       name.value = "";

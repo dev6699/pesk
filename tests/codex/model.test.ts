@@ -46,7 +46,7 @@ function manager(selectedThread = "thread-1") {
   const value = new CodexModelManager({
     request,
     getSelectedThreadId: () => threadId,
-    publishRendererState: publish,
+    onStateChanged: publish,
     setCommandNotice,
   });
   return {

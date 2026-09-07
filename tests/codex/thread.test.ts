@@ -14,7 +14,7 @@ describe("CodexThread", () => {
     expect(thread.snapshot()).toEqual({
       status: "idle",
       connected: true,
-      history: [expect.objectContaining({ text: "thread prompt" })],
+      messages: [expect.objectContaining({ text: "thread prompt" })],
       workingDirectory: "/workspace/thread-1",
       workingSince: undefined,
       workedElapsed: undefined,
@@ -41,7 +41,7 @@ describe("CodexThread", () => {
       expect.objectContaining({ text: "thread-owned" }),
     ]);
     const snapshot = thread.snapshot();
-    snapshot.history.push({ role: "user", text: "snapshot mutation" });
+    snapshot.messages.push({ role: "user", text: "snapshot mutation" });
     expect(thread.state.history).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ text: "snapshot mutation" })]),
     );
@@ -590,7 +590,7 @@ describe("CodexThread", () => {
     thread.appendAssistantDelta(" second");
 
     expect(thread.state.history).toHaveLength(41);
-    expect(thread.snapshot().history.at(-1)).toMatchObject({
+    expect(thread.snapshot().messages.at(-1)).toMatchObject({
       role: "assistant",
       text: "first second",
     });
@@ -603,7 +603,7 @@ describe("CodexThread", () => {
 
     thread.completeTurn(true);
 
-    expect(thread.snapshot().history.at(-1)).toMatchObject({
+    expect(thread.snapshot().messages.at(-1)).toMatchObject({
       role: "assistant",
       text: "first second",
     });

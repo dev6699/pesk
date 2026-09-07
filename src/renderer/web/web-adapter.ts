@@ -65,7 +65,7 @@ function showConnectionError(message: string): void {
 
 function clearConnectionError(): void {
   const error = document.getElementById("codex-error");
-  if (error && !state?.codex?.error) {
+  if (error && !state?.codex?.connection.error) {
     error.hidden = true;
     error.textContent = "";
   }

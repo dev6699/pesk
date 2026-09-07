@@ -18,7 +18,7 @@ const project = (id = "project-1", name = "Workspace") => ({
 
 function setup(projects = [project()]) {
   const state = defaultRendererState();
-  state.codex.projects = projects;
+  state.codex.projects.items = projects;
   const api = {
     ...window.peskApi,
     getSettings: jest.fn(() => Promise.resolve(state)),
@@ -57,10 +57,10 @@ test("selects a project root and starts a new thread", async () => {
 
 test("defaults to the current thread project and root", async () => {
   const { container, state } = setup([project(), project("project-2", "Second")]);
-  state.codex.threadId = "thread-2";
-  state.codex.projectId = "project-2";
-  state.codex.cwd = "/shared";
-  state.codex.threads = [{ id: "thread-2", projectId: "project-2" }];
+  state.codex.threads.selectedId = "thread-2";
+  state.codex.threads.current.thread.projectId = "project-2";
+  state.codex.threads.current.thread.workingDirectory = "/shared";
+  state.codex.threads.items = [{ id: "thread-2", projectId: "project-2" }];
   await openProjectThreadPrompt(container);
   expect((container.querySelector("select[aria-label='Project']") as HTMLSelectElement).value).toBe(
     "project-2",
@@ -72,9 +72,9 @@ test("defaults to the current thread project and root", async () => {
 
 test("infers the current project from the thread cwd", async () => {
   const { container, state } = setup([project(), project("project-2", "Second")]);
-  state.codex.threadId = "thread-2";
-  state.codex.cwd = "/shared";
-  state.codex.threads = [{ id: "thread-2" }];
+  state.codex.threads.selectedId = "thread-2";
+  state.codex.threads.current.thread.workingDirectory = "/shared";
+  state.codex.threads.items = [{ id: "thread-2" }];
   await openProjectThreadPrompt(container);
   expect((container.querySelector("select[aria-label='Project']") as HTMLSelectElement).value).toBe(
     "project-1",
@@ -98,7 +98,10 @@ test("reports missing projects, roots, and server errors", async () => {
   const failed = setup();
   (failed.api.startCodexProjectThread as jest.Mock).mockResolvedValue({
     ...failed.state,
-    codex: { ...failed.state.codex, error: "start failed" },
+    codex: {
+      ...failed.state.codex,
+      connection: { ...failed.state.codex.connection, error: "start failed" },
+    },
   });
   await openProjectThreadPrompt(failed.container);
   await submit(failed.container.querySelector("form") as HTMLFormElement);

@@ -80,20 +80,20 @@ export class CodexController {
     this.queueManager = new CodexQueueManager({
       request: (request, callback) => this.request(request, callback),
       threadManager: this.threadManager,
-      publishRendererState: () => this.notifyStateChanged(),
+      onStateChanged: () => this.notifyStateChanged(),
     });
     this.rateLimitManager = new CodexRateLimitManager({
       request: (request, callback) => this.request(request, callback),
-      publishRendererState: () => this.notifyStateChanged(),
+      onStateChanged: () => this.notifyStateChanged(),
     });
     this.turnManager = new CodexTurnManager({
       threadManager: this.threadManager,
       request: (request, callback) => this.request(request, callback),
-      publishRendererState: () => this.notifyStateChanged(),
+      onStateChanged: () => this.notifyStateChanged(),
     });
     this.projectManager = new CodexProjectManager({
       request: (request, callback) => this.request(request, callback),
-      publishRendererState: () => this.notifyStateChanged(),
+      onStateChanged: () => this.notifyStateChanged(),
       setCommandNotice: (notice) => this.threadManager.activeThread.setCommandNotice(notice),
       setConnectionError: (error) => {
         this.connectionError = error;
@@ -102,14 +102,14 @@ export class CodexController {
     this.modelManager = new CodexModelManager({
       request: (request, callback) => this.request(request, callback),
       getSelectedThreadId: () => this.threadManager.selectedThreadId,
-      publishRendererState: () => this.notifyStateChanged(),
+      onStateChanged: () => this.notifyStateChanged(),
       setCommandNotice: (notice) => this.threadManager.activeThread.setCommandNotice(notice),
     });
     this.goalManager = new CodexGoalManager({
       request: (request, callback) => this.request(request, callback),
       setGoal: (threadId, goal) =>
         this.threadManager.withThread(threadId, (targetThread) => targetThread.setGoal(goal)),
-      publishRendererState: () => this.notifyStateChanged(),
+      onStateChanged: () => this.notifyStateChanged(),
       setCommandNotice: (notice) => this.threadManager.activeThread.setCommandNotice(notice),
       setConnectionError: (error) => {
         this.connectionError = error;
@@ -120,7 +120,7 @@ export class CodexController {
       threadManager: this.threadManager,
       projectManager: this.projectManager,
       request: (message, callback) => this.request(message, callback),
-      publishRendererState: () => this.notifyStateChanged(),
+      onStateChanged: () => this.notifyStateChanged(),
       onThreadHydrated: (threadId) => {
         this.queueManager.refresh(threadId);
         this.goalManager.restore(threadId);
@@ -151,7 +151,7 @@ export class CodexController {
       .on("debug", (values) => this.options.debug(...values));
   }
 
-  /** Publishes the current renderer state unless background work is suppressed. */
+  /** Publishes the current state unless background work is suppressed. */
   private notifyStateChanged(): void {
     if (!this.threadManager.isPublicationSuppressed) this.options.onStateChanged(this.getState());
   }
@@ -163,38 +163,15 @@ export class CodexController {
 
   /** Returns the current Codex state snapshot for application consumers. */
   getState(): CodexState {
-    const thread = this.threadManager.activeThread.snapshot();
-    const pagination = this.threadManager.selectedHistoryState();
-    const threadActivities = this.threadManager.getThreadActivities();
-    const backgroundWork = this.threadManager.backgroundWorkSnapshot();
     return {
-      threadId: this.threadManager.selectedThreadId,
-      projectId: thread.projectId,
-      readOnly: this.threadManager.selectedIsReadOnly(),
-      cwd: thread.workingDirectory ?? process.cwd(),
-      error: this.connectionError,
-      commandNotice: thread.commandNotice,
-      status: thread.status,
-      connected: thread.connected,
-      history: thread.history,
-      threads: this.threadManager.threads,
-      projects: this.projectManager.getProjects(),
-      threadActivities,
-      backgroundWork,
-      workingSince: thread.workingSince,
-      workedElapsed: thread.workedElapsed,
-      interrupted: thread.interrupted,
-      tokenUsage: thread.tokenUsage,
-      modelInfo: thread.modelInfo,
-      rateLimits: this.rateLimitManager.getSnapshot(),
-      collaborationMode: thread.collaborationMode,
-      pendingUserInput: thread.pendingUserInput,
-      pendingApproval: thread.pendingApproval,
-      queuedSubmissions: thread.queuedSubmissions,
-      goal: thread.goal,
+      connection: {
+        status: this.isOpen() ? (this.initialized ? "ready" : "connecting") : "disconnected",
+        error: this.connectionError,
+      },
+      account: { rateLimits: this.rateLimitManager.getSnapshot() },
+      threads: this.threadManager.snapshot(),
+      projects: this.projectManager.snapshot(),
       modelPicker: this.modelManager.getPicker(),
-      hasOlderHistory: pagination?.hasOlderHistory ?? false,
-      historyLoading: Boolean(pagination?.loading || this.threadManager.selectedHistoryIsLoading()),
     };
   }
 
@@ -445,7 +422,7 @@ export class CodexController {
     } satisfies InitializeRequest);
   }
 
-  /** Records a transport error for renderer consumers. */
+  /** Records a transport error for state consumers. */
   private handleSocketError(details: string): void {
     if (this.connectionError === details) return;
     this.connectionError = details;
@@ -467,7 +444,7 @@ export class CodexController {
     });
     const selectedThread = this.threadManager.selectedThread();
     if (this.threadManager.selectedThreadId) {
-      this.threadManager.standaloneThread.replaceHistory(selectedThread.snapshot().history);
+      this.threadManager.standaloneThread.replaceHistory(selectedThread.snapshot().messages);
     }
     this.initialized = false;
     this.rateLimitManager.resetTransportState();

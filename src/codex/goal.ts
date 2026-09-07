@@ -22,14 +22,14 @@ export interface GoalManagerOptions {
     callback: (message: JsonRpcResponse<TResult>) => void,
   ) => void;
   setGoal: (threadId: string, goal: ThreadGoal | undefined) => void;
-  publishRendererState: () => void;
+  onStateChanged: () => void;
   setCommandNotice: (notice: string) => void;
   setConnectionError: (error: string) => void;
   setCollaborationMode: (mode: "default" | "plan") => void;
 }
 
 /**
- * Coordinates the renderer's native goal commands with the app-server goal
+ * Coordinates native goal commands with the app-server goal
  * lifecycle while keeping thread state updates behind controller callbacks.
  */
 export class CodexGoalManager {
@@ -53,7 +53,7 @@ export class CodexGoalManager {
             ].join("\n")
           : "Usage: /goal [<objective>|clear|edit|pause|resume]\nNo goal is currently set.",
       );
-      this.options.publishRendererState();
+      this.options.onStateChanged();
       return true;
     }
 
@@ -72,12 +72,12 @@ export class CodexGoalManager {
             ? "Usage: /goal edit <objective>\nEnter the replacement objective."
             : "No goal is currently set to edit.",
         );
-        this.options.publishRendererState();
+        this.options.onStateChanged();
         return true;
       }
       if (!goal) {
         this.options.setCommandNotice("No goal is currently set to edit.");
-        this.options.publishRendererState();
+        this.options.onStateChanged();
         return true;
       }
       this.set(threadId, objective, undefined, undefined, "Unable to edit the goal.");
@@ -94,7 +94,7 @@ export class CodexGoalManager {
       { method: "thread/goal/get", params: { threadId } },
       (message) => {
         this.options.setGoal(threadId, message.result?.goal ?? undefined);
-        this.options.publishRendererState();
+        this.options.onStateChanged();
       },
     );
   }
@@ -102,13 +102,13 @@ export class CodexGoalManager {
   /** Applies a server notification announcing or updating a thread goal. */
   handleUpdated(threadId: string, goal: ThreadGoal): void {
     this.options.setGoal(threadId, goal);
-    this.options.publishRendererState();
+    this.options.onStateChanged();
   }
 
   /** Applies a server notification clearing a thread goal. */
   handleCleared(threadId: string): void {
     this.options.setGoal(threadId, undefined);
-    this.options.publishRendererState();
+    this.options.onStateChanged();
   }
 
   private set(
@@ -127,11 +127,11 @@ export class CodexGoalManager {
         const goal = message.result?.goal;
         if (message.error || !goal || (objective && goal.objective !== objective)) {
           this.options.setConnectionError(failureMessage);
-          this.options.publishRendererState();
+          this.options.onStateChanged();
           return;
         }
         this.options.setGoal(threadId, goal);
-        this.options.publishRendererState();
+        this.options.onStateChanged();
         onSuccess?.();
       },
     );
@@ -143,7 +143,7 @@ export class CodexGoalManager {
       (message) => {
         if (message.error || message.result?.cleared !== true) return;
         this.options.setGoal(threadId, undefined);
-        this.options.publishRendererState();
+        this.options.onStateChanged();
       },
     );
     return true;

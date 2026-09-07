@@ -48,7 +48,7 @@ export interface ThreadLifecycleDependencies {
     message: ThreadLifecycleRequestInput,
     callback: (message: JsonRpcResponse<T>) => void,
   ) => boolean;
-  publishRendererState: () => void;
+  onStateChanged: () => void;
   onThreadHydrated: (threadId: string) => void;
   cancelModelPicker: () => void;
   setStarting: (value: boolean) => void;
@@ -60,7 +60,7 @@ export interface ThreadLifecycleDependencies {
  *
  * This service owns discovery, selection, hydration, history pagination, and
  * thread creation/archive/delete/fork flows. The controller remains responsible
- * for transport, turn execution, and renderer-facing orchestration; lifecycle
+ * for transport, turn execution, and application orchestration; lifecycle
  * callbacks are limited to those integration points.
  */
 export class CodexThreadLifecycle {
@@ -86,7 +86,7 @@ export class CodexThreadLifecycle {
     if (nestedThread && typeof nestedThread === "object" && !Array.isArray(nestedThread)) {
       changed = thread.mergeModelInfoFromServer(nestedThread as Record<string, unknown>) || changed;
     }
-    if (changed) this.deps.publishRendererState();
+    if (changed) this.deps.onStateChanged();
   }
 
   /** Clears request guards that are scoped to the current transport connection. */
@@ -118,7 +118,7 @@ export class CodexThreadLifecycle {
           this.deps.threadManager.select(undefined);
           this.deps.threadManager.standaloneThread.clearConversation();
         }
-        this.deps.publishRendererState();
+        this.deps.onStateChanged();
         if (threads[0]) this.select(threads[0].id);
       },
     );
@@ -145,12 +145,12 @@ export class CodexThreadLifecycle {
         this.deps.threadManager.markHistoryPending(id);
         this.resume(id);
       }
-      this.deps.publishRendererState();
+      this.deps.onStateChanged();
       return;
     }
     if (!preserveHistory) this.deps.threadManager.captureSelectedHistoryForReload();
     const pending = preserveHistory
-      ? this.deps.threadManager.activeThread.snapshot().history
+      ? this.deps.threadManager.activeThread.snapshot().messages
       : undefined;
     this.deps.threadManager.select(id);
     const existing = this.deps.threadManager.hasThreadInstance(id);
@@ -158,7 +158,7 @@ export class CodexThreadLifecycle {
     else if (!preserveHistory) this.deps.threadManager.thread(id).clearHistory();
     if (!preserveHistory) this.deps.threadManager.deleteHistoryState(id);
     if (resume || existing) this.deps.threadManager.markHistoryPending(id);
-    this.deps.publishRendererState();
+    this.deps.onStateChanged();
     if (resume) {
       if (existing && this.deps.threadManager.activeThread.state.connected) this.read(id);
       else this.resume(id);
@@ -203,12 +203,12 @@ export class CodexThreadLifecycle {
     const thread = this.deps.threadManager.activeThread;
     if (!threadId) {
       thread.setCommandNotice("No active thread to compact.");
-      this.deps.publishRendererState();
+      this.deps.onStateChanged();
       return false;
     }
     if (thread.state.status !== "idle") {
       thread.setCommandNotice("Wait for the current turn to finish before compacting.");
-      this.deps.publishRendererState();
+      this.deps.onStateChanged();
       return false;
     }
     const accepted = this.request<ThreadCompactStartResponse>(
@@ -219,13 +219,13 @@ export class CodexThreadLifecycle {
             targetThread.setStatus("idle");
             targetThread.setCommandNotice("Unable to compact the current thread.");
           });
-          this.deps.publishRendererState();
+          this.deps.onStateChanged();
         }
       },
     );
     if (!accepted) return false;
     thread.setStatus("working");
-    this.deps.publishRendererState();
+    this.deps.onStateChanged();
     return true;
   }
 
@@ -268,7 +268,7 @@ export class CodexThreadLifecycle {
         this.deps.threadManager.setPendingResume(undefined);
         this.updateModelInfo(message, thread);
         thread.setCommandNotice(`Thread forked — switched to ${serverThread.id}`);
-        this.deps.publishRendererState();
+        this.deps.onStateChanged();
       },
     );
   }
@@ -280,7 +280,7 @@ export class CodexThreadLifecycle {
     if (!cwd) return false;
     this.deps.setStarting(true);
     initialThread.setTokenUsage(undefined);
-    this.deps.publishRendererState();
+    this.deps.onStateChanged();
     return this.startRequest(cwd, undefined, initialPrompt);
   }
 
@@ -288,7 +288,7 @@ export class CodexThreadLifecycle {
   startInitial(onCreated: (thread: CodexThread) => void): boolean {
     const standalone = this.deps.threadManager.activeThread;
     if (standalone.state.status !== "idle") return false;
-    const pendingHistory = standalone.snapshot().history;
+    const pendingHistory = standalone.snapshot().messages;
     this.deps.setStarting(true);
     this.deps.threadManager.noteThreadStartRequest();
     const accepted = this.request<ThreadStartResponse>(
@@ -308,7 +308,7 @@ export class CodexThreadLifecycle {
         thread.syncServerThread(serverThread);
         this.updateModelInfo(message, thread);
         this.deps.threadManager.upsertThread(serverThread);
-        this.deps.publishRendererState();
+        this.deps.onStateChanged();
         onCreated(thread);
       },
     );
@@ -320,7 +320,7 @@ export class CodexThreadLifecycle {
   startShell(onCreated: (thread: CodexThread) => void): boolean {
     const standalone = this.deps.threadManager.activeThread;
     if (standalone.state.status !== "idle") return false;
-    const pendingHistory = standalone.snapshot().history;
+    const pendingHistory = standalone.snapshot().messages;
     this.deps.setStarting(true);
     this.deps.threadManager.noteThreadStartRequest();
     const accepted = this.request<ThreadStartResponse>(
@@ -340,7 +340,7 @@ export class CodexThreadLifecycle {
         thread.syncServerThread(serverThread);
         this.updateModelInfo(message, thread);
         this.deps.threadManager.upsertThread(serverThread);
-        this.deps.publishRendererState();
+        this.deps.onStateChanged();
         onCreated(thread);
       },
     );
@@ -355,17 +355,17 @@ export class CodexThreadLifecycle {
     const project = this.deps.projectManager.findProject(projectId);
     if (!validProjectId(projectId) || !validProjectRoots([{ path: cwd }])) {
       initialThread.setCommandNotice("Choose a valid project and absolute root.");
-      this.deps.publishRendererState();
+      this.deps.onStateChanged();
       return false;
     }
     if (!project || !project.roots.some((root) => root.path === cwd)) {
       initialThread.setCommandNotice("The selected root is not configured for that project.");
-      this.deps.publishRendererState();
+      this.deps.onStateChanged();
       return false;
     }
     this.deps.setStarting(true);
     initialThread.setTokenUsage(undefined);
-    this.deps.publishRendererState();
+    this.deps.onStateChanged();
     return this.startRequest(cwd, projectId, undefined);
   }
 
@@ -392,7 +392,7 @@ export class CodexThreadLifecycle {
                 : "Unable to create project thread."
               : undefined,
           );
-          this.deps.publishRendererState();
+          this.deps.onStateChanged();
           return;
         }
         this.deps.threadManager.noteThreadStartResponse(serverThread.id);
@@ -404,11 +404,11 @@ export class CodexThreadLifecycle {
         thread.syncServerThread(serverThread);
         this.updateModelInfo(message, thread);
         this.deps.threadManager.upsertThread(serverThread);
-        this.deps.publishRendererState();
+        this.deps.onStateChanged();
         if (prompt) {
           thread.addUserMessage(prompt);
           thread.rememberPrompt(prompt);
-          this.deps.publishRendererState();
+          this.deps.onStateChanged();
           this.deps.startTurn(thread.id, prompt);
         }
       },
@@ -430,7 +430,7 @@ export class CodexThreadLifecycle {
       thread.applyServerStatus(serverThread.status ?? {});
       if (thread.state.status !== "idle")
         this.deps.threadManager.trackBackgroundWork(serverThread.id);
-      this.deps.publishRendererState();
+      this.deps.onStateChanged();
       return;
     }
     this.deps.threadManager.setPendingResume(locallyStarted ? undefined : serverThread.id);
@@ -441,7 +441,7 @@ export class CodexThreadLifecycle {
     const thread = this.deps.threadManager.thread(serverThread.id);
     thread.syncServerThread(serverThread);
     thread.applyServerStatus(serverThread.status ?? {});
-    this.deps.publishRendererState();
+    this.deps.onStateChanged();
   }
 
   /** Removes an archived or deleted thread and selects the next available thread. */
@@ -449,14 +449,14 @@ export class CodexThreadLifecycle {
     this.deps.threadManager.removeThread(threadId);
     this.deps.threadManager.remove(threadId);
     if (!this.deps.threadManager.isSelected(threadId)) {
-      this.deps.publishRendererState();
+      this.deps.onStateChanged();
       return;
     }
     const nextThread = this.deps.threadManager.threads[0];
     this.deps.threadManager.select(undefined);
     this.deps.threadManager.standaloneThread.clearConversation();
     if (nextThread) this.select(nextThread.id);
-    this.deps.publishRendererState();
+    this.deps.onStateChanged();
   }
 
   /** Stores the model selected after an app-server reroute. */
@@ -465,7 +465,7 @@ export class CodexThreadLifecycle {
     thread: CodexThread,
   ): void {
     thread.mergeModelInfo({ model: message.params.toModel });
-    this.deps.publishRendererState();
+    this.deps.onStateChanged();
   }
 
   /** Updates model metadata when thread settings change. */
@@ -476,9 +476,9 @@ export class CodexThreadLifecycle {
     const mode = message.params.threadSettings.collaborationMode?.mode;
     if (mode === "plan" || mode === "default") thread.setCollaborationMode(mode);
     if (thread.mergeModelInfoFromServer(message.params.threadSettings)) {
-      this.deps.publishRendererState();
+      this.deps.onStateChanged();
     }
-    this.deps.publishRendererState();
+    this.deps.onStateChanged();
   }
 
   /** Applies a server-side project assignment update to a thread. */
@@ -488,7 +488,7 @@ export class CodexThreadLifecycle {
   ): void {
     thread.setProjectId(message.params.projectId);
     this.deps.projectManager.scheduleRefresh();
-    this.deps.publishRendererState();
+    this.deps.onStateChanged();
   }
 
   /** Reconciles local status and triggers reads or resumes when needed. */
@@ -501,7 +501,7 @@ export class CodexThreadLifecycle {
     thread.applyServerStatus(status ?? {});
     if (!selected && thread.state.status !== "idle")
       this.deps.threadManager.trackBackgroundWork(threadId);
-    this.deps.publishRendererState();
+    this.deps.onStateChanged();
     if (
       selected &&
       status?.type === "active" &&
@@ -533,7 +533,7 @@ export class CodexThreadLifecycle {
                 : "";
             if (text.includes("already has an active writer")) {
               this.deps.threadManager.setReadOnly(threadId, true);
-              this.deps.publishRendererState();
+              this.deps.onStateChanged();
               this.read(threadId);
             }
           }
@@ -556,7 +556,7 @@ export class CodexThreadLifecycle {
           thread.syncServerThread(serverThread);
           thread.setConnected(true);
           thread.applyServerStatus(serverThread?.status ?? {});
-          this.deps.publishRendererState();
+          this.deps.onStateChanged();
           void this.loadHistoryPage(threadId, null, true).then((loaded) => {
             if (loaded) this.deps.onThreadHydrated(threadId);
           });
@@ -573,7 +573,7 @@ export class CodexThreadLifecycle {
   ): Promise<boolean> {
     const state = this.deps.threadManager.beginHistoryPage(threadId, replace);
     if (!state) return Promise.resolve(false);
-    if (this.deps.threadManager.isSelected(threadId)) this.deps.publishRendererState();
+    if (this.deps.threadManager.isSelected(threadId)) this.deps.onStateChanged();
     return new Promise((resolve) => {
       const accepted = this.request<ThreadTurnsListResponse>(
         {
@@ -591,20 +591,20 @@ export class CodexThreadLifecycle {
             const result = message.result;
             if (!result) {
               this.deps.threadManager.finishHistoryPage(threadId, null, false);
-              if (this.deps.threadManager.isSelected(threadId)) this.deps.publishRendererState();
+              if (this.deps.threadManager.isSelected(threadId)) this.deps.onStateChanged();
               resolve(false);
               return;
             }
             thread.restoreTurns([...result.data].reverse(), !replace);
             this.deps.threadManager.finishHistoryPage(threadId, result.nextCursor, true);
-            if (this.deps.threadManager.isSelected(threadId)) this.deps.publishRendererState();
+            if (this.deps.threadManager.isSelected(threadId)) this.deps.onStateChanged();
             resolve(true);
           });
         },
       );
       if (!accepted) {
         this.deps.threadManager.finishHistoryPage(threadId, null, false);
-        if (this.deps.threadManager.isSelected(threadId)) this.deps.publishRendererState();
+        if (this.deps.threadManager.isSelected(threadId)) this.deps.onStateChanged();
         resolve(false);
       }
     });

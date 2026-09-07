@@ -69,7 +69,7 @@ export class CodexRenderer {
     this.suggestionRenderer = new CodexSuggestionRenderer(
       input,
       this.fileSuggestions,
-      () => this.state.codex.cwd,
+      () => this.state.codex.threads.current.thread.workingDirectory,
       () => this.inputController.resize(),
       () => this.inputController.renderCommandMode(),
     );
@@ -127,7 +127,7 @@ export class CodexRenderer {
     this.modelRenderer = new CodexModelRenderer(
       userInput,
       () => this.state,
-      (next) => this.updateState(next),
+      () => this.updateState(this.state),
     );
     this.statusRenderer = new CodexStatusRenderer(
       workingStatus,
@@ -158,8 +158,8 @@ export class CodexRenderer {
     this.history.addEventListener("scroll", () => {
       this.historyRenderer.handleHistoryScroll();
       if (
-        this.state.codex.hasOlderHistory &&
-        !this.state.codex.historyLoading &&
+        this.state.codex.threads.current.history.hasOlder &&
+        !this.state.codex.threads.current.history.loading &&
         this.history.scrollTop <= 48
       ) {
         void this.loadOlderHistory();
@@ -179,17 +179,23 @@ export class CodexRenderer {
 
   /** Applies renderer state and refreshes all visible chat controls. */
   updateState(next: RendererState): void {
-    for (const thread of next.codex.threads) {
+    for (const thread of next.codex.threads.items) {
       if (thread.projectId !== undefined) this.threadProjectIds.set(thread.id, thread.projectId);
     }
-    if (next.codex.threadId && next.codex.projectId !== undefined) {
-      this.threadProjectIds.set(next.codex.threadId, next.codex.projectId);
+    if (
+      next.codex.threads.selectedId &&
+      next.codex.threads.current.thread.projectId !== undefined
+    ) {
+      this.threadProjectIds.set(
+        next.codex.threads.selectedId,
+        next.codex.threads.current.thread.projectId,
+      );
     }
     const closedProjectThread =
-      next.codex.threadId !== this.state.codex.threadId &&
+      next.codex.threads.selectedId !== this.state.codex.threads.selectedId &&
       document.body.dataset.projectThread === "true";
     if (
-      next.codex.threadId !== this.state.codex.threadId &&
+      next.codex.threads.selectedId !== this.state.codex.threads.selectedId &&
       (document.body.dataset.projectManager === "true" ||
         document.body.dataset.projectThread === "true")
     ) {
@@ -204,17 +210,18 @@ export class CodexRenderer {
       this.form.hidden = false;
     }
     const resolvedUserInput =
-      Boolean(this.state.codex.pendingUserInput) && !next.codex.pendingUserInput;
-    if (next.codex.threadId !== this.state.codex.threadId) {
+      Boolean(this.state.codex.threads.current.thread.pendingUserInput) &&
+      !next.codex.threads.current.thread.pendingUserInput;
+    if (next.codex.threads.selectedId !== this.state.codex.threads.selectedId) {
       this.historyRenderer.reset();
     }
     this.state = next;
-    const displayedThreads = [...next.codex.threads];
+    const displayedThreads = [...next.codex.threads.items];
     if (
-      next.codex.threadId &&
-      !displayedThreads.some((thread) => thread.id === next.codex.threadId)
+      next.codex.threads.selectedId &&
+      !displayedThreads.some((thread) => thread.id === next.codex.threads.selectedId)
     ) {
-      displayedThreads.unshift({ id: next.codex.threadId });
+      displayedThreads.unshift({ id: next.codex.threads.selectedId });
     }
     const threadIds = new Set(displayedThreads.map((thread) => thread.id));
     const existingNavigationIds = new Set(this.sessionNavigationIds);
@@ -225,11 +232,11 @@ export class CodexRenderer {
       ...newThreadIds,
       ...this.sessionNavigationIds.filter((id) => threadIds.has(id)),
     ];
-    if (next.codex.threadId === this.pendingSessionId) {
+    if (next.codex.threads.selectedId === this.pendingSessionId) {
       this.pendingSessionId = undefined;
     }
-    this.error.hidden = !next.codex.error;
-    this.error.textContent = next.codex.error ? "Codex connection error." : "";
+    this.error.hidden = !next.codex.connection.error;
+    this.error.textContent = next.codex.connection.error ? "Codex connection error." : "";
     const sessionOptionsKey = displayedThreads
       .map((thread) => `${thread.id}\u0000${thread.preview ?? ""}`)
       .join("\u0001");
@@ -251,14 +258,14 @@ export class CodexRenderer {
         }
       }
     }
-    this.sessionSelect.value = next.codex.threadId ?? "";
+    this.sessionSelect.value = next.codex.threads.selectedId ?? "";
     this.sessionSelect.disabled = !displayedThreads.length;
-    this.sessionCopy.disabled = !next.codex.threadId;
+    this.sessionCopy.disabled = !next.codex.threads.selectedId;
     this.renderHistory(
-      next.codex.history,
-      Boolean(next.codex.threadId),
-      next.codex.historyLoading,
-      next.codex.queuedSubmissions,
+      next.codex.threads.current.thread.messages,
+      Boolean(next.codex.threads.selectedId),
+      next.codex.threads.current.history.loading,
+      next.codex.threads.current.thread.queuedSubmissions,
     );
     this.statusRenderer.update();
     this.inputController.renderCommandMode();
@@ -266,32 +273,36 @@ export class CodexRenderer {
     this.renderRateLimit();
     this.renderGoal();
     this.renderUserInput();
-    if (resolvedUserInput && !next.codex.pendingApproval) {
+    if (resolvedUserInput && !next.codex.threads.current.thread.pendingApproval) {
       this.inputController.focusChatInput();
     }
     const steerable =
-      !next.codex.readOnly && (next.codex.status === "working" || next.codex.status === "waiting");
+      !next.codex.threads.current.readOnly &&
+      (next.codex.threads.current.thread.status === "working" ||
+        next.codex.threads.current.thread.status === "waiting");
     if (this.steerButton) {
       this.steerButton.hidden = !steerable;
       this.steerButton.disabled = !steerable;
     }
-    this.readOnlyStatus.hidden = !next.codex.readOnly;
-    this.readOnlyStatus.textContent = next.codex.readOnly ? "Read-only · active elsewhere" : "";
-    this.input.disabled = next.codex.readOnly;
+    this.readOnlyStatus.hidden = !next.codex.threads.current.readOnly;
+    this.readOnlyStatus.textContent = next.codex.threads.current.readOnly
+      ? "Read-only · active elsewhere"
+      : "";
+    this.input.disabled = next.codex.threads.current.readOnly;
     const sendButton = this.form.querySelector<HTMLButtonElement>("button[type='submit']");
-    if (sendButton) sendButton.disabled = next.codex.readOnly;
+    if (sendButton) sendButton.disabled = next.codex.threads.current.readOnly;
     this.form.hidden = Boolean(
-      next.codex.pendingUserInput ||
-      next.codex.pendingApproval ||
+      next.codex.threads.current.thread.pendingUserInput ||
+      next.codex.threads.current.thread.pendingApproval ||
       this.activePlanConfirmation ||
       this.promptRenderer.isReviewPromptOpen ||
-      next.codex.modelPicker ||
+      this.state.codex.modelPicker ||
       document.body.dataset.projectManager === "true" ||
       document.body.dataset.projectThread === "true",
     );
     if (closedProjectThread) this.inputController.focusChatInput();
     if (this.modeToggle) {
-      const plan = next.codex.collaborationMode === "plan";
+      const plan = next.codex.threads.current.thread.collaborationMode === "plan";
       this.modeToggle.hidden = !plan;
       this.modeToggle.textContent = plan ? "Plan" : "Default";
       this.modeToggle.classList.toggle("codex-mode-plan", plan);
@@ -358,7 +369,8 @@ export class CodexRenderer {
       matchesShortcut(event, "copyMessage") &&
       !(
         event.target === this.input &&
-        (this.state.codex.status === "working" || this.state.codex.status === "waiting")
+        (this.state.codex.threads.current.thread.status === "working" ||
+          this.state.codex.threads.current.thread.status === "waiting")
       ) &&
       this.selectedMessageIndex >= 0 &&
       !this.hasHighlightedText()
@@ -431,7 +443,7 @@ export class CodexRenderer {
 
   /** Selects the adjacent session in the current navigation order. */
   private switchSession(direction: -1 | 1): boolean {
-    const currentId = this.pendingSessionId ?? this.state.codex.threadId;
+    const currentId = this.pendingSessionId ?? this.state.codex.threads.selectedId;
     const currentIndex = this.sessionNavigationIds.indexOf(currentId ?? "");
     if (currentIndex < 0) return false;
     const nextId = this.sessionNavigationIds[currentIndex + direction];
@@ -443,15 +455,19 @@ export class CodexRenderer {
 
   /** Loads the next page of older history messages. */
   private async loadOlderHistory(): Promise<void> {
-    if (!this.state.codex.hasOlderHistory || this.state.codex.historyLoading) return;
+    if (
+      !this.state.codex.threads.current.history.hasOlder ||
+      this.state.codex.threads.current.history.loading
+    )
+      return;
     await window.peskApi.loadOlderCodexHistory();
   }
 
   private renderHistory(
-    history: RendererState["codex"]["history"],
+    history: RendererState["codex"]["threads"]["current"]["thread"]["messages"],
     sessionConnected = false,
     historyLoading = false,
-    queuedSubmissions: RendererState["codex"]["queuedSubmissions"] = [],
+    queuedSubmissions: RendererState["codex"]["threads"]["current"]["thread"]["queuedSubmissions"] = [],
   ): void {
     this.historyRenderer.renderHistory(
       history,
@@ -469,7 +485,7 @@ export class CodexRenderer {
   /** Moves message selection in the requested direction and scope. */
   private selectMessage(
     direction: -1 | 1,
-    role?: RendererState["codex"]["history"][number]["role"],
+    role?: RendererState["codex"]["threads"]["current"]["thread"]["messages"][number]["role"],
   ): void {
     const messages = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message"));
     if (!messages.length) return;
@@ -659,7 +675,10 @@ export class CodexRenderer {
       if (!selected) return;
       this.dismissedPlanConfirmations.add(activityKey);
       if (selected === "stay-plan") {
-        this.renderHistory(this.state.codex.history, Boolean(this.state.codex.threadId));
+        this.renderHistory(
+          this.state.codex.threads.current.thread.messages,
+          Boolean(this.state.codex.threads.selectedId),
+        );
         this.renderUserInput();
         this.form.hidden = false;
         this.inputController.focusChatInput();
@@ -673,7 +692,10 @@ export class CodexRenderer {
       void implementation.then((next) => {
         this.updateState(next);
         this.inputController.focusChatInput();
-        this.renderHistory(this.state.codex.history, Boolean(this.state.codex.threadId));
+        this.renderHistory(
+          this.state.codex.threads.current.thread.messages,
+          Boolean(this.state.codex.threads.selectedId),
+        );
       });
     });
     prompt.append(form);
@@ -685,7 +707,7 @@ export class CodexRenderer {
 
   /** Renders the current goal summary and controls. */
   private renderGoal(): void {
-    const goal = this.state.codex.goal;
+    const goal = this.state.codex.threads.current.thread.goal;
     if (!goal) {
       this.goal.hidden = true;
       this.goal.textContent = "";
@@ -701,14 +723,14 @@ export class CodexRenderer {
 
   /** Renders the current token usage summary. */
   private renderTokenUsage(): void {
-    if (!this.state.codex.threadId) {
+    if (!this.state.codex.threads.selectedId) {
       this.tokenUsage.hidden = true;
       this.tokenUsage.textContent = "";
       this.tokenUsage.removeAttribute("title");
       return;
     }
-    const usage = this.state.codex.tokenUsage;
-    const modelInfo = this.state.codex.modelInfo;
+    const usage = this.state.codex.threads.current.thread.tokenUsage;
+    const modelInfo = this.state.codex.threads.current.thread.modelInfo;
     if (!usage && !modelInfo) {
       this.tokenUsage.hidden = true;
       this.tokenUsage.textContent = "";
@@ -746,19 +768,19 @@ export class CodexRenderer {
         : "",
     ].filter(Boolean);
     const modelLine = modelParts.join(" · ");
-    const cwd = this.state.codex.cwd;
-    const currentThread = this.state.codex.threads.find(
-      (thread) => thread.id === this.state.codex.threadId,
+    const cwd = this.state.codex.threads.current.thread.workingDirectory;
+    const currentThread = this.state.codex.threads.items.find(
+      (thread) => thread.id === this.state.codex.threads.selectedId,
     );
     const projectId =
-      this.state.codex.projectId ??
+      this.state.codex.threads.current.thread.projectId ??
       currentThread?.projectId ??
-      (this.state.codex.threadId
-        ? this.threadProjectIds.get(this.state.codex.threadId)
+      (this.state.codex.threads.selectedId
+        ? this.threadProjectIds.get(this.state.codex.threads.selectedId)
         : undefined);
     const project = projectId
-      ? this.state.codex.projects?.find((candidate) => candidate.id === projectId)
-      : this.state.codex.projects?.find((candidate) =>
+      ? this.state.codex.projects.items?.find((candidate) => candidate.id === projectId)
+      : this.state.codex.projects.items?.find((candidate) =>
           cwd ? candidate.roots.some((root) => root.path === cwd) : false,
         );
     const projectName = project?.name;
@@ -834,7 +856,7 @@ export class CodexRenderer {
 
   /** Renders the current rate-limit information. */
   private renderRateLimit(): void {
-    const limits = this.state.codex.rateLimits;
+    const limits = this.state.codex.account.rateLimits;
     const primary = limits?.primary;
     if (!primary) {
       this.rateLimit.hidden = true;

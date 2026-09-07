@@ -176,69 +176,81 @@ test("renders session state, history, activities, approvals, and token usage", (
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      threadId: "thread-1",
-      error: "socket failed",
-      threads: [{ id: "thread-1", preview: "Inspect project", projectId: "project-1" }],
-      projects: [
-        {
-          id: "project-1",
-          name: "Frontend",
-          roots: [{ path: "/tmp/project" }],
-          metadata: {},
-          position: 0,
-          createdAt: 1,
-          updatedAt: 1,
-          recencyAt: null,
-        },
-      ],
-      modelInfo: {
-        model: "gpt-test",
-        provider: "openai",
-        reasoningEffort: "high",
-      },
-      tokenUsage: {
-        total: { totalTokens: 12500, inputTokens: 1200, outputTokens: 3400 },
-        last: { totalTokens: 4000, inputTokens: 500 },
-        modelContextWindow: 1000,
-      },
-      history: [
-        { role: "user", text: "hello" },
-        {
-          role: "assistant",
-          text: "**world**\n\n![Cat](https://petsplanet.pk/wp-content/uploads/2024/06/cat-breed.jpg)",
-        },
-        {
-          role: "system",
-          text: "npm test",
-          itemId: "command-1",
-          activity: {
-            kind: "command",
-            command: "npm   test",
-            cwd: "/tmp/project",
-            status: "completed",
-            output: "passed",
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-1",
+        items: [{ id: "thread-1", preview: "Inspect project", projectId: "project-1" }],
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            modelInfo: {
+              model: "gpt-test",
+              provider: "openai",
+              reasoningEffort: "high",
+            },
+            tokenUsage: {
+              total: { totalTokens: 12500, inputTokens: 1200, outputTokens: 3400 },
+              last: { totalTokens: 4000, inputTokens: 500 },
+              modelContextWindow: 1000,
+            },
+            messages: [
+              { role: "user", text: "hello" },
+              {
+                role: "assistant",
+                text: "**world**\n\n![Cat](https://petsplanet.pk/wp-content/uploads/2024/06/cat-breed.jpg)",
+              },
+              {
+                role: "system",
+                text: "npm test",
+                itemId: "command-1",
+                activity: {
+                  kind: "command",
+                  command: "npm   test",
+                  cwd: "/tmp/project",
+                  status: "completed",
+                  output: "passed",
+                },
+              },
+              {
+                role: "system",
+                text: "changed files",
+                activity: {
+                  kind: "fileChange",
+                  status: "completed",
+                  changes: ["src/a.ts\n  +added\n  -removed\n  @@ hunk"],
+                },
+              },
+              {
+                role: "system",
+                text: "searching",
+                activity: { kind: "webSearch", summary: "docs", status: "done" },
+              },
+              {
+                role: "system",
+                text: "approve command",
+                approval: { requestId: "approval-1", state: "pending" },
+              },
+            ],
           },
         },
-        {
-          role: "system",
-          text: "changed files",
-          activity: {
-            kind: "fileChange",
-            status: "completed",
-            changes: ["src/a.ts\n  +added\n  -removed\n  @@ hunk"],
+      },
+      connection: { ...defaultRendererState().codex.connection, error: "socket failed" },
+      projects: {
+        ...defaultRendererState().codex.projects,
+        items: [
+          {
+            id: "project-1",
+            name: "Frontend",
+            roots: [{ path: "/tmp/project" }],
+            metadata: {},
+            position: 0,
+            createdAt: 1,
+            updatedAt: 1,
+            recencyAt: null,
           },
-        },
-        {
-          role: "system",
-          text: "searching",
-          activity: { kind: "webSearch", summary: "docs", status: "done" },
-        },
-        {
-          role: "system",
-          text: "approve command",
-          approval: { requestId: "approval-1", state: "pending" },
-        },
-      ],
+        ],
+      },
     },
   };
 
@@ -272,15 +284,31 @@ test("does not replace rendered history with a stale shorter snapshot", () => {
   ];
   renderer.updateState({
     ...base,
-    codex: { ...base.codex, threadId: "thread-1", history: completeHistory },
+    codex: {
+      ...base.codex,
+      threads: {
+        ...base.codex.threads,
+        selectedId: "thread-1",
+        current: {
+          ...base.codex.threads.current,
+          thread: { ...base.codex.threads.current.thread, messages: completeHistory },
+        },
+      },
+    },
   });
 
   renderer.updateState({
     ...base,
     codex: {
       ...base.codex,
-      threadId: "thread-1",
-      history: [completeHistory[0]],
+      threads: {
+        ...base.codex.threads,
+        selectedId: "thread-1",
+        current: {
+          ...base.codex.threads.current,
+          thread: { ...base.codex.threads.current.thread, messages: [completeHistory[0]] },
+        },
+      },
     },
   });
 
@@ -294,10 +322,19 @@ test("appends new history without recreating existing message nodes", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        { role: "assistant", text: "**world**", itemId: "assistant-1" },
-        { role: "user", text: "continue", itemId: "user-1" },
-      ],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              { role: "assistant", text: "**world**", itemId: "assistant-1" },
+              { role: "user", text: "continue", itemId: "user-1" },
+            ],
+          },
+        },
+      },
     },
   };
   renderer.updateState(firstState);
@@ -310,10 +347,19 @@ test("appends new history without recreating existing message nodes", () => {
     ...firstState,
     codex: {
       ...firstState.codex,
-      history: [
-        ...firstState.codex.history,
-        { role: "assistant", text: "done", itemId: "assistant-2" },
-      ],
+      threads: {
+        ...firstState.codex.threads,
+        current: {
+          ...firstState.codex.threads.current,
+          thread: {
+            ...firstState.codex.threads.current.thread,
+            messages: [
+              ...firstState.codex.threads.current.thread.messages,
+              { role: "assistant", text: "done", itemId: "assistant-2" },
+            ],
+          },
+        },
+      },
     },
   });
 
@@ -324,7 +370,7 @@ test("appends new history without recreating existing message nodes", () => {
 test("removes empty-history placeholders when the first message arrives", () => {
   const { renderer, elements } = makeRenderer();
   const emptyState = defaultRendererState();
-  emptyState.codex.threadId = "thread-1";
+  emptyState.codex.threads.selectedId = "thread-1";
   renderer.updateState(emptyState);
 
   expect(elements.history.querySelector(".codex-empty-history")).not.toBeNull();
@@ -334,7 +380,16 @@ test("removes empty-history placeholders when the first message arrives", () => 
     ...emptyState,
     codex: {
       ...emptyState.codex,
-      history: [{ role: "user", text: "hello", itemId: "user-1" }],
+      threads: {
+        ...emptyState.codex.threads,
+        current: {
+          ...emptyState.codex.threads.current,
+          thread: {
+            ...emptyState.codex.threads.current.thread,
+            messages: [{ role: "user", text: "hello", itemId: "user-1" }],
+          },
+        },
+      },
     },
   });
 
@@ -346,9 +401,9 @@ test("removes empty-history placeholders when the first message arrives", () => 
 test("shows loading while session history is being fetched", () => {
   const { renderer, elements } = makeRenderer();
   const loadingState = defaultRendererState();
-  loadingState.codex.threadId = "thread-1";
-  loadingState.codex.connected = true;
-  loadingState.codex.historyLoading = true;
+  loadingState.codex.threads.selectedId = "thread-1";
+  loadingState.codex.threads.current.thread.connected = true;
+  loadingState.codex.threads.current.history.loading = true;
 
   renderer.updateState(loadingState);
 
@@ -360,7 +415,16 @@ test("shows loading while session history is being fetched", () => {
 
   renderer.updateState({
     ...loadingState,
-    codex: { ...loadingState.codex, historyLoading: false },
+    codex: {
+      ...loadingState.codex,
+      threads: {
+        ...loadingState.codex.threads,
+        current: {
+          ...loadingState.codex.threads.current,
+          history: { ...loadingState.codex.threads.current.history, loading: false },
+        },
+      },
+    },
   });
 
   expect(elements.history.querySelector(".codex-loading-history")).toBeNull();
@@ -376,7 +440,19 @@ test("prepends older history without recreating newer message nodes", () => {
   ];
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, history: currentHistory },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: currentHistory,
+          },
+        },
+      },
+    },
   });
   const newerMessage = elements.history.querySelector<HTMLElement>(
     '[data-message-item-id="user-1"]',
@@ -387,7 +463,16 @@ test("prepends older history without recreating newer message nodes", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [{ role: "user", text: "old prompt", itemId: "user-0" }, ...currentHistory],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [{ role: "user", text: "old prompt", itemId: "user-0" }, ...currentHistory],
+          },
+        },
+      },
     },
   });
 
@@ -405,7 +490,16 @@ test("updates streamed assistant text without rebuilding a long history", () => 
 
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, history: history },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: { ...defaultRendererState().codex.threads.current.thread, messages: history },
+        },
+      },
+    },
   });
   const unchangedMessage = elements.history.querySelector<HTMLElement>(
     "[data-message-item-id='message-0']",
@@ -418,7 +512,16 @@ test("updates streamed assistant text without rebuilding a long history", () => 
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [...history.slice(0, -1), { ...history.at(-1)!, text: "streaming update" }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [...history.slice(0, -1), { ...history.at(-1)!, text: "streaming update" }],
+          },
+        },
+      },
     },
   });
 
@@ -434,7 +537,7 @@ test("updates streamed assistant text without rebuilding a long history", () => 
 test("updates streamed command output without rebuilding history", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.history = [
+  state.codex.threads.current.thread.messages = [
     {
       role: "system",
       text: "$ npm test",
@@ -456,13 +559,25 @@ test("updates streamed command output without rebuilding history", () => {
     ...state,
     codex: {
       ...state.codex,
-      history: [
-        {
-          ...state.codex.history[0],
-          text: "$ npm test\nfirst line\nsecond line",
-          activity: { ...state.codex.history[0].activity!, output: "first line\nsecond line" },
+      threads: {
+        ...state.codex.threads,
+        current: {
+          ...state.codex.threads.current,
+          thread: {
+            ...state.codex.threads.current.thread,
+            messages: [
+              {
+                ...state.codex.threads.current.thread.messages[0],
+                text: "$ npm test\nfirst line\nsecond line",
+                activity: {
+                  ...state.codex.threads.current.thread.messages[0].activity!,
+                  output: "first line\nsecond line",
+                },
+              },
+            ],
+          },
         },
-      ],
+      },
     },
   });
 
@@ -474,8 +589,10 @@ test("updates streamed command output without rebuilding history", () => {
 test("applies stream deltas without requiring a full state payload", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.history = [{ role: "assistant", text: "partial", itemId: "assistant-delta" }];
-  state.codex.status = "working";
+  state.codex.threads.current.thread.messages = [
+    { role: "assistant", text: "partial", itemId: "assistant-delta" },
+  ];
+  state.codex.threads.current.thread.status = "working";
   renderer.updateState(state);
 
   renderer.applyStreamDelta({
@@ -491,8 +608,10 @@ test("applies stream deltas without requiring a full state payload", () => {
 test("keeps the history pinned while an assistant response streams", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "assistant", text: "partial", itemId: "assistant-scroll" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [
+    { role: "assistant", text: "partial", itemId: "assistant-scroll" },
+  ];
   renderer.updateState(state);
 
   elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
@@ -511,8 +630,10 @@ test("keeps the history pinned while an assistant response streams", () => {
 test("does not pull the reader to the bottom during assistant streaming", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "assistant", text: "partial", itemId: "assistant-reader" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [
+    { role: "assistant", text: "partial", itemId: "assistant-reader" },
+  ];
   renderer.updateState(state);
 
   elements.history.scrollTop = 120;
@@ -530,8 +651,10 @@ test("does not pull the reader to the bottom during assistant streaming", () => 
 test("blocks pending autoscroll after manual scrolling", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "assistant", text: "partial", itemId: "manual-scroll" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [
+    { role: "assistant", text: "partial", itemId: "manual-scroll" },
+  ];
   renderer.updateState(state);
 
   elements.history.scrollTop = 120;
@@ -549,8 +672,10 @@ test("blocks pending autoscroll after manual scrolling", () => {
 test("resumes autoscroll after the reader returns to the bottom", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "assistant", text: "partial", itemId: "resume-scroll" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [
+    { role: "assistant", text: "partial", itemId: "resume-scroll" },
+  ];
   renderer.updateState(state);
 
   elements.history.dispatchEvent(new WheelEvent("wheel"));
@@ -571,8 +696,10 @@ test("resumes autoscroll after the reader returns to the bottom", () => {
 test("blocks autoscroll after Shift+Up or Shift+Down history scrolling", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "assistant", text: "partial", itemId: "keyboard-scroll" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [
+    { role: "assistant", text: "partial", itemId: "keyboard-scroll" },
+  ];
   renderer.updateState(state);
 
   elements.history.scrollTop = 120;
@@ -596,8 +723,10 @@ test("blocks autoscroll after Shift+Up or Shift+Down history scrolling", () => {
 test("Alt+Home blocks autoscroll and Alt+End resumes it at the bottom", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "assistant", text: "partial", itemId: "home-end-scroll" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [
+    { role: "assistant", text: "partial", itemId: "home-end-scroll" },
+  ];
   renderer.updateState(state);
 
   renderer.handleKeydown(
@@ -631,8 +760,10 @@ test("Alt+Home blocks autoscroll and Alt+End resumes it at the bottom", () => {
 test("parses streamed assistant Markdown when the turn completes", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "assistant", text: "", itemId: "assistant-markdown" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [
+    { role: "assistant", text: "", itemId: "assistant-markdown" },
+  ];
   renderer.updateState(state);
 
   renderer.applyStreamDelta({
@@ -646,8 +777,19 @@ test("parses streamed assistant Markdown when the turn completes", () => {
     ...state,
     codex: {
       ...state.codex,
-      status: "idle" as const,
-      history: [{ role: "assistant" as const, text: "**world**", itemId: "assistant-markdown" }],
+      threads: {
+        ...state.codex.threads,
+        current: {
+          ...state.codex.threads.current,
+          thread: {
+            ...state.codex.threads.current.thread,
+            status: "idle" as const,
+            messages: [
+              { role: "assistant" as const, text: "**world**", itemId: "assistant-markdown" },
+            ],
+          },
+        },
+      },
     },
   };
   renderer.updateState(completedState);
@@ -658,8 +800,8 @@ test("parses streamed assistant Markdown when the turn completes", () => {
 test("parses completed assistant items before the turn completes", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [
     { role: "assistant", text: "**world**", itemId: "assistant-1" },
     { role: "assistant", text: "second", itemId: "assistant-2" },
   ];
@@ -688,10 +830,19 @@ test("parses completed assistant items before the turn completes", () => {
     ...state,
     codex: {
       ...state.codex,
-      history: [
-        { role: "assistant" as const, text: "**world** update", itemId: "assistant-1" },
-        { role: "assistant" as const, text: "second output", itemId: "assistant-2" },
-      ],
+      threads: {
+        ...state.codex.threads,
+        current: {
+          ...state.codex.threads.current,
+          thread: {
+            ...state.codex.threads.current.thread,
+            messages: [
+              { role: "assistant" as const, text: "**world** update", itemId: "assistant-1" },
+              { role: "assistant" as const, text: "second output", itemId: "assistant-2" },
+            ],
+          },
+        },
+      },
     },
   });
 
@@ -705,8 +856,8 @@ test("parses completed assistant items before the turn completes", () => {
 test("parses a completed assistant item without an item ID", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "assistant", text: "first" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [{ role: "assistant", text: "first" }];
   renderer.updateState(state);
   renderer.applyStreamDelta({
     threadId: undefined,
@@ -724,10 +875,19 @@ test("parses a completed assistant item without an item ID", () => {
     ...state,
     codex: {
       ...state.codex,
-      history: [
-        { role: "assistant" as const, text: "first **world**" },
-        { role: "assistant" as const, text: "second" },
-      ],
+      threads: {
+        ...state.codex.threads,
+        current: {
+          ...state.codex.threads.current,
+          thread: {
+            ...state.codex.threads.current.thread,
+            messages: [
+              { role: "assistant" as const, text: "first **world**" },
+              { role: "assistant" as const, text: "second" },
+            ],
+          },
+        },
+      },
     },
   });
 
@@ -739,8 +899,8 @@ test("parses a completed assistant item without an item ID", () => {
 test("parses an item after its no-ID stream completes while work continues", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "assistant", text: "first" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [{ role: "assistant", text: "first" }];
   renderer.updateState(state);
   renderer.applyStreamDelta({
     threadId: undefined,
@@ -758,15 +918,24 @@ test("parses an item after its no-ID stream completes while work continues", () 
     ...state,
     codex: {
       ...state.codex,
-      history: [
-        { role: "assistant" as const, text: "first **world**" },
-        {
-          role: "system" as const,
-          text: "$ npm test",
-          itemId: "command-1",
-          activity: { kind: "command" as const, output: "running" },
+      threads: {
+        ...state.codex.threads,
+        current: {
+          ...state.codex.threads.current,
+          thread: {
+            ...state.codex.threads.current.thread,
+            messages: [
+              { role: "assistant" as const, text: "first **world**" },
+              {
+                role: "system" as const,
+                text: "$ npm test",
+                itemId: "command-1",
+                activity: { kind: "command" as const, output: "running" },
+              },
+            ],
+          },
         },
-      ],
+      },
     },
   });
 
@@ -776,8 +945,10 @@ test("parses an item after its no-ID stream completes while work continues", () 
 test("parses an assistant item from an explicit completion delta", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "assistant", text: "", itemId: "assistant-1" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [
+    { role: "assistant", text: "", itemId: "assistant-1" },
+  ];
   renderer.updateState(state);
   renderer.applyStreamDelta({
     threadId: undefined,
@@ -799,8 +970,8 @@ test("parses an assistant item from an explicit completion delta", () => {
 test("keeps streamed assistant text when history is re-rendered before completion", () => {
   const { renderer, elements } = makeRenderer();
   const state = defaultRendererState();
-  state.codex.status = "working";
-  state.codex.history = [{ role: "user", text: "hello", itemId: "user-1" }];
+  state.codex.threads.current.thread.status = "working";
+  state.codex.threads.current.thread.messages = [{ role: "user", text: "hello", itemId: "user-1" }];
   renderer.updateState(state);
 
   renderer.applyStreamDelta({
@@ -821,7 +992,16 @@ test("keeps streamed assistant text when history is re-rendered before completio
     ...state,
     codex: {
       ...state.codex,
-      history: [{ role: "user", text: "other thread", itemId: "other-1" }],
+      threads: {
+        ...state.codex.threads,
+        current: {
+          ...state.codex.threads.current,
+          thread: {
+            ...state.codex.threads.current.thread,
+            messages: [{ role: "user", text: "other thread", itemId: "other-1" }],
+          },
+        },
+      },
     },
   });
   renderer.updateState(state);
@@ -843,11 +1023,11 @@ test("renders very long history without changing the reader position", () => {
     itemId: `message-${index}`,
   }));
   const state = defaultRendererState();
-  state.codex.history = history;
+  state.codex.threads.current.thread.messages = history;
 
   renderer.updateState(state);
 
-  expect(state.codex.history).toHaveLength(400);
+  expect(state.codex.threads.current.thread.messages).toHaveLength(400);
   expect(elements.history.querySelectorAll(".codex-message")).toHaveLength(400);
   expect(elements.history.querySelector("[data-message-item-id='message-0']")).not.toBeNull();
   expect(elements.history.querySelector("[data-message-item-id='message-399']")).not.toBeNull();
@@ -874,7 +1054,20 @@ test("opens and switches long histories at the bottom", () => {
 
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "first", history: firstHistory },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "first",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: firstHistory,
+          },
+        },
+      },
+    },
   });
   expect(elements.history.scrollTop).toBeGreaterThanOrEqual(
     elements.history.scrollHeight - elements.history.clientHeight,
@@ -883,7 +1076,20 @@ test("opens and switches long histories at the bottom", () => {
   elements.history.scrollTop = 0;
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "second", history: secondHistory },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "second",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: secondHistory,
+          },
+        },
+      },
+    },
   });
   expect(elements.history.scrollTop).toBeGreaterThanOrEqual(
     elements.history.scrollHeight - elements.history.clientHeight,
@@ -898,7 +1104,19 @@ test("preserves scroll position when appending while reading older history", () 
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, history: initialHistory },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: initialHistory,
+          },
+        },
+      },
+    },
   });
   elements.history.dispatchEvent(new WheelEvent("wheel"));
   elements.history.scrollTop = 120;
@@ -907,7 +1125,19 @@ test("preserves scroll position when appending while reading older history", () 
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [...initialHistory, { role: "assistant", text: "new", itemId: "assistant-1" }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              ...initialHistory,
+              { role: "assistant", text: "new", itemId: "assistant-1" },
+            ],
+          },
+        },
+      },
     },
   });
 
@@ -918,7 +1148,19 @@ test("preserves position while sending a message away from the bottom", () => {
   const { renderer, elements } = makeRenderer();
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
   const base = defaultRendererState();
-  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: { ...base.codex.threads.current.thread, messages: initialHistory },
+        },
+      },
+    },
+  });
   const originalMessage = elements.history.querySelector(".codex-message");
   elements.history.dispatchEvent(new WheelEvent("wheel"));
   elements.history.scrollTop = 120;
@@ -927,8 +1169,19 @@ test("preserves position while sending a message away from the bottom", () => {
     ...base,
     codex: {
       ...base.codex,
-      history: initialHistory,
-      queuedSubmissions: [{ id: "queued-1", text: "follow-up", clientUserMessageId: "client-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: initialHistory,
+            queuedSubmissions: [
+              { id: "queued-1", text: "follow-up", clientUserMessageId: "client-1" },
+            ],
+          },
+        },
+      },
     },
   });
   expect(elements.history.scrollTop).toBe(120);
@@ -937,7 +1190,16 @@ test("preserves position while sending a message away from the bottom", () => {
     ...base,
     codex: {
       ...base.codex,
-      history: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+          },
+        },
+      },
     },
   });
   expect(elements.history.scrollTop).toBe(120);
@@ -948,7 +1210,19 @@ test("does not pass through the middle while rebuilding at the bottom", () => {
   const { renderer, elements } = makeRenderer();
   const base = defaultRendererState();
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
-  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: { ...base.codex.threads.current.thread, messages: initialHistory },
+        },
+      },
+    },
+  });
   elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
   const frames: FrameRequestCallback[] = [];
   window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
@@ -960,8 +1234,19 @@ test("does not pass through the middle while rebuilding at the bottom", () => {
     ...base,
     codex: {
       ...base.codex,
-      history: initialHistory,
-      queuedSubmissions: [{ id: "queued-1", text: "message", clientUserMessageId: "client-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: initialHistory,
+            queuedSubmissions: [
+              { id: "queued-1", text: "message", clientUserMessageId: "client-1" },
+            ],
+          },
+        },
+      },
     },
   });
 
@@ -979,7 +1264,16 @@ test("keeps the scroll viewport stable during a full history render", () => {
     ...base,
     codex: {
       ...base.codex,
-      history: [{ role: "user", text: "first", itemId: "first-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: [{ role: "user", text: "first", itemId: "first-1" }],
+          },
+        },
+      },
     },
   });
   const viewport = elements.history;
@@ -989,7 +1283,16 @@ test("keeps the scroll viewport stable during a full history render", () => {
     ...base,
     codex: {
       ...base.codex,
-      history: [{ role: "assistant", text: "replacement", itemId: "second-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: [{ role: "assistant", text: "replacement", itemId: "second-1" }],
+          },
+        },
+      },
     },
   });
 
@@ -1003,7 +1306,16 @@ test("locks the previous content extent while restoring a non-bottom full render
     ...base,
     codex: {
       ...base.codex,
-      history: [{ role: "user", text: "first", itemId: "first-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: [{ role: "user", text: "first", itemId: "first-1" }],
+          },
+        },
+      },
     },
   });
   elements.history.dispatchEvent(new WheelEvent("wheel"));
@@ -1018,7 +1330,16 @@ test("locks the previous content extent while restoring a non-bottom full render
     ...base,
     codex: {
       ...base.codex,
-      history: [{ role: "assistant", text: "replacement", itemId: "second-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: [{ role: "assistant", text: "replacement", itemId: "second-1" }],
+          },
+        },
+      },
     },
   });
 
@@ -1035,7 +1356,16 @@ test("settles the real bottom after replacing content at the bottom", () => {
     ...base,
     codex: {
       ...base.codex,
-      history: [{ role: "assistant", text: "original", itemId: "first-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: [{ role: "assistant", text: "original", itemId: "first-1" }],
+          },
+        },
+      },
     },
   });
   elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
@@ -1044,7 +1374,16 @@ test("settles the real bottom after replacing content at the bottom", () => {
     ...base,
     codex: {
       ...base.codex,
-      history: [{ role: "assistant", text: "replacement", itemId: "second-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: [{ role: "assistant", text: "replacement", itemId: "second-1" }],
+          },
+        },
+      },
     },
   });
 
@@ -1059,7 +1398,19 @@ test("restores the reader position after late reflow during send", () => {
   const { renderer, elements } = makeRenderer();
   const base = defaultRendererState();
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
-  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: { ...base.codex.threads.current.thread, messages: initialHistory },
+        },
+      },
+    },
+  });
   elements.history.dispatchEvent(new WheelEvent("wheel"));
   elements.history.scrollTop = 120;
   const frames: FrameRequestCallback[] = [];
@@ -1072,8 +1423,19 @@ test("restores the reader position after late reflow during send", () => {
     ...base,
     codex: {
       ...base.codex,
-      history: initialHistory,
-      queuedSubmissions: [{ id: "queued-1", text: "message", clientUserMessageId: "client-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: initialHistory,
+            queuedSubmissions: [
+              { id: "queued-1", text: "message", clientUserMessageId: "client-1" },
+            ],
+          },
+        },
+      },
     },
   });
   elements.history.scrollTop = 400;
@@ -1086,7 +1448,19 @@ test("ignores an already queued restore from an older render operation", () => {
   const { renderer, elements } = makeRenderer();
   const base = defaultRendererState();
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
-  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: { ...base.codex.threads.current.thread, messages: initialHistory },
+        },
+      },
+    },
+  });
   elements.history.dispatchEvent(new WheelEvent("wheel"));
   elements.history.scrollTop = 120;
 
@@ -1101,8 +1475,19 @@ test("ignores an already queued restore from an older render operation", () => {
     ...base,
     codex: {
       ...base.codex,
-      history: initialHistory,
-      queuedSubmissions: [{ id: "queued-1", text: "message", clientUserMessageId: "client-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: initialHistory,
+            queuedSubmissions: [
+              { id: "queued-1", text: "message", clientUserMessageId: "client-1" },
+            ],
+          },
+        },
+      },
     },
   });
   frames.shift()?.(0);
@@ -1112,7 +1497,16 @@ test("ignores an already queued restore from an older render operation", () => {
     ...base,
     codex: {
       ...base.codex,
-      history: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+          },
+        },
+      },
     },
   });
 
@@ -1125,7 +1519,19 @@ test("keeps following the bottom when a message arrives at the bottom", () => {
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, history: initialHistory },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: initialHistory,
+          },
+        },
+      },
+    },
   });
   elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
 
@@ -1133,7 +1539,19 @@ test("keeps following the bottom when a message arrives at the bottom", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [...initialHistory, { role: "assistant", text: "new", itemId: "assistant-1" }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              ...initialHistory,
+              { role: "assistant", text: "new", itemId: "assistant-1" },
+            ],
+          },
+        },
+      },
     },
   });
 
@@ -1147,7 +1565,19 @@ test("preserves position when an update starts at a measurable non-bottom positi
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, history: initialHistory },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: initialHistory,
+          },
+        },
+      },
+    },
   });
   elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
   Object.defineProperty(elements.history, "scrollHeight", {
@@ -1160,7 +1590,16 @@ test("preserves position when an update starts at a measurable non-bottom positi
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [{ ...initialHistory[0], text: "updated" }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [{ ...initialHistory[0], text: "updated" }],
+          },
+        },
+      },
     },
   });
 
@@ -1172,7 +1611,19 @@ test("follows new messages from anywhere within the bottom five percent", () => 
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, history: initialHistory },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: initialHistory,
+          },
+        },
+      },
+    },
   });
   elements.history.scrollTop = 490;
 
@@ -1180,7 +1631,19 @@ test("follows new messages from anywhere within the bottom five percent", () => 
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [...initialHistory, { role: "assistant", text: "new", itemId: "assistant-1" }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              ...initialHistory,
+              { role: "assistant", text: "new", itemId: "assistant-1" },
+            ],
+          },
+        },
+      },
     },
   });
 
@@ -1193,7 +1656,19 @@ test("keeps following the bottom after scrolling up and returning before sending
   const { renderer, elements } = makeRenderer();
   const base = defaultRendererState();
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
-  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: { ...base.codex.threads.current.thread, messages: initialHistory },
+        },
+      },
+    },
+  });
 
   elements.history.dispatchEvent(new WheelEvent("wheel"));
   elements.history.scrollTop = 120;
@@ -1205,15 +1680,35 @@ test("keeps following the bottom after scrolling up and returning before sending
     ...base,
     codex: {
       ...base.codex,
-      history: initialHistory,
-      queuedSubmissions: [{ id: "queued-1", text: "message", clientUserMessageId: "client-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: initialHistory,
+            queuedSubmissions: [
+              { id: "queued-1", text: "message", clientUserMessageId: "client-1" },
+            ],
+          },
+        },
+      },
     },
   });
   renderer.updateState({
     ...base,
     codex: {
       ...base.codex,
-      history: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+          },
+        },
+      },
     },
   });
 
@@ -1226,7 +1721,19 @@ test("follows the bottom when sending immediately after returning there", () => 
   const { renderer, elements } = makeRenderer();
   const base = defaultRendererState();
   const initialHistory = [{ role: "user" as const, text: "first", itemId: "user-1" }];
-  renderer.updateState({ ...base, codex: { ...base.codex, history: initialHistory } });
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: { ...base.codex.threads.current.thread, messages: initialHistory },
+        },
+      },
+    },
+  });
 
   elements.history.dispatchEvent(new WheelEvent("wheel"));
   elements.history.scrollTop = elements.history.scrollHeight - elements.history.clientHeight;
@@ -1235,15 +1742,35 @@ test("follows the bottom when sending immediately after returning there", () => 
     ...base,
     codex: {
       ...base.codex,
-      history: initialHistory,
-      queuedSubmissions: [{ id: "queued-1", text: "message", clientUserMessageId: "client-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: initialHistory,
+            queuedSubmissions: [
+              { id: "queued-1", text: "message", clientUserMessageId: "client-1" },
+            ],
+          },
+        },
+      },
     },
   });
   renderer.updateState({
     ...base,
     codex: {
       ...base.codex,
-      history: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+      threads: {
+        ...base.codex.threads,
+        current: {
+          ...base.codex.threads.current,
+          thread: {
+            ...base.codex.threads.current.thread,
+            messages: [...initialHistory, { role: "assistant", text: "reply", itemId: "reply-1" }],
+          },
+        },
+      },
     },
   });
 
@@ -1299,7 +1826,16 @@ test("ignores layout scroll events without user scroll intent", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [{ role: "user", text: "new", itemId: "new-message" }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [{ role: "user", text: "new", itemId: "new-message" }],
+          },
+        },
+      },
     },
   });
   expect(elements.history.scrollTop).toBe(
@@ -1314,22 +1850,31 @@ test("renders readable keyboard-friendly user questions", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      pendingUserInput: {
-        requestId: "request-1",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        itemId: "item-1",
-        isBlocking: true,
-        questions: [
-          {
-            id: "choice",
-            header: "Implementation choice",
-            question,
-            isOther: false,
-            isSecret: false,
-            options: [{ label: "Option A", description: "Use the first approach." }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            pendingUserInput: {
+              requestId: "request-1",
+              threadId: "thread-1",
+              turnId: "turn-1",
+              itemId: "item-1",
+              isBlocking: true,
+              questions: [
+                {
+                  id: "choice",
+                  header: "Implementation choice",
+                  question,
+                  isOther: false,
+                  isSecret: false,
+                  options: [{ label: "Option A", description: "Use the first approach." }],
+                },
+              ],
+            },
           },
-        ],
+        },
       },
     },
   };
@@ -1365,22 +1910,31 @@ test("refocuses the text input when a submitted question is resolved", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      pendingUserInput: {
-        requestId: "request-resolve",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        itemId: "item-1",
-        isBlocking: true,
-        questions: [
-          {
-            id: "choice",
-            header: "Choice",
-            question: "Choose one",
-            isOther: false,
-            isSecret: false,
-            options: [{ label: "Option A", description: "" }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            pendingUserInput: {
+              requestId: "request-resolve",
+              threadId: "thread-1",
+              turnId: "turn-1",
+              itemId: "item-1",
+              isBlocking: true,
+              questions: [
+                {
+                  id: "choice",
+                  header: "Choice",
+                  question: "Choose one",
+                  isOther: false,
+                  isSecret: false,
+                  options: [{ label: "Option A", description: "" }],
+                },
+              ],
+            },
           },
-        ],
+        },
       },
     },
   };
@@ -1400,7 +1954,16 @@ test("can show the same command notice again after it is cleared", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      commandNotice: "Usage: /goal [<objective>|clear|edit|pause|resume]",
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            commandNotice: "Usage: /goal [<objective>|clear|edit|pause|resume]",
+          },
+        },
+      },
     },
   };
 
@@ -1409,7 +1972,19 @@ test("can show the same command notice again after it is cleared", () => {
 
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, commandNotice: undefined },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            commandNotice: undefined,
+          },
+        },
+      },
+    },
   });
   expect(notice.hidden).toBe(true);
 
@@ -1423,29 +1998,38 @@ test("preserves modified arrow shortcuts while a question is focused", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        { role: "user", text: "first" },
-        { role: "assistant", text: "second" },
-      ],
-      pendingUserInput: {
-        requestId: "request-arrows",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        itemId: "item-1",
-        isBlocking: true,
-        questions: [
-          {
-            id: "choice",
-            header: "Choice",
-            question: "Choose one",
-            isOther: false,
-            isSecret: false,
-            options: [
-              { label: "A", description: "First" },
-              { label: "B", description: "Second" },
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              { role: "user", text: "first" },
+              { role: "assistant", text: "second" },
             ],
+            pendingUserInput: {
+              requestId: "request-arrows",
+              threadId: "thread-1",
+              turnId: "turn-1",
+              itemId: "item-1",
+              isBlocking: true,
+              questions: [
+                {
+                  id: "choice",
+                  header: "Choice",
+                  question: "Choose one",
+                  isOther: false,
+                  isSecret: false,
+                  options: [
+                    { label: "A", description: "First" },
+                    { label: "B", description: "Second" },
+                  ],
+                },
+              ],
+            },
           },
-        ],
+        },
       },
     },
   };
@@ -1501,25 +2085,34 @@ test("Ctrl+Up refocuses the question after history navigation", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      pendingUserInput: {
-        requestId: "request-focus",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        itemId: "item-1",
-        isBlocking: true,
-        questions: [
-          {
-            id: "choice",
-            header: "Choice",
-            question: "Choose one",
-            isOther: false,
-            isSecret: false,
-            options: [
-              { label: "A", description: "First" },
-              { label: "B", description: "Second" },
-            ],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            pendingUserInput: {
+              requestId: "request-focus",
+              threadId: "thread-1",
+              turnId: "turn-1",
+              itemId: "item-1",
+              isBlocking: true,
+              questions: [
+                {
+                  id: "choice",
+                  header: "Choice",
+                  question: "Choose one",
+                  isOther: false,
+                  isSecret: false,
+                  options: [
+                    { label: "A", description: "First" },
+                    { label: "B", description: "Second" },
+                  ],
+                },
+              ],
+            },
           },
-        ],
+        },
       },
     },
   });
@@ -1527,25 +2120,34 @@ test("Ctrl+Up refocuses the question after history navigation", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      pendingUserInput: {
-        requestId: "request-focus",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        itemId: "item-1",
-        isBlocking: true,
-        questions: [
-          {
-            id: "choice",
-            header: "Choice",
-            question: "Choose one",
-            isOther: false,
-            isSecret: false,
-            options: [
-              { label: "A", description: "First" },
-              { label: "B", description: "Second" },
-            ],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            pendingUserInput: {
+              requestId: "request-focus",
+              threadId: "thread-1",
+              turnId: "turn-1",
+              itemId: "item-1",
+              isBlocking: true,
+              questions: [
+                {
+                  id: "choice",
+                  header: "Choice",
+                  question: "Choose one",
+                  isOther: false,
+                  isSecret: false,
+                  options: [
+                    { label: "A", description: "First" },
+                    { label: "B", description: "Second" },
+                  ],
+                },
+              ],
+            },
           },
-        ],
+        },
       },
     },
   });
@@ -1580,12 +2182,15 @@ test("Ctrl+Left and Ctrl+Right switch between threads", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      threadId: "thread-2",
-      threads: [
-        { id: "thread-1", preview: "Previous" },
-        { id: "thread-2", preview: "Current" },
-        { id: "thread-3", preview: "Next" },
-      ],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-2",
+        items: [
+          { id: "thread-1", preview: "Previous" },
+          { id: "thread-2", preview: "Current" },
+          { id: "thread-3", preview: "Next" },
+        ],
+      },
     },
   };
   const { renderer } = makeRenderer(settings);
@@ -1614,12 +2219,15 @@ test("Ctrl+Left and Ctrl+Right switch between threads", () => {
     ...settings,
     codex: {
       ...settings.codex,
-      threadId: "thread-2",
-      threads: [
-        { id: "thread-1", preview: "Previous" },
-        { id: "thread-2", preview: "Current" },
-        { id: "thread-3", preview: "Next" },
-      ],
+      threads: {
+        ...settings.codex.threads,
+        selectedId: "thread-2",
+        items: [
+          { id: "thread-1", preview: "Previous" },
+          { id: "thread-2", preview: "Current" },
+          { id: "thread-3", preview: "Next" },
+        ],
+      },
     },
   });
   const forward = new KeyboardEvent("keydown", {
@@ -1635,12 +2243,15 @@ test("Ctrl+Left and Ctrl+Right switch between threads", () => {
     ...settings,
     codex: {
       ...settings.codex,
-      threadId: "thread-3",
-      threads: [
-        { id: "thread-3", preview: "Next" },
-        { id: "thread-1", preview: "Previous" },
-        { id: "thread-2", preview: "Current" },
-      ],
+      threads: {
+        ...settings.codex.threads,
+        selectedId: "thread-3",
+        items: [
+          { id: "thread-3", preview: "Next" },
+          { id: "thread-1", preview: "Previous" },
+          { id: "thread-2", preview: "Current" },
+        ],
+      },
     },
   });
   const back = new KeyboardEvent("keydown", {
@@ -1656,7 +2267,13 @@ test("Ctrl+Left and Ctrl+Right switch between threads", () => {
 test("does not jump to the first thread when no current thread is selected", () => {
   const settings = {
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threads: [{ id: "thread-1", preview: "First" }] },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        items: [{ id: "thread-1", preview: "First" }],
+      },
+    },
   };
   const { renderer } = makeRenderer(settings);
   renderer.updateState(settings);
@@ -1676,7 +2293,14 @@ test("does not jump to the first thread when no current thread is selected", () 
 test("keeps the selected thread visible when the thread list is temporarily stale", () => {
   const settings = {
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "selected-thread", threads: [] },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "selected-thread",
+        items: [],
+      },
+    },
   };
   const { renderer, elements } = makeRenderer(settings);
 
@@ -1689,13 +2313,33 @@ test("keeps the selected thread visible when the thread list is temporarily stal
 test("requests older history when scrolled to the top", () => {
   const { renderer, elements } = makeRenderer({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-1", hasOlderHistory: true },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-1",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          history: { ...defaultRendererState().codex.threads.current.history, hasOlder: true },
+        },
+      },
+    },
   });
   const loadOlder = window.peskApi.loadOlderCodexHistory as jest.Mock;
 
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-1", hasOlderHistory: true },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-1",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          history: { ...defaultRendererState().codex.threads.current.history, hasOlder: true },
+        },
+      },
+    },
   });
   elements.history.scrollTop = 0;
   elements.history.dispatchEvent(new Event("scroll"));
@@ -1709,22 +2353,31 @@ test("scrolls to a new user question without repeating for the same request", ()
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      pendingUserInput: {
-        requestId: "request-scroll",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        itemId: "item-1",
-        isBlocking: true,
-        questions: [
-          {
-            id: "choice",
-            header: "Implementation choice",
-            question: "Which implementation should we use?",
-            isOther: false,
-            isSecret: false,
-            options: [{ label: "Option A", description: "Use the first approach." }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            pendingUserInput: {
+              requestId: "request-scroll",
+              threadId: "thread-1",
+              turnId: "turn-1",
+              itemId: "item-1",
+              isBlocking: true,
+              questions: [
+                {
+                  id: "choice",
+                  header: "Implementation choice",
+                  question: "Which implementation should we use?",
+                  isOther: false,
+                  isSecret: false,
+                  options: [{ label: "Option A", description: "Use the first approach." }],
+                },
+              ],
+            },
           },
-        ],
+        },
       },
     },
   };
@@ -1758,7 +2411,16 @@ test("opens new plan activities by default and preserves manual collapse", () =>
   };
   const settings: Settings = {
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, history: [plan] },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: { ...defaultRendererState().codex.threads.current.thread, messages: [plan] },
+        },
+      },
+    },
   };
 
   renderer.updateState(settings);
@@ -1766,7 +2428,19 @@ test("opens new plan activities by default and preserves manual collapse", () =>
   expect(details.open).toBe(true);
 
   details.open = false;
-  renderer.updateState({ ...settings, codex: { ...settings.codex, history: [plan] } });
+  renderer.updateState({
+    ...settings,
+    codex: {
+      ...settings.codex,
+      threads: {
+        ...settings.codex.threads,
+        current: {
+          ...settings.codex.threads.current,
+          thread: { ...settings.codex.threads.current.thread, messages: [plan] },
+        },
+      },
+    },
+  });
   expect(elements.history.querySelector<HTMLDetailsElement>(".codex-plan-details")!.open).toBe(
     false,
   );
@@ -1790,7 +2464,16 @@ test("preserves position while a plan streams away from the bottom", () => {
     elements.history.scrollTop = 120;
     renderer.updateState({
       ...defaultRendererState(),
-      codex: { ...defaultRendererState().codex, history: [plan] },
+      codex: {
+        ...defaultRendererState().codex,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: { ...defaultRendererState().codex.threads.current.thread, messages: [plan] },
+          },
+        },
+      },
     });
     expect(elements.history.scrollTop).toBe(
       elements.history.scrollHeight - elements.history.clientHeight,
@@ -1802,12 +2485,21 @@ test("preserves position while a plan streams away from the bottom", () => {
       ...defaultRendererState(),
       codex: {
         ...defaultRendererState().codex,
-        history: [
-          {
-            ...plan,
-            activity: { ...plan.activity, details: "Updated plan" },
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: {
+              ...defaultRendererState().codex.threads.current.thread,
+              messages: [
+                {
+                  ...plan,
+                  activity: { ...plan.activity, details: "Updated plan" },
+                },
+              ],
+            },
           },
-        ],
+        },
       },
     });
     expect(elements.history.scrollTop).toBe(120);
@@ -1819,16 +2511,25 @@ test("preserves position while a plan streams away from the bottom", () => {
       ...defaultRendererState(),
       codex: {
         ...defaultRendererState().codex,
-        history: [
-          {
-            ...plan,
-            activity: {
-              ...plan.activity,
-              status: "completed",
-              details: "Updated plan",
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: {
+              ...defaultRendererState().codex.threads.current.thread,
+              messages: [
+                {
+                  ...plan,
+                  activity: {
+                    ...plan.activity,
+                    status: "completed",
+                    details: "Updated plan",
+                  },
+                },
+              ],
             },
           },
-        ],
+        },
       },
     });
     expect(elements.userInput.querySelector(".codex-plan-implementation-prompt")).not.toBeNull();
@@ -1839,16 +2540,25 @@ test("preserves position while a plan streams away from the bottom", () => {
       ...defaultRendererState(),
       codex: {
         ...defaultRendererState().codex,
-        history: [
-          {
-            ...plan,
-            activity: {
-              ...plan.activity,
-              status: "completed",
-              details: "Updated plan",
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: {
+              ...defaultRendererState().codex.threads.current.thread,
+              messages: [
+                {
+                  ...plan,
+                  activity: {
+                    ...plan.activity,
+                    status: "completed",
+                    details: "Updated plan",
+                  },
+                },
+              ],
             },
           },
-        ],
+        },
       },
     });
     expect(elements.history.scrollTop).toBe(120);
@@ -1865,19 +2575,28 @@ test("updates only streamed plan content after the batching window", () => {
       ...defaultRendererState(),
       codex: {
         ...defaultRendererState().codex,
-        history: [
-          {
-            role: "system",
-            text: "plan details",
-            itemId: "plan-stream",
-            activity: {
-              kind: "plan",
-              status: "inProgress",
-              details: "Initial plan",
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: {
+              ...defaultRendererState().codex.threads.current.thread,
+              messages: [
+                {
+                  role: "system",
+                  text: "plan details",
+                  itemId: "plan-stream",
+                  activity: {
+                    kind: "plan",
+                    status: "inProgress",
+                    details: "Initial plan",
+                  },
+                },
+                { role: "assistant", text: "Unchanged message", itemId: "message-1" },
+              ],
             },
           },
-          { role: "assistant", text: "Unchanged message", itemId: "message-1" },
-        ],
+        },
       },
     };
     renderer.updateState(initialSettings);
@@ -1894,19 +2613,28 @@ test("updates only streamed plan content after the batching window", () => {
       ...initialSettings,
       codex: {
         ...initialSettings.codex,
-        history: [
-          {
-            ...initialSettings.codex.history[0],
-            text: "updated plan details",
-            activity: {
-              ...initialSettings.codex.history[0].activity!,
-              kind: "plan",
-              status: "inProgress",
-              details: "Updated plan",
+        threads: {
+          ...initialSettings.codex.threads,
+          current: {
+            ...initialSettings.codex.threads.current,
+            thread: {
+              ...initialSettings.codex.threads.current.thread,
+              messages: [
+                {
+                  ...initialSettings.codex.threads.current.thread.messages[0],
+                  text: "updated plan details",
+                  activity: {
+                    ...initialSettings.codex.threads.current.thread.messages[0].activity!,
+                    kind: "plan",
+                    status: "inProgress",
+                    details: "Updated plan",
+                  },
+                },
+                initialSettings.codex.threads.current.thread.messages[1],
+              ],
             },
           },
-          initialSettings.codex.history[1],
-        ],
+        },
       },
     });
 
@@ -1928,18 +2656,27 @@ test("shows the implementation question after a completed plan", async () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        {
-          role: "system",
-          text: "plan details",
-          itemId: "plan-2",
-          activity: {
-            kind: "plan",
-            status: "completed",
-            details: "1. Make the change",
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "system",
+                text: "plan details",
+                itemId: "plan-2",
+                activity: {
+                  kind: "plan",
+                  status: "completed",
+                  details: "1. Make the change",
+                },
+              },
+            ],
           },
         },
-      ],
+      },
     },
   };
 
@@ -1965,18 +2702,27 @@ test("shows and focuses the chat input after staying in plan mode", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        {
-          role: "system",
-          text: "plan details",
-          itemId: "plan-stay",
-          activity: {
-            kind: "plan",
-            status: "completed",
-            details: "1. Make the change",
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "system",
+                text: "plan details",
+                itemId: "plan-stay",
+                activity: {
+                  kind: "plan",
+                  status: "completed",
+                  details: "1. Make the change",
+                },
+              },
+            ],
           },
         },
-      ],
+      },
     },
   };
 
@@ -2001,19 +2747,28 @@ test("does not show the implementation question when another message follows the
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        {
-          role: "system",
-          text: "plan details",
-          itemId: "plan-3",
-          activity: {
-            kind: "plan",
-            status: "completed",
-            details: "1. Make the change",
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "system",
+                text: "plan details",
+                itemId: "plan-3",
+                activity: {
+                  kind: "plan",
+                  status: "completed",
+                  details: "1. Make the change",
+                },
+              },
+              { role: "assistant", text: "A later message" },
+            ],
           },
         },
-        { role: "assistant", text: "A later message" },
-      ],
+      },
     },
   };
 
@@ -2028,25 +2783,34 @@ test("navigates options with arrows and submits the selected option with a note"
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      pendingUserInput: {
-        requestId: "request-2",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        itemId: "item-1",
-        isBlocking: true,
-        questions: [
-          {
-            id: "choice",
-            header: "Implementation choice",
-            question: "Which implementation should we use?",
-            isOther: true,
-            isSecret: false,
-            options: [
-              { label: "Option A", description: "Use the first approach." },
-              { label: "Option B", description: "Use the second approach." },
-            ],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            pendingUserInput: {
+              requestId: "request-2",
+              threadId: "thread-1",
+              turnId: "turn-1",
+              itemId: "item-1",
+              isBlocking: true,
+              questions: [
+                {
+                  id: "choice",
+                  header: "Implementation choice",
+                  question: "Which implementation should we use?",
+                  isOther: true,
+                  isSecret: false,
+                  options: [
+                    { label: "Option A", description: "Use the first approach." },
+                    { label: "Option B", description: "Use the second approach." },
+                  ],
+                },
+              ],
+            },
           },
-        ],
+        },
       },
     },
   };
@@ -2127,30 +2891,39 @@ test("shows multiple questions one at a time and submits all answers at the end"
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      pendingUserInput: {
-        requestId: "request-3",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        itemId: "item-1",
-        isBlocking: true,
-        questions: [
-          {
-            id: "first",
-            header: "First question",
-            question: "Choose the first value.",
-            isOther: false,
-            isSecret: false,
-            options: [{ label: "A", description: "First" }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            pendingUserInput: {
+              requestId: "request-3",
+              threadId: "thread-1",
+              turnId: "turn-1",
+              itemId: "item-1",
+              isBlocking: true,
+              questions: [
+                {
+                  id: "first",
+                  header: "First question",
+                  question: "Choose the first value.",
+                  isOther: false,
+                  isSecret: false,
+                  options: [{ label: "A", description: "First" }],
+                },
+                {
+                  id: "second",
+                  header: "Second question",
+                  question: "Choose the second value.",
+                  isOther: false,
+                  isSecret: false,
+                  options: [{ label: "B", description: "Second" }],
+                },
+              ],
+            },
           },
-          {
-            id: "second",
-            header: "Second question",
-            question: "Choose the second value.",
-            isOther: false,
-            isSecret: false,
-            options: [{ label: "B", description: "Second" }],
-          },
-        ],
+        },
       },
     },
   };
@@ -2177,7 +2950,19 @@ test("shows multiple questions one at a time and submits all answers at the end"
 test("searches and selects a file with the @ picker", async () => {
   const settings = {
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, cwd: "/tmp/project" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            workingDirectory: "/tmp/project",
+          },
+        },
+      },
+    },
   };
   const { elements } = makeRenderer(settings);
   elements.input.value = "Inspect @cod";
@@ -2275,18 +3060,27 @@ test("marks failed command activity in red", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        {
-          role: "system",
-          text: "Command failed",
-          itemId: "failed-command",
-          activity: {
-            kind: "command",
-            command: "ejc",
-            status: "failed",
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "system",
+                text: "Command failed",
+                itemId: "failed-command",
+                activity: {
+                  kind: "command",
+                  command: "ejc",
+                  status: "failed",
+                },
+              },
+            ],
           },
         },
-      ],
+      },
     },
   });
 
@@ -2299,31 +3093,40 @@ test("expands user commands but collapses agent commands", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        {
-          role: "system",
-          text: "User shell command",
-          itemId: "user-command",
-          activity: {
-            kind: "command",
-            source: "userShell",
-            userInitiated: true,
-            command: "echo hi",
-            status: "completed",
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "system",
+                text: "User shell command",
+                itemId: "user-command",
+                activity: {
+                  kind: "command",
+                  source: "userShell",
+                  userInitiated: true,
+                  command: "echo hi",
+                  status: "completed",
+                },
+              },
+              {
+                role: "system",
+                text: "Agent command",
+                itemId: "agent-command",
+                activity: {
+                  kind: "command",
+                  source: "agent",
+                  command: "npm test",
+                  status: "completed",
+                },
+              },
+            ],
           },
         },
-        {
-          role: "system",
-          text: "Agent command",
-          itemId: "agent-command",
-          activity: {
-            kind: "command",
-            source: "agent",
-            command: "npm test",
-            status: "completed",
-          },
-        },
-      ],
+      },
     },
   });
 
@@ -2338,62 +3141,71 @@ test("uses the documented default expansion for every activity type", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        {
-          role: "system",
-          text: "agent command",
-          itemId: "command",
-          activity: { kind: "command", source: "agent", command: "npm test" },
-        },
-        {
-          role: "system",
-          text: "file change",
-          itemId: "file",
-          activity: {
-            kind: "fileChange",
-            changes: ["src/app.ts\n+change"],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "system",
+                text: "agent command",
+                itemId: "command",
+                activity: { kind: "command", source: "agent", command: "npm test" },
+              },
+              {
+                role: "system",
+                text: "file change",
+                itemId: "file",
+                activity: {
+                  kind: "fileChange",
+                  changes: ["src/app.ts\n+change"],
+                },
+              },
+              {
+                role: "system",
+                text: "search",
+                itemId: "search",
+                activity: { kind: "webSearch", summary: "query" },
+              },
+              {
+                role: "system",
+                text: "tool",
+                itemId: "tool",
+                activity: { kind: "tool", label: "mcpToolCall" },
+              },
+              {
+                role: "system",
+                text: "plan",
+                itemId: "plan",
+                activity: { kind: "plan", details: "plan details" },
+              },
+              {
+                role: "system",
+                text: "review started",
+                itemId: "review",
+                activity: {
+                  kind: "other",
+                  label: "enteredReviewMode",
+                  status: "completed",
+                },
+              },
+              {
+                role: "system",
+                text: "context compacted",
+                itemId: "context-compaction",
+                activity: {
+                  kind: "other",
+                  label: "contextCompaction",
+                  status: "completed",
+                },
+              },
+              { role: "assistant", text: "ordinary response", itemId: "message" },
+            ],
           },
         },
-        {
-          role: "system",
-          text: "search",
-          itemId: "search",
-          activity: { kind: "webSearch", summary: "query" },
-        },
-        {
-          role: "system",
-          text: "tool",
-          itemId: "tool",
-          activity: { kind: "tool", label: "mcpToolCall" },
-        },
-        {
-          role: "system",
-          text: "plan",
-          itemId: "plan",
-          activity: { kind: "plan", details: "plan details" },
-        },
-        {
-          role: "system",
-          text: "review started",
-          itemId: "review",
-          activity: {
-            kind: "other",
-            label: "enteredReviewMode",
-            status: "completed",
-          },
-        },
-        {
-          role: "system",
-          text: "context compacted",
-          itemId: "context-compaction",
-          activity: {
-            kind: "other",
-            label: "contextCompaction",
-            status: "completed",
-          },
-        },
-        { role: "assistant", text: "ordinary response", itemId: "message" },
-      ],
+      },
     },
   });
 
@@ -2414,7 +3226,10 @@ test("uses the documented default expansion for every activity type", () => {
 test("opens and submits the custom review form", async () => {
   const next = {
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-review" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-review" },
+    },
   };
   const { elements } = makeRenderer(next);
   const startReview = window.peskApi.startCodexReview as jest.Mock;
@@ -2461,7 +3276,10 @@ test("does not open the review form without a selected thread", () => {
 test("cancels the custom review form and restores chat input", () => {
   const { elements } = makeRenderer({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-review" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-review" },
+    },
   });
 
   elements.input.value = "/review";
@@ -2476,7 +3294,10 @@ test("cancels the custom review form and restores chat input", () => {
 test("supports keyboard controls in the custom review form", async () => {
   const next = {
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-review" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-review" },
+    },
   };
   const { elements } = makeRenderer(next);
   const startReview = window.peskApi.startCodexReview as jest.Mock;
@@ -2522,7 +3343,10 @@ test("supports keyboard controls in the custom review form", async () => {
 test("keeps Enter as a newline in the web review textarea", () => {
   const next = {
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-review" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-review" },
+    },
   };
   const { elements } = makeRenderer(next, true);
   const startReview = window.peskApi.startCodexReview as jest.Mock;
@@ -2546,19 +3370,28 @@ test("styles and expands review activities by default", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      threadId: "thread-review",
-      history: [
-        {
-          role: "system" as const,
-          text: "Activity",
-          itemId: "review-enter",
-          activity: {
-            kind: "other" as const,
-            label: "enteredReviewMode",
-            summary: "review changes in codex.ts",
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-review",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "system" as const,
+                text: "Activity",
+                itemId: "review-enter",
+                activity: {
+                  kind: "other" as const,
+                  label: "enteredReviewMode",
+                  summary: "review changes in codex.ts",
+                },
+              },
+            ],
           },
         },
-      ],
+      },
     },
   };
   const { renderer, elements } = makeRenderer(settings);
@@ -2573,7 +3406,10 @@ test("styles and expands review activities by default", () => {
 test("submits a prompt, queues while working, and handles input shortcuts", async () => {
   const next = {
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-2" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-2" },
+    },
   };
   const { renderer, elements } = makeRenderer(next);
   const submit = window.peskApi.submitCodexPrompt as jest.Mock;
@@ -2599,7 +3435,19 @@ test("submits a prompt, queues while working, and handles input shortcuts", asyn
   elements.input.dispatchEvent(shiftEnter);
   expect(shiftEnter.defaultPrevented).toBe(true);
 
-  renderer.updateState({ ...next, codex: { ...next.codex, status: "working" } });
+  renderer.updateState({
+    ...next,
+    codex: {
+      ...next.codex,
+      threads: {
+        ...next.codex.threads,
+        current: {
+          ...next.codex.threads.current,
+          thread: { ...next.codex.threads.current.thread, status: "working" },
+        },
+      },
+    },
+  });
   const interrupt = window.peskApi.interruptCodexTurn as jest.Mock;
   const interruptEvent = new KeyboardEvent("keydown", {
     key: "c",
@@ -2622,18 +3470,21 @@ test("opens the guided project flow for /new", async () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      projects: [
-        {
-          id: "project-1",
-          name: "Workspace",
-          roots: [{ path: "/workspace" }],
-          metadata: {},
-          position: 0,
-          createdAt: 1,
-          updatedAt: 1,
-          recencyAt: null,
-        },
-      ],
+      projects: {
+        ...defaultRendererState().codex.projects,
+        items: [
+          {
+            id: "project-1",
+            name: "Workspace",
+            roots: [{ path: "/workspace" }],
+            metadata: {},
+            position: 0,
+            createdAt: 1,
+            updatedAt: 1,
+            recencyAt: null,
+          },
+        ],
+      },
     },
   });
   elements.input.value = "/new /ignored-path";
@@ -2648,13 +3499,19 @@ test("opens the guided project flow for /new", async () => {
 test("refocuses the composer after a project thread is selected", () => {
   const { renderer, elements } = makeRenderer({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "old-thread" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "old-thread" },
+    },
   });
   document.body.dataset.projectThread = "true";
   elements.userInput.dataset.projectThread = "true";
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "new-thread" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "new-thread" },
+    },
   });
   expect(window.peskApi.focusCodexInput).toHaveBeenCalled();
   expect(elements.form.hidden).toBe(false);
@@ -2663,7 +3520,10 @@ test("refocuses the composer after a project thread is selected", () => {
 test("cycles through submitted prompt history and restores the draft", async () => {
   const { renderer, elements } = makeRenderer({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-2" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-2" },
+    },
   });
   const submit = window.peskApi.submitCodexPrompt as jest.Mock;
 
@@ -2697,7 +3557,10 @@ test("cycles through submitted prompt history and restores the draft", async () 
 test("keeps normal multiline arrow movement away from prompt history boundaries", async () => {
   const { elements } = makeRenderer({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-2" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-2" },
+    },
   });
   elements.input.value = "previous";
   elements.form.dispatchEvent(new Event("submit", { cancelable: true }));
@@ -2719,7 +3582,10 @@ test("keeps normal multiline arrow movement away from prompt history boundaries"
 test("deduplicates consecutive prompts and caps prompt history at 100 entries", async () => {
   const { elements } = makeRenderer({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-2" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-2" },
+    },
   });
   for (let index = 0; index < 102; index += 1) {
     elements.input.value = index === 1 ? "prompt-0" : `prompt-${index}`;
@@ -2743,13 +3609,22 @@ test("renders attached images in user message history", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        {
-          role: "user",
-          text: "inspect this",
-          images: [{ url: "data:image/png;base64,abc", name: "screen.png" }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "user",
+                text: "inspect this",
+                images: [{ url: "data:image/png;base64,abc", name: "screen.png" }],
+              },
+            ],
+          },
         },
-      ],
+      },
     },
   });
 
@@ -2757,13 +3632,22 @@ test("renders attached images in user message history", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        {
-          role: "user",
-          text: "inspect this",
-          images: [{ url: "data:image/png;base64,abc", name: "screen.png" }],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "user",
+                text: "inspect this",
+                images: [{ url: "data:image/png;base64,abc", name: "screen.png" }],
+              },
+            ],
+          },
         },
-      ],
+      },
     },
   });
 
@@ -2776,7 +3660,10 @@ test("renders attached images in user message history", () => {
 test("keeps web chat input focused before and after an async submission", async () => {
   const next = {
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-web" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-web" },
+    },
   };
   const { renderer, elements } = makeRenderer(next, true);
   renderer.updateState(next);
@@ -2801,7 +3688,10 @@ test("keeps web chat input focused before and after an async submission", async 
 test("keeps Enter as a newline in the web chat input", async () => {
   const next = {
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-web" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-web" },
+    },
   };
   const { elements } = makeRenderer(next, true);
   const submit = window.peskApi.submitCodexPrompt as jest.Mock;
@@ -2847,15 +3737,24 @@ test("renders approval options and completed approval states", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      threadId: "thread-1",
-      pendingApproval: {
-        requestId: 7,
-        command: "permission",
-        reason: "Needs approval",
-        options: [
-          { id: "accept", label: "Approve once", description: "" },
-          { id: "decline", label: "Decline", description: "" },
-        ],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-1",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            pendingApproval: {
+              requestId: 7,
+              command: "permission",
+              reason: "Needs approval",
+              options: [
+                { id: "accept", label: "Approve once", description: "" },
+                { id: "decline", label: "Decline", description: "" },
+              ],
+            },
+          },
+        },
       },
     },
   });
@@ -2877,13 +3776,22 @@ test("renders approval options and completed approval states", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        {
-          role: "system",
-          text: "permission",
-          approval: { requestId: 7, state: "approved" },
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "system",
+                text: "permission",
+                approval: { requestId: 7, state: "approved" },
+              },
+            ],
+          },
         },
-      ],
+      },
     },
   });
   expect(elements.history.textContent).toContain("Approved");
@@ -2892,11 +3800,35 @@ test("renders approval options and completed approval states", () => {
 test("blurs the input when selecting a message with Alt+Up", () => {
   const { renderer, elements } = makeRenderer({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, history: [{ role: "user", text: "copy this" }] },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [{ role: "user", text: "copy this" }],
+          },
+        },
+      },
+    },
   });
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, history: [{ role: "user", text: "copy this" }] },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [{ role: "user", text: "copy this" }],
+          },
+        },
+      },
+    },
   });
   elements.input.focus();
   (elements.history.querySelector(".codex-message") as HTMLElement).scrollIntoView = jest.fn();
@@ -2919,7 +3851,19 @@ test("renders working and completed elapsed states", () => {
   jest.setSystemTime(now);
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, workingSince: now - 65000 },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            workingSince: now - 65000,
+          },
+        },
+      },
+    },
   });
   expect(elements.workingStatus.hidden).toBe(false);
   expect(elements.workingElapsed.textContent).toBe("1m 5s");
@@ -2928,7 +3872,19 @@ test("renders working and completed elapsed states", () => {
 
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, workedElapsed: 3661000 },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            workedElapsed: 3661000,
+          },
+        },
+      },
+    },
   });
   expect(elements.workingStatus.hidden).toBe(false);
   expect(elements.workingStatus.textContent).toContain("Worked for");
@@ -2936,7 +3892,20 @@ test("renders working and completed elapsed states", () => {
 
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, workedElapsed: 1000, interrupted: true },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            workedElapsed: 1000,
+            interrupted: true,
+          },
+        },
+      },
+    },
   });
   expect(elements.workingStatus.hidden).toBe(false);
   expect(elements.workingStatus.textContent).toContain("Conversation interrupted");
@@ -2949,59 +3918,74 @@ test("renders complete usage, rate-limit, and goal details", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      threadId: "thread-1",
-      cwd: "/tmp/project",
-      threads: [{ id: "thread-1", projectId: "project-1" }],
-      projects: [
-        {
-          id: "project-1",
-          name: "Frontend",
-          roots: [{ path: "/tmp/project" }],
-          metadata: {},
-          position: 0,
-          createdAt: 1,
-          updatedAt: 1,
-          recencyAt: null,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-1",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            workingDirectory: "/tmp/project",
+            modelInfo: {
+              model: "model",
+              provider: "provider",
+              reasoningEffort: "high",
+              serviceTier: "fast",
+            },
+            tokenUsage: {
+              total: {
+                totalTokens: 1_500_000,
+                inputTokens: 1_200_000,
+                outputTokens: 300_000,
+                cachedInputTokens: 12_000,
+                reasoningOutputTokens: 8_000,
+              },
+              last: { totalTokens: 2_000, inputTokens: 2_000 },
+              modelContextWindow: 1_000,
+            },
+            goal: {
+              threadId: "thread-1",
+              objective: "Improve coverage",
+              status: "active",
+              tokenBudget: 1_500_000,
+              tokensUsed: 1_200,
+              timeUsedSeconds: 3661,
+            },
+          },
         },
-      ],
-      modelInfo: {
-        model: "model",
-        provider: "provider",
-        reasoningEffort: "high",
-        serviceTier: "fast",
+        items: [{ id: "thread-1", projectId: "project-1" }],
       },
-      tokenUsage: {
-        total: {
-          totalTokens: 1_500_000,
-          inputTokens: 1_200_000,
-          outputTokens: 300_000,
-          cachedInputTokens: 12_000,
-          reasoningOutputTokens: 8_000,
+      projects: {
+        ...defaultRendererState().codex.projects,
+        items: [
+          {
+            id: "project-1",
+            name: "Frontend",
+            roots: [{ path: "/tmp/project" }],
+            metadata: {},
+            position: 0,
+            createdAt: 1,
+            updatedAt: 1,
+            recencyAt: null,
+          },
+        ],
+      },
+      account: {
+        ...defaultRendererState().codex.account,
+        rateLimits: {
+          primary: { usedPercent: 85.4, windowDurationMins: 60, resetsAt: 1_700_000_000 },
+          secondary: { usedPercent: 20, windowDurationMins: 1_440, resetsAt: null },
+          credits: { hasCredits: true, unlimited: false, balance: "10" },
+          individualLimit: {
+            limit: "100",
+            used: "25",
+            remainingPercent: 75,
+            resetsAt: 1_700_000_000,
+          },
+          spendControlReached: false,
+          planType: "pro_plan",
+          rateLimitReachedType: null,
         },
-        last: { totalTokens: 2_000, inputTokens: 2_000 },
-        modelContextWindow: 1_000,
-      },
-      rateLimits: {
-        primary: { usedPercent: 85.4, windowDurationMins: 60, resetsAt: 1_700_000_000 },
-        secondary: { usedPercent: 20, windowDurationMins: 1_440, resetsAt: null },
-        credits: { hasCredits: true, unlimited: false, balance: "10" },
-        individualLimit: {
-          limit: "100",
-          used: "25",
-          remainingPercent: 75,
-          resetsAt: 1_700_000_000,
-        },
-        spendControlReached: false,
-        planType: "pro_plan",
-        rateLimitReachedType: null,
-      },
-      goal: {
-        threadId: "thread-1",
-        objective: "Improve coverage",
-        status: "active",
-        tokenBudget: 1_500_000,
-        tokensUsed: 1_200,
-        timeUsedSeconds: 3661,
       },
     },
   });
@@ -3034,11 +4018,20 @@ test("colors the context usage indicator by threshold", () => {
       ...defaultRendererState(),
       codex: {
         ...defaultRendererState().codex,
-        threadId: "thread-1",
-        tokenUsage: {
-          total: { totalTokens: inputTokens, inputTokens: inputTokens, outputTokens: 0 },
-          last: { totalTokens: inputTokens, inputTokens },
-          modelContextWindow: 1_000,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          selectedId: "thread-1",
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: {
+              ...defaultRendererState().codex.threads.current.thread,
+              tokenUsage: {
+                total: { totalTokens: inputTokens, inputTokens: inputTokens, outputTokens: 0 },
+                last: { totalTokens: inputTokens, inputTokens },
+                modelContextWindow: 1_000,
+              },
+            },
+          },
         },
       },
     });
@@ -3057,23 +4050,35 @@ test("keeps the project name when the thread list entry has no project field", (
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      threadId: "thread-2",
-      projectId: "project-1",
-      cwd: "/tmp/project",
-      modelInfo: { model: "model" },
-      threads: [{ id: "thread-2" }],
-      projects: [
-        {
-          id: "project-1",
-          name: "Frontend",
-          roots: [{ path: "/tmp/project" }],
-          metadata: {},
-          position: 0,
-          createdAt: 1,
-          updatedAt: 1,
-          recencyAt: null,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-2",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            projectId: "project-1",
+            workingDirectory: "/tmp/project",
+            modelInfo: { model: "model" },
+          },
         },
-      ],
+        items: [{ id: "thread-2" }],
+      },
+      projects: {
+        ...defaultRendererState().codex.projects,
+        items: [
+          {
+            id: "project-1",
+            name: "Frontend",
+            roots: [{ path: "/tmp/project" }],
+            metadata: {},
+            position: 0,
+            createdAt: 1,
+            updatedAt: 1,
+            recencyAt: null,
+          },
+        ],
+      },
     },
   });
   expect(elements.tokenUsage.querySelector(".codex-project-name")?.textContent).toBe("Frontend ·");
@@ -3085,33 +4090,58 @@ test("keeps a thread project name after switching away and back", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      threadId: "thread-1",
-      projectId: "project-1",
-      cwd: "/tmp/project",
-      threads: [{ id: "thread-1", projectId: "project-1" }],
-      projects: [
-        {
-          id: "project-1",
-          name: "Frontend",
-          roots: [{ path: "/tmp/project" }],
-          metadata: {},
-          position: 0,
-          createdAt: 1,
-          updatedAt: 1,
-          recencyAt: null,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-1",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            projectId: "project-1",
+            workingDirectory: "/tmp/project",
+            modelInfo: { model: "model" },
+          },
         },
-      ],
-      modelInfo: { model: "model" },
+        items: [{ id: "thread-1", projectId: "project-1" }],
+      },
+      projects: {
+        ...defaultRendererState().codex.projects,
+        items: [
+          {
+            id: "project-1",
+            name: "Frontend",
+            roots: [{ path: "/tmp/project" }],
+            metadata: {},
+            position: 0,
+            createdAt: 1,
+            updatedAt: 1,
+            recencyAt: null,
+          },
+        ],
+      },
     },
   };
   renderer.updateState(projectState);
   renderer.updateState({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-2" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: { ...defaultRendererState().codex.threads, selectedId: "thread-2" },
+    },
   });
   renderer.updateState({
     ...projectState,
-    codex: { ...projectState.codex, projectId: undefined, threads: [{ id: "thread-1" }] },
+    codex: {
+      ...projectState.codex,
+      threads: {
+        ...projectState.codex.threads,
+        current: {
+          ...projectState.codex.threads.current,
+          thread: { ...projectState.codex.threads.current.thread, projectId: undefined },
+        },
+        items: [{ id: "thread-1" }],
+      },
+    },
   });
   expect(elements.tokenUsage.querySelector(".codex-project-name")?.textContent).toBe("Frontend ·");
 });
@@ -3122,22 +4152,34 @@ test("falls back to the project root for an empty thread", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      threadId: "empty-thread",
-      cwd: "/tmp/project",
-      threads: [{ id: "empty-thread" }],
-      projects: [
-        {
-          id: "project-1",
-          name: "Frontend",
-          roots: [{ path: "/tmp/project" }],
-          metadata: {},
-          position: 0,
-          createdAt: 1,
-          updatedAt: 1,
-          recencyAt: null,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "empty-thread",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            workingDirectory: "/tmp/project",
+            modelInfo: { model: "model" },
+          },
         },
-      ],
-      modelInfo: { model: "model" },
+        items: [{ id: "empty-thread" }],
+      },
+      projects: {
+        ...defaultRendererState().codex.projects,
+        items: [
+          {
+            id: "project-1",
+            name: "Frontend",
+            roots: [{ path: "/tmp/project" }],
+            metadata: {},
+            position: 0,
+            createdAt: 1,
+            updatedAt: 1,
+            recencyAt: null,
+          },
+        ],
+      },
     },
   });
   expect(elements.tokenUsage.querySelector(".codex-project-name")?.textContent).toBe("Frontend ·");
@@ -3148,40 +4190,58 @@ test("handles history keyboard actions and sanitizes message markup", async () =
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        { role: "user", text: "copy me", itemId: "user-1" },
-        {
-          role: "system",
-          text: "activity",
-          itemId: "activity-1",
-          activity: { kind: "command", status: "completed", command: "echo hi" },
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              { role: "user", text: "copy me", itemId: "user-1" },
+              {
+                role: "system",
+                text: "activity",
+                itemId: "activity-1",
+                activity: { kind: "command", status: "completed", command: "echo hi" },
+              },
+              {
+                role: "assistant",
+                text: '<a href="javascript:bad" onclick="bad()">link</a><img src="bad">',
+                itemId: "assistant-1",
+              },
+            ],
+          },
         },
-        {
-          role: "assistant",
-          text: '<a href="javascript:bad" onclick="bad()">link</a><img src="bad">',
-          itemId: "assistant-1",
-        },
-      ],
+      },
     },
   });
   renderer.updateState({
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        { role: "user", text: "copy me", itemId: "user-1" },
-        {
-          role: "system",
-          text: "activity",
-          itemId: "activity-1",
-          activity: { kind: "command", status: "completed", command: "echo hi" },
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              { role: "user", text: "copy me", itemId: "user-1" },
+              {
+                role: "system",
+                text: "activity",
+                itemId: "activity-1",
+                activity: { kind: "command", status: "completed", command: "echo hi" },
+              },
+              {
+                role: "assistant",
+                text: '<a href="javascript:bad" onclick="bad()">link</a><img src="bad">',
+                itemId: "assistant-1",
+              },
+            ],
+          },
         },
-        {
-          role: "assistant",
-          text: '<a href="javascript:bad" onclick="bad()">link</a><img src="bad">',
-          itemId: "assistant-1",
-        },
-      ],
+      },
     },
   });
   const messages = elements.history.querySelectorAll<HTMLElement>(".codex-message");
@@ -3204,26 +4264,44 @@ test("handles global history shortcuts and selected-message actions", async () =
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        { role: "user", text: "first", itemId: "user-1" },
-        { role: "assistant", text: "answer", itemId: "assistant-1" },
-      ],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              { role: "user", text: "first", itemId: "user-1" },
+              { role: "assistant", text: "answer", itemId: "assistant-1" },
+            ],
+          },
+        },
+      },
     },
   });
   renderer.updateState({
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      history: [
-        { role: "user", text: "first", itemId: "user-1" },
-        {
-          role: "system",
-          text: "activity",
-          itemId: "activity-1",
-          activity: { kind: "command", status: "completed" },
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              { role: "user", text: "first", itemId: "user-1" },
+              {
+                role: "system",
+                text: "activity",
+                itemId: "activity-1",
+                activity: { kind: "command", status: "completed" },
+              },
+              { role: "assistant", text: "answer", itemId: "assistant-1" },
+            ],
+          },
         },
-        { role: "assistant", text: "answer", itemId: "assistant-1" },
-      ],
+      },
     },
   });
   const internal = renderer as any;
@@ -3311,9 +4389,18 @@ test("renders optional controls and handles image attachment events", async () =
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      threadId: "thread-1",
-      status: "working" as const,
-      collaborationMode: "plan" as const,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-1",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            status: "working" as const,
+            collaborationMode: "plan" as const,
+          },
+        },
+      },
     },
   };
   renderer.updateState(state);
@@ -3344,14 +4431,23 @@ test("renders optional controls and handles image attachment events", async () =
     ...state,
     codex: {
       ...state.codex,
-      queuedSubmissions: [
-        {
-          id: "queued-1",
-          clientUserMessageId: "client-1",
-          text: "queued",
-          images: [{ url: "data:image/png;base64,q" }],
+      threads: {
+        ...state.codex.threads,
+        current: {
+          ...state.codex.threads.current,
+          thread: {
+            ...state.codex.threads.current.thread,
+            queuedSubmissions: [
+              {
+                id: "queued-1",
+                clientUserMessageId: "client-1",
+                text: "queued",
+                images: [{ url: "data:image/png;base64,q" }],
+              },
+            ],
+          },
         },
-      ],
+      },
     },
   });
   expect(elements.history.querySelector(".codex-queued-submission-image")).not.toBeNull();
@@ -3361,7 +4457,17 @@ test("renders optional controls and handles image attachment events", async () =
 test("handles submit, steer, and suggestion dismissal shortcuts", async () => {
   const { renderer, elements } = makeRenderer({
     ...defaultRendererState(),
-    codex: { ...defaultRendererState().codex, threadId: "thread-1", status: "working" },
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        selectedId: "thread-1",
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: { ...defaultRendererState().codex.threads.current.thread, status: "working" },
+        },
+      },
+    },
   });
   const submit = window.peskApi.submitCodexPrompt as jest.Mock;
   (window.peskApi as any).steerCodexTurn = jest.fn(async () => defaultRendererState());
@@ -3389,35 +4495,44 @@ test("renders free-text questions and file-change details", () => {
     ...defaultRendererState(),
     codex: {
       ...defaultRendererState().codex,
-      pendingUserInput: {
-        requestId: "request-text",
-        threadId: "thread-1",
-        turnId: "turn-1",
-        itemId: "item-1",
-        isBlocking: true,
-        questions: [
-          {
-            id: "secret",
-            header: "Secret",
-            question: "Enter a secret",
-            isOther: true,
-            isSecret: true,
-            options: [],
-          },
-        ],
-      },
-      history: [
-        {
-          role: "system",
-          text: "file change",
-          itemId: "file-1",
-          activity: {
-            kind: "fileChange",
-            status: "completed",
-            changes: ["src/app.ts\n  +added\n  -removed\n  @@ hunk\n  context"],
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            pendingUserInput: {
+              requestId: "request-text",
+              threadId: "thread-1",
+              turnId: "turn-1",
+              itemId: "item-1",
+              isBlocking: true,
+              questions: [
+                {
+                  id: "secret",
+                  header: "Secret",
+                  question: "Enter a secret",
+                  isOther: true,
+                  isSecret: true,
+                  options: [],
+                },
+              ],
+            },
+            messages: [
+              {
+                role: "system",
+                text: "file change",
+                itemId: "file-1",
+                activity: {
+                  kind: "fileChange",
+                  status: "completed",
+                  changes: ["src/app.ts\n  +added\n  -removed\n  @@ hunk\n  context"],
+                },
+              },
+            ],
           },
         },
-      ],
+      },
     },
   });
 

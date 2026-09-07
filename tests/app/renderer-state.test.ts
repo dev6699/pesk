@@ -6,26 +6,32 @@ import type { CodexState } from "../../src/codex/types";
 
 function codexState(threadId: string): CodexState {
   return {
-    threadId,
-    projectId: undefined,
-    readOnly: false,
-    cwd: "/workspace",
-    error: undefined,
-    commandNotice: undefined,
-    status: "idle",
-    connected: true,
-    history: [],
-    projects: [],
-    collaborationMode: "default",
-    pendingApproval: undefined,
-    pendingUserInput: undefined,
-    queuedSubmissions: [],
-    historyLoading: false,
-    hasOlderHistory: false,
-    threads: [],
-    threadActivities: [],
-    backgroundWork: { completed: 0, total: 0 },
-    interrupted: false,
+    threads: {
+      selectedId: threadId,
+      current: {
+        thread: {
+          projectId: undefined,
+          workingDirectory: "/workspace",
+          commandNotice: undefined,
+          status: "idle",
+          connected: true,
+          messages: [],
+          collaborationMode: "default",
+          pendingApproval: undefined,
+          pendingUserInput: undefined,
+          queuedSubmissions: [],
+          interrupted: false,
+        },
+        readOnly: false,
+        history: { loading: false, hasOlder: false },
+      },
+      items: [],
+      activities: [],
+      backgroundWork: { completed: 0, total: 0 },
+    },
+    connection: { status: "ready", ...{ error: undefined } },
+    projects: { items: [] },
+    account: {},
   } as CodexState;
 }
 

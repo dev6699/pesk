@@ -122,7 +122,7 @@ function makeManager() {
     setGoal: (_threadId, nextGoal) => {
       goal = nextGoal;
     },
-    publishRendererState: jest.fn(),
+    onStateChanged: jest.fn(),
     setCommandNotice: jest.fn(),
     setConnectionError: jest.fn(),
     setCollaborationMode: jest.fn(),
@@ -211,7 +211,7 @@ describe("CodexGoalManager", () => {
     manager.restore("thread-1");
     getPending()?.callback({ id: 2, result: { goal: null } });
     expect(getGoal()).toBeUndefined();
-    expect(options.publishRendererState).toHaveBeenCalled();
+    expect(options.onStateChanged).toHaveBeenCalled();
   });
 
   test("rejects a missing or mismatched goal-set response", () => {
@@ -295,7 +295,10 @@ describe("CodexController goal integration", () => {
     );
 
     expect(socket.sent.map((entry) => JSON.parse(entry).method)).not.toContain("turn/start");
-    expect(controller.getState().goal).toMatchObject({ objective, status: "active" });
+    expect(controller.getState().threads.current.thread.goal).toMatchObject({
+      objective,
+      status: "active",
+    });
   });
 
   test("maps goal pause, resume, and clear commands to native lifecycle requests", () => {
@@ -334,7 +337,7 @@ describe("CodexController goal integration", () => {
       }),
     );
 
-    expect(controller.getState().threadId).toBe("thread-1");
+    expect(controller.getState().threads.selectedId).toBe("thread-1");
     expect(threadInstance(controller, "other-thread").state.goal?.objective).toBe(
       "background goal",
     );
@@ -387,7 +390,7 @@ describe("CodexController goal integration", () => {
     });
 
     expect(controller.submitPrompt("/goal")).toBe(true);
-    expect(controller.getState().commandNotice).toBe(
+    expect(controller.getState().threads.current.thread.commandNotice).toBe(
       [
         "Goal",
         "Status: complete",
@@ -415,21 +418,25 @@ describe("CodexController goal integration", () => {
     });
 
     expect(controller.submitPrompt("/goal edit")).toBe(true);
-    expect(controller.getState().commandNotice).toContain("Usage: /goal edit");
+    expect(controller.getState().threads.current.thread.commandNotice).toContain(
+      "Usage: /goal edit",
+    );
     threadInstanceState.setGoal(undefined);
     expect(controller.submitPrompt("/goal edit")).toBe(true);
-    expect(controller.getState().commandNotice).toContain("No goal is currently set");
+    expect(controller.getState().threads.current.thread.commandNotice).toContain(
+      "No goal is currently set",
+    );
 
     expect(controller.submitPrompt("/goal replacement")).toBe(true);
     const failedSetId = lastMessage(socket).id;
     socket.emit("message", JSON.stringify({ id: failedSetId, error: { message: "denied" } }));
-    expect(controller.getState().error).toContain("Unable to create the goal");
+    expect(controller.getState().connection.error).toContain("Unable to create the goal");
     expect(callbacks.onStateChanged).toHaveBeenCalled();
 
     expect(controller.submitPrompt("/goal clear")).toBe(true);
     const clearId = lastMessage(socket).id;
     socket.emit("message", JSON.stringify({ id: clearId, result: { cleared: false } }));
-    expect(controller.getState().goal).toBeUndefined();
+    expect(controller.getState().threads.current.thread.goal).toBeUndefined();
   });
 
   test("does not synthesize a visible continuation prompt after an idle turn", () => {

@@ -15,7 +15,7 @@ export class CodexStatusRenderer {
 
   update(): void {
     this.renderWorkingStatus();
-    this.renderCommandNotice(this.getState().codex.commandNotice);
+    this.renderCommandNotice(this.getState().codex.threads.current.thread.commandNotice);
     if (this.statusDock) {
       this.statusDock.hidden = this.commandNotice.hidden && this.workingStatus.hidden;
     }
@@ -24,7 +24,11 @@ export class CodexStatusRenderer {
   private renderWorkingStatus(): void {
     if (this.workingTimer !== undefined) window.clearInterval(this.workingTimer);
     this.workingTimer = undefined;
-    const { workingSince: since, workedElapsed: worked, interrupted } = this.getState().codex;
+    const {
+      workingSince: since,
+      workedElapsed: worked,
+      interrupted,
+    } = this.getState().codex.threads.current.thread;
     this.workingStatus.hidden = since === undefined && worked === undefined && !interrupted;
     if (since === undefined) {
       this.workingStatus.classList.add("codex-working-status-complete");

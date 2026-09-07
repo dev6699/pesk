@@ -37,7 +37,9 @@ if (document.body.classList.contains("web-chat")) {
 const interruptButton = document.getElementById("codex-chat-interrupt") as HTMLButtonElement | null;
 function updateInterruptButton(state: RendererState): void {
   if (!interruptButton) return;
-  const active = state.codex.status === "working" || state.codex.status === "waiting";
+  const active =
+    state.codex.threads.current.thread.status === "working" ||
+    state.codex.threads.current.thread.status === "waiting";
   interruptButton.hidden = !active;
   interruptButton.disabled = !active;
 }
@@ -57,7 +59,7 @@ window.peskApi.onSettingsChanged((next) => {
   applyRendererTheme(next.assets.theme);
   codex.updateState(next);
   updateInterruptButton(next);
-  if (next.codex.connected && !next.codex.rateLimits) {
+  if (next.codex.threads.current.thread.connected && !next.codex.account.rateLimits) {
     void window.peskApi.refreshCodexRateLimits();
   }
 });
@@ -74,7 +76,7 @@ void window.peskApi.getSettings().then((next) => {
   applyRendererTheme(next.assets.theme);
   codex.updateState(next);
   updateInterruptButton(next);
-  if (next.codex.connected && !next.codex.rateLimits) {
+  if (next.codex.threads.current.thread.connected && !next.codex.account.rateLimits) {
     void window.peskApi.refreshCodexRateLimits();
   }
 });

@@ -12,7 +12,7 @@ function fixture(requestAccepted = true) {
   const threadManager = new CodexThreadManager();
   const projectManager = new CodexProjectManager({
     request: jest.fn(() => true),
-    publishRendererState: jest.fn(),
+    onStateChanged: jest.fn(),
     setCommandNotice: jest.fn(),
     setConnectionError: jest.fn(),
   });
@@ -20,7 +20,7 @@ function fixture(requestAccepted = true) {
     message: ThreadLifecycleRequestInput;
     callback: (message: JsonRpcResponse<unknown>) => void;
   }> = [];
-  const publishRendererState = jest.fn();
+  const onStateChanged = jest.fn();
   const lifecycle = new CodexThreadLifecycle({
     threadManager,
     projectManager,
@@ -31,13 +31,13 @@ function fixture(requestAccepted = true) {
       });
       return requestAccepted;
     },
-    publishRendererState,
+    onStateChanged,
     onThreadHydrated: jest.fn(),
     cancelModelPicker: jest.fn(),
     setStarting: jest.fn(),
     startTurn: jest.fn(),
   });
-  return { lifecycle, threadManager, requests, publishRendererState };
+  return { lifecycle, threadManager, requests, onStateChanged };
 }
 
 test("removes a deleted thread and selects the next thread", () => {
@@ -217,7 +217,7 @@ test("finishes a failed history page without publishing turns", () => {
 });
 
 test("publishes and finishes history loading when the server returns an error", async () => {
-  const { lifecycle, threadManager, requests, publishRendererState } = fixture();
+  const { lifecycle, threadManager, requests, onStateChanged } = fixture();
   threadManager.thread("thread-1");
   threadManager.threads.push({ id: "thread-1" } as never);
   threadManager.select("thread-1");
@@ -229,11 +229,11 @@ test("publishes and finishes history loading when the server returns an error", 
 
   await expect(loading).resolves.toBe(false);
   expect(threadManager.historyState("thread-1").loading).toBe(false);
-  expect(publishRendererState).toHaveBeenCalled();
+  expect(onStateChanged).toHaveBeenCalled();
 });
 
 test("finishes history loading when the request is rejected", async () => {
-  const { lifecycle, threadManager, publishRendererState } = fixture(false);
+  const { lifecycle, threadManager, onStateChanged } = fixture(false);
   threadManager.thread("thread-1");
   threadManager.threads.push({ id: "thread-1" } as never);
   threadManager.select("thread-1");
@@ -242,5 +242,5 @@ test("finishes history loading when the request is rejected", async () => {
 
   await expect(lifecycle.loadOlderHistory()).resolves.toBe(false);
   expect(threadManager.historyState("thread-1").loading).toBe(false);
-  expect(publishRendererState).toHaveBeenCalled();
+  expect(onStateChanged).toHaveBeenCalled();
 });

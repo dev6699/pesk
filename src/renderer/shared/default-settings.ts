@@ -12,20 +12,26 @@ export function defaultPeskSettings(): SavedPeskSettings {
 
 export function defaultCodexRuntimeState(): CodexRuntimeState {
   return {
-    status: "idle",
-    connected: false,
-    readOnly: false,
-    history: [],
-    threads: [],
-    projects: [],
-    threadActivities: [],
-    backgroundWork: { completed: 0, total: 0 },
-    queuedSubmissions: [],
-    collaborationMode: "default",
-    hasOlderHistory: false,
-    historyLoading: false,
-    cwd: undefined,
-    interrupted: false,
+    connection: { status: "disconnected" },
+    account: {},
+    projects: { items: [] },
+    threads: {
+      items: [],
+      activities: [],
+      backgroundWork: { completed: 0, total: 0 },
+      current: {
+        readOnly: false,
+        history: { loading: false, hasOlder: false },
+        thread: {
+          status: "idle",
+          connected: false,
+          messages: [],
+          queuedSubmissions: [],
+          collaborationMode: "default",
+          interrupted: false,
+        },
+      },
+    },
   };
 }
 

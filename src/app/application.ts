@@ -208,7 +208,9 @@ export class PeskApplication implements ApplicationContext {
   private registerShortcuts(): void {
     globalShortcut.register(shortcutAccelerator("menu"), () => this.menu.showWindow());
     globalShortcut.register(shortcutAccelerator("petFocus"), () =>
-      this.focus.routeGlobalShortcut(Boolean(this.codex.getState().pendingUserInput)),
+      this.focus.routeGlobalShortcut(
+        Boolean(this.codex.getState().threads.current.thread.pendingUserInput),
+      ),
     );
   }
 }

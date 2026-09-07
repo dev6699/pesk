@@ -17,7 +17,7 @@ export interface ModelManagerOptions {
     callback: (message: JsonRpcResponse<TResult>) => void,
   ) => void;
   getSelectedThreadId: () => string | undefined;
-  publishRendererState: () => void;
+  onStateChanged: () => void;
   setCommandNotice: (notice: string) => void;
 }
 
@@ -28,9 +28,9 @@ export class CodexModelManager {
 
   constructor(private readonly options: ModelManagerOptions) {}
 
-  /** Returns the current renderer-facing picker state. */
+  /** Returns the current client-facing picker state. */
   getPicker(): CodexModelPicker | undefined {
-    return this.picker;
+    return structuredClone(this.picker);
   }
 
   /** Loads all available models for the currently selected thread. */
@@ -38,7 +38,7 @@ export class CodexModelManager {
     const threadId = this.options.getSelectedThreadId();
     if (!threadId) {
       this.options.setCommandNotice("No active thread to change model.");
-      this.options.publishRendererState();
+      this.options.onStateChanged();
       return false;
     }
 
@@ -57,7 +57,7 @@ export class CodexModelManager {
     if (!selectedModel) return;
     if (!effort) {
       this.picker = { stage: "effort", models: picker.models, selectedModel };
-      this.options.publishRendererState();
+      this.options.onStateChanged();
       return;
     }
     if (!selectedModel.supportedReasoningEfforts.some((item) => item.reasoningEffort === effort))
@@ -77,7 +77,7 @@ export class CodexModelManager {
           return;
         this.picker = undefined;
         if (message?.error) this.options.setCommandNotice("Unable to change the model.");
-        this.options.publishRendererState();
+        this.options.onStateChanged();
       },
     );
   }
@@ -86,7 +86,7 @@ export class CodexModelManager {
   cancel(): void {
     this.requestGeneration += 1;
     this.picker = undefined;
-    this.options.publishRendererState();
+    this.options.onStateChanged();
   }
 
   private loadModels(
@@ -106,7 +106,7 @@ export class CodexModelManager {
         const page = message.result?.data;
         if (message.error || !Array.isArray(page)) {
           this.options.setCommandNotice("Unable to load available models.");
-          this.options.publishRendererState();
+          this.options.onStateChanged();
           return;
         }
         models.push(...page);
@@ -117,7 +117,7 @@ export class CodexModelManager {
         }
         this.picker = models.length ? { stage: "model", models } : undefined;
         if (!models.length) this.options.setCommandNotice("Unable to load available models.");
-        this.options.publishRendererState();
+        this.options.onStateChanged();
       },
     );
   }

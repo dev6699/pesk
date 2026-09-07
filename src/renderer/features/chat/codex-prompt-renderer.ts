@@ -40,9 +40,8 @@ export class CodexPromptRenderer {
   /** Renders pending user-input, approval, plan, and review prompts. */
   private renderUserInput(force = false): void {
     const container = this.userInput;
-    const pending = this.getState().codex.pendingUserInput;
-    const pendingApproval = this.getState().codex.pendingApproval;
-    if (this.getState().codex.modelPicker) return;
+    const pending = this.getState().codex.threads.current.thread.pendingUserInput;
+    const pendingApproval = this.getState().codex.threads.current.thread.pendingApproval;
     const planConfirmation = this.getPlanConfirmation();
     if (!container) return;
     if (container.dataset.projectManager === "true" || container.dataset.projectThread === "true")
@@ -375,7 +374,7 @@ export class CodexPromptRenderer {
 
   /** Renders the approval controls for a pending tool request. */
   private renderApprovalInput(
-    pending: NonNullable<RendererState["codex"]["pendingApproval"]>,
+    pending: NonNullable<RendererState["codex"]["threads"]["current"]["thread"]["pendingApproval"]>,
     force: boolean,
   ): void {
     const container = this.userInput;

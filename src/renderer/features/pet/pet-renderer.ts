@@ -181,33 +181,39 @@ export class PetRenderer {
       this.statusTimer = undefined;
     }
     const render = (): void => {
-      const label = next.codex.status[0].toUpperCase() + next.codex.status.slice(1);
+      const label =
+        next.codex.threads.current.thread.status[0].toUpperCase() +
+        next.codex.threads.current.thread.status.slice(1);
       const elapsed =
-        next.codex.workingSince !== undefined
-          ? ` · ${formatElapsed(Date.now() - next.codex.workingSince)}`
+        next.codex.threads.current.thread.workingSince !== undefined
+          ? ` · ${formatElapsed(Date.now() - next.codex.threads.current.thread.workingSince)}`
           : "";
       this.options.statusLabel.textContent = `${label}${elapsed}`;
       this.options.status.setAttribute("aria-label", this.options.statusLabel.textContent);
-      this.options.status.title = next.codex.threadId
-        ? `Selected thread: ${next.codex.threadId}`
+      this.options.status.title = next.codex.threads.selectedId
+        ? `Selected thread: ${next.codex.threads.selectedId}`
         : "Selected thread";
       this.resizeElement();
     };
     render();
-    if (next.codex.status === "working" && next.codex.workingSince !== undefined) {
+    if (
+      next.codex.threads.current.thread.status === "working" &&
+      next.codex.threads.current.thread.workingSince !== undefined
+    ) {
       this.statusTimer = window.setInterval(render, 1000);
     }
-    this.options.status.className = `status-${next.codex.status}`;
+    this.options.status.className = `status-${next.codex.threads.current.thread.status}`;
   }
 
   private updateAggregateStatus(next: RendererState): void {
     const label = this.options.aggregateStatusLabel;
     if (!label) return;
-    const otherThreads = next.codex.threadActivities.filter(
-      (activity) => activity.threadId !== next.codex.threadId && activity.status !== "idle",
+    const otherThreads = next.codex.threads.activities.filter(
+      (activity) =>
+        activity.threadId !== next.codex.threads.selectedId && activity.status !== "idle",
     );
     const waitingCount = otherThreads.filter((activity) => activity.status === "waiting").length;
-    const { completed, total } = next.codex.backgroundWork;
+    const { completed, total } = next.codex.threads.backgroundWork;
     const separator = document.createElement("span");
     separator.className = "aggregate-status-separator";
     separator.textContent = "|";

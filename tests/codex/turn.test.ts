@@ -23,7 +23,7 @@ function fixture() {
       });
       return true;
     },
-    publishRendererState: publish,
+    onStateChanged: publish,
   });
   return { manager, requests, publish, threadManager };
 }
@@ -90,7 +90,7 @@ test("preserves the prepared working state when its request is rejected", () => 
   const manager = new CodexTurnManager({
     threadManager,
     request: () => false,
-    publishRendererState: jest.fn(),
+    onStateChanged: jest.fn(),
   });
 
   manager.start("thread-1", "hello");

@@ -16,7 +16,7 @@ test("refreshes every queue page through the owning thread manager", () => {
       return true;
     },
     threadManager,
-    publishRendererState: publish,
+    onStateChanged: publish,
   });
 
   manager.refresh("thread-1");
@@ -52,7 +52,7 @@ test("does not mutate state when the queue request is rejected", () => {
   const manager = new CodexQueueManager({
     request: () => false,
     threadManager,
-    publishRendererState: jest.fn(),
+    onStateChanged: jest.fn(),
   });
 
   manager.refresh("thread-1");
@@ -68,7 +68,7 @@ test("handles an empty queue response without requesting another page", () => {
       return true;
     },
     threadManager: new CodexThreadManager(),
-    publishRendererState: jest.fn(),
+    onStateChanged: jest.fn(),
   });
 
   manager.refresh("thread-1");

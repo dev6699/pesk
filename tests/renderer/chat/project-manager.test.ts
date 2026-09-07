@@ -18,8 +18,8 @@ const project = (id = "project-1", name = "Workspace") => ({
 
 function setup() {
   const state = defaultRendererState();
-  state.codex.connected = true;
-  state.codex.projects = [project(), project("project-2", "Second")];
+  state.codex.threads.current.thread.connected = true;
+  state.codex.projects.items = [project(), project("project-2", "Second")];
   const api = {
     ...window.peskApi,
     getSettings: jest.fn(() => Promise.resolve(state)),
@@ -108,7 +108,7 @@ test("shows delete errors and supports moving a project upward", async () => {
   const { api, container, state } = setup();
   (api.deleteCodexProject as jest.Mock).mockResolvedValue({
     ...state,
-    codex: { ...state.codex, error: "delete failed" },
+    codex: { ...state.codex, connection: { ...state.codex.connection, error: "delete failed" } },
   });
   await openProjectManager(container);
   const controlsSet = controls(container);
@@ -132,7 +132,7 @@ test("handles cancelled folder selection and failed project refresh", async () =
   (api.chooseCodexProjectRoot as jest.Mock).mockResolvedValue(undefined);
   (api.listCodexProjects as jest.Mock).mockResolvedValue({
     ...state,
-    codex: { ...state.codex, error: "refresh failed" },
+    codex: { ...state.codex, connection: { ...state.codex.connection, error: "refresh failed" } },
   });
   await openProjectManager(container);
   const controlsSet = controls(container);
@@ -148,7 +148,7 @@ test("shows errors and validates missing fields", async () => {
   const { api, container, state } = setup();
   (api.createCodexProject as jest.Mock).mockResolvedValue({
     ...state,
-    codex: { ...state.codex, error: "create failed" },
+    codex: { ...state.codex, connection: { ...state.codex.connection, error: "create failed" } },
   });
   await openProjectManager(container);
   const controlsSet = controls(container);
@@ -163,8 +163,8 @@ test("shows errors and validates missing fields", async () => {
 test("handles an empty project list and invalid move positions", async () => {
   const { api, container } = setup();
   const state = defaultRendererState();
-  state.codex.connected = true;
-  state.codex.projects = [];
+  state.codex.threads.current.thread.connected = true;
+  state.codex.projects.items = [];
   (api.getSettings as jest.Mock).mockResolvedValue(state);
   await openProjectManager(container);
   const controlsSet = controls(container);
@@ -175,7 +175,7 @@ test("handles an empty project list and invalid move positions", async () => {
 
   (api.getSettings as jest.Mock).mockResolvedValue({
     ...state,
-    codex: { ...state.codex, projects: [project()] },
+    codex: { ...state.codex, projects: { ...state.codex.projects, items: [project()] } },
   });
   await openProjectManager(container);
   const moveControls = controls(container);

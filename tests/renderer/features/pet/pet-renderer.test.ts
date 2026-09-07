@@ -130,18 +130,45 @@ describe("PetRenderer", () => {
     const renderer = createRenderer(sound);
     renderer.updateState({
       ...defaultRendererState(),
-      codex: { ...defaultRendererState().codex, status: "working" },
+      codex: {
+        ...defaultRendererState().codex,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: { ...defaultRendererState().codex.threads.current.thread, status: "working" },
+          },
+        },
+      },
       assets: { codexStatusSoundUrl: "file:///tmp/status.mp3" },
     });
     renderer.updateState({
       ...defaultRendererState(),
-      codex: { ...defaultRendererState().codex, status: "idle" },
+      codex: {
+        ...defaultRendererState().codex,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: { ...defaultRendererState().codex.threads.current.thread, status: "idle" },
+          },
+        },
+      },
       assets: { codexStatusSoundUrl: "file:///tmp/status.mp3" },
     });
     renderer.updateCodexUpdate(true);
     renderer.updateState({
       ...defaultRendererState(),
-      codex: { ...defaultRendererState().codex, status: "waiting" },
+      codex: {
+        ...defaultRendererState().codex,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: { ...defaultRendererState().codex.threads.current.thread, status: "waiting" },
+          },
+        },
+      },
       assets: { codexStatusSoundUrl: "file:///tmp/status.mp3" },
     });
 
@@ -155,12 +182,30 @@ describe("PetRenderer", () => {
     renderer.updateFocus(true);
     renderer.updateState({
       ...defaultRendererState(),
-      codex: { ...defaultRendererState().codex, status: "working" },
+      codex: {
+        ...defaultRendererState().codex,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: { ...defaultRendererState().codex.threads.current.thread, status: "working" },
+          },
+        },
+      },
       assets: { codexStatusSoundUrl: "file:///tmp/status.mp3" },
     });
     renderer.updateState({
       ...defaultRendererState(),
-      codex: { ...defaultRendererState().codex, status: "idle" },
+      codex: {
+        ...defaultRendererState().codex,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: { ...defaultRendererState().codex.threads.current.thread, status: "idle" },
+          },
+        },
+      },
       assets: { codexStatusSoundUrl: "file:///tmp/status.mp3" },
     });
     renderer.updateCodexUpdate(true);
@@ -184,11 +229,20 @@ describe("PetRenderer", () => {
       ...defaultRendererState(),
       codex: {
         ...defaultRendererState().codex,
-        pendingApproval: {
-          requestId: 1,
-          command: "echo hi",
-          reason: "Needs approval",
-          options: [],
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: {
+              ...defaultRendererState().codex.threads.current.thread,
+              pendingApproval: {
+                requestId: 1,
+                command: "echo hi",
+                reason: "Needs approval",
+                options: [],
+              },
+            },
+          },
         },
       },
     });
@@ -213,12 +267,30 @@ describe("PetRenderer", () => {
     renderer.updateState({
       ...defaultRendererState(),
       settings: { ...defaultRendererState().settings, codexStatusSound: false },
-      codex: { ...defaultRendererState().codex, status: "working" },
+      codex: {
+        ...defaultRendererState().codex,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: { ...defaultRendererState().codex.threads.current.thread, status: "working" },
+          },
+        },
+      },
     });
     renderer.updateState({
       ...defaultRendererState(),
       settings: { ...defaultRendererState().settings, codexStatusSound: false },
-      codex: { ...defaultRendererState().codex, status: "idle" },
+      codex: {
+        ...defaultRendererState().codex,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: { ...defaultRendererState().codex.threads.current.thread, status: "idle" },
+          },
+        },
+      },
     });
 
     expect(sound.play).not.toHaveBeenCalled();
@@ -240,7 +312,20 @@ describe("PetRenderer", () => {
     });
     renderer.updateState({
       ...defaultRendererState(),
-      codex: { ...defaultRendererState().codex, status: "working", workingSince: now - 65000 },
+      codex: {
+        ...defaultRendererState().codex,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: {
+              ...defaultRendererState().codex.threads.current.thread,
+              status: "working",
+              workingSince: now - 65000,
+            },
+          },
+        },
+      },
     });
 
     expect(statusLabel.textContent).toBe("Working · 1m 5s");
@@ -268,9 +353,12 @@ describe("PetRenderer", () => {
       ...defaultRendererState(),
       codex: {
         ...defaultRendererState().codex,
-        threadId: "selected",
-        threadActivities: [{ threadId: "background", preview: "Background", status: "working" }],
-        backgroundWork: { completed: 0, total: 1 },
+        threads: {
+          ...defaultRendererState().codex.threads,
+          selectedId: "selected",
+          activities: [{ threadId: "background", preview: "Background", status: "working" }],
+          backgroundWork: { completed: 0, total: 1 },
+        },
       },
     });
     expect(aggregateStatusLabel.textContent).toBe("Wait 0|Work 0/1");
@@ -279,9 +367,12 @@ describe("PetRenderer", () => {
       ...defaultRendererState(),
       codex: {
         ...defaultRendererState().codex,
-        threadId: "selected",
-        threadActivities: [{ threadId: "background", preview: "Background", status: "idle" }],
-        backgroundWork: { completed: 1, total: 1 },
+        threads: {
+          ...defaultRendererState().codex.threads,
+          selectedId: "selected",
+          activities: [{ threadId: "background", preview: "Background", status: "idle" }],
+          backgroundWork: { completed: 1, total: 1 },
+        },
       },
     });
     expect(aggregateStatusLabel.textContent).toBe("Wait 0|Work 1/1");
@@ -302,7 +393,20 @@ describe("PetRenderer", () => {
 
     renderer.updateState({
       ...defaultRendererState(),
-      codex: { ...defaultRendererState().codex, status: "working", workingSince: Date.now() },
+      codex: {
+        ...defaultRendererState().codex,
+        threads: {
+          ...defaultRendererState().codex.threads,
+          current: {
+            ...defaultRendererState().codex.threads.current,
+            thread: {
+              ...defaultRendererState().codex.threads.current.thread,
+              status: "working",
+              workingSince: Date.now(),
+            },
+          },
+        },
+      },
     });
 
     expect(window.peskApi.resizePetContent).toHaveBeenCalledWith(284, 180);

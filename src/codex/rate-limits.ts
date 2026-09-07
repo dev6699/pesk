@@ -6,7 +6,7 @@ export interface RateLimitManagerOptions {
     request: Omit<AccountRateLimitsRequest, "id">,
     callback: (message: JsonRpcResponse<GetAccountRateLimitsResponse>) => void,
   ) => boolean;
-  publishRendererState: () => void;
+  onStateChanged: () => void;
 }
 
 /** Owns the account-wide rate-limit snapshot and its read guard. */
@@ -17,7 +17,7 @@ export class CodexRateLimitManager {
   constructor(private readonly options: RateLimitManagerOptions) {}
 
   getSnapshot(): RateLimitSnapshot | undefined {
-    return this.rateLimits;
+    return structuredClone(this.rateLimits);
   }
 
   /** Reads the latest account-wide rate limits once until the response arrives. */
@@ -30,7 +30,7 @@ export class CodexRateLimitManager {
         this.readPending = false;
         if (message.result?.rateLimits) {
           this.rateLimits = message.result.rateLimits;
-          this.options.publishRendererState();
+          this.options.onStateChanged();
         }
       },
     );
@@ -40,7 +40,7 @@ export class CodexRateLimitManager {
   /** Applies a live account rate-limit notification. */
   handleUpdated(rateLimits: RateLimitSnapshot): void {
     this.rateLimits = rateLimits;
-    this.options.publishRendererState();
+    this.options.onStateChanged();
   }
 
   /** Clears transport-scoped request state while retaining the last snapshot. */

@@ -9,7 +9,7 @@ import {
 export class CodexActivityRenderer {
   /** Renders markdown, attachments, and activity details for a message. */
   renderMessageContent(
-    message: RendererState["codex"]["history"][number],
+    message: RendererState["codex"]["threads"]["current"]["thread"]["messages"][number],
     activityKey: string,
     openActivityKeys: Set<string>,
     renderedActivityKeys: Set<string>,
@@ -107,7 +107,9 @@ export class CodexActivityRenderer {
 
   /** Creates the expandable file-change activity presentation. */
   renderFileChangeActivity(
-    activity: NonNullable<RendererState["codex"]["history"][number]["activity"]>,
+    activity: NonNullable<
+      RendererState["codex"]["threads"]["current"]["thread"]["messages"][number]["activity"]
+    >,
     activityKey: string,
     openActivityKeys: Set<string>,
     renderedActivityKeys: Set<string>,
@@ -144,7 +146,10 @@ export class CodexActivityRenderer {
   }
 
   /** Renders the approval state for the current thread. */
-  renderApproval(bubble: HTMLElement, message: RendererState["codex"]["history"][number]): void {
+  renderApproval(
+    bubble: HTMLElement,
+    message: RendererState["codex"]["threads"]["current"]["thread"]["messages"][number],
+  ): void {
     const approval = message.approval;
     if (!approval) return;
     bubble.classList.add(`codex-approval-${approval.state}`);

@@ -1,11 +1,13 @@
 /** Renders the guided flow for creating a new thread in a project. */
 export async function openProjectThreadPrompt(container: HTMLElement): Promise<void> {
   const state = await window.peskApi.getSettings();
-  let projects = state.codex.projects ?? [];
-  const currentThread = state.codex.threads.find((thread) => thread.id === state.codex.threadId);
-  const currentCwd = state.codex.cwd;
+  let projects = state.codex.projects.items ?? [];
+  const currentThread = state.codex.threads.items.find(
+    (thread) => thread.id === state.codex.threads.selectedId,
+  );
+  const currentCwd = state.codex.threads.current.thread.workingDirectory;
   const currentProjectId =
-    state.codex.projectId ??
+    state.codex.threads.current.thread.projectId ??
     currentThread?.projectId ??
     projects.find((entry) =>
       currentCwd ? entry.roots.some((root) => root.path === currentCwd) : false,
@@ -103,8 +105,8 @@ export async function openProjectThreadPrompt(container: HTMLElement): Promise<v
     }
     submit.disabled = true;
     const next = await window.peskApi.startCodexProjectThread(current.id, root.value);
-    if (next.codex.error) {
-      message.textContent = next.codex.error;
+    if (next.codex.connection.error) {
+      message.textContent = next.codex.connection.error;
       submit.disabled = false;
       project.focus();
       return;

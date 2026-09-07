@@ -35,7 +35,8 @@ export class CodexHistoryRenderer {
   private resizeObserver?: ResizeObserver;
   private renderedPlanDetails = new Map<string, string>();
   private planRenderTimer: number | undefined;
-  private pendingPlanHistory: RendererState["codex"]["history"] | undefined;
+  private pendingPlanHistory:
+    RendererState["codex"]["threads"]["current"]["thread"]["messages"] | undefined;
 
   constructor(
     private readonly history: HTMLElement,
@@ -127,7 +128,7 @@ export class CodexHistoryRenderer {
   }
 
   applyStreamDelta(delta: CodexStreamDelta): void {
-    if (delta.threadId && delta.threadId !== this.getState().codex.threadId) return;
+    if (delta.threadId && delta.threadId !== this.getState().codex.threads.selectedId) return;
     const key =
       delta.itemId ??
       [...this.renderedHistoryKeys]
@@ -188,10 +189,10 @@ export class CodexHistoryRenderer {
    * expanded activities, and the user's scroll position while reading history.
    */
   renderHistory(
-    history: RendererState["codex"]["history"],
+    history: RendererState["codex"]["threads"]["current"]["thread"]["messages"],
     sessionConnected = false,
     historyLoading = false,
-    queuedSubmissions: RendererState["codex"]["queuedSubmissions"] = [],
+    queuedSubmissions: RendererState["codex"]["threads"]["current"]["thread"]["queuedSubmissions"] = [],
   ): void {
     this.updateActivePlanConfirmation(history);
     const structureKey = `${historyStructureKey(history)}|queue:${queuedSubmissions
@@ -413,7 +414,7 @@ export class CodexHistoryRenderer {
   }
 
   private renderQueuedSubmissions(
-    queuedSubmissions: RendererState["codex"]["queuedSubmissions"],
+    queuedSubmissions: RendererState["codex"]["threads"]["current"]["thread"]["queuedSubmissions"],
   ): void {
     this.content.querySelectorAll(".codex-queued-submissions").forEach((queue) => queue.remove());
     if (!queuedSubmissions.length) return;
@@ -447,7 +448,7 @@ export class CodexHistoryRenderer {
 
   /** Creates a DOM bubble for one history message. */
   private createMessageBubble(
-    message: RendererState["codex"]["history"][number],
+    message: RendererState["codex"]["threads"]["current"]["thread"]["messages"][number],
     index: number,
     openActivityKeys: Set<string>,
     renderedActivityKeys: Set<string>,
@@ -484,13 +485,17 @@ export class CodexHistoryRenderer {
     if (content instanceof HTMLElement && !message.activity) {
       this.renderedMessageContents.set(activityKey, content);
       const streamedText =
-        message.role === "assistant" && this.getState().codex.status !== "idle"
+        message.role === "assistant" &&
+        this.getState().codex.threads.current.thread.status !== "idle"
           ? this.streamedAssistantTexts.get(activityKey)
           : undefined;
       const text = streamedText ?? message.text;
       if (streamedText !== undefined) content.textContent = streamedText;
       this.renderedMessageTexts.set(activityKey, text);
-      if (message.role === "assistant" && this.getState().codex.status === "idle") {
+      if (
+        message.role === "assistant" &&
+        this.getState().codex.threads.current.thread.status === "idle"
+      ) {
         this.streamedAssistantTexts.delete(activityKey);
       }
     }
@@ -513,7 +518,9 @@ export class CodexHistoryRenderer {
   }
 
   /** Updates rendered message content without rebuilding stable nodes. */
-  private updateRenderedMessageContent(history: RendererState["codex"]["history"]): void {
+  private updateRenderedMessageContent(
+    history: RendererState["codex"]["threads"]["current"]["thread"]["messages"],
+  ): void {
     for (const [index, message] of (history ?? []).entries()) {
       const activityKey = historyMessageKeyForRenderer(message, index);
       if (message.activity?.kind === "command") {
@@ -533,8 +540,8 @@ export class CodexHistoryRenderer {
       if (message.role === "assistant") {
         if (this.streamingPlainMessages.has(activityKey)) {
           if (
-            this.getState().codex.status === "working" ||
-            this.getState().codex.status === "waiting"
+            this.getState().codex.threads.current.thread.status === "working" ||
+            this.getState().codex.threads.current.thread.status === "waiting"
           ) {
             content.textContent = message.text;
             this.renderedMessageTexts.set(activityKey, message.text);
@@ -557,7 +564,9 @@ export class CodexHistoryRenderer {
   }
 
   /** Synchronizes the active plan implementation confirmation. */
-  private updateActivePlanConfirmation(history: RendererState["codex"]["history"]): void {
+  private updateActivePlanConfirmation(
+    history: RendererState["codex"]["threads"]["current"]["thread"]["messages"],
+  ): void {
     this.callbacks.setActivePlanConfirmation(undefined);
     const lastMessage = history?.[history.length - 1];
     let planActivityIndex = -1;
@@ -587,7 +596,9 @@ export class CodexHistoryRenderer {
   }
 
   /** Batches streamed plan updates for efficient rendering. */
-  private schedulePlanUpdates(history: RendererState["codex"]["history"]): boolean {
+  private schedulePlanUpdates(
+    history: RendererState["codex"]["threads"]["current"]["thread"]["messages"],
+  ): boolean {
     const planUpdates = (history ?? []).filter((message, index) => {
       if (message.activity?.kind !== "plan") return false;
       const activityKey = historyMessageKeyForRenderer(message, index);

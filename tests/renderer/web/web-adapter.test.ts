@@ -45,17 +45,25 @@ function state(): RendererState {
       codexStatusSound: true,
     },
     codex: {
-      status: "idle",
-      connected: true,
-      readOnly: false,
-      threads: [],
-      threadActivities: [],
-      backgroundWork: { completed: 0, total: 0 },
-      history: [],
-      hasOlderHistory: false,
-      historyLoading: false,
-      queuedSubmissions: [],
-      collaborationMode: "default",
+      threads: {
+        current: {
+          thread: {
+            status: "idle",
+            connected: true,
+            messages: [],
+            queuedSubmissions: [],
+            collaborationMode: "default",
+          },
+          readOnly: false,
+          history: { hasOlder: false, loading: false },
+        },
+        items: [],
+        activities: [],
+        backgroundWork: { completed: 0, total: 0 },
+      },
+      connection: { status: "ready" },
+      account: {},
+      projects: { items: [] },
     },
     assets: { codexStatusSoundUrl: "" },
   };
@@ -152,7 +160,19 @@ test("round-trips web commands and returns the server result", async () => {
   const socket = FakeWebSocket.instances[0];
   socket.emit("open");
 
-  const next = { ...state(), codex: { ...state().codex, status: "working" as const } };
+  const next = {
+    ...state(),
+    codex: {
+      ...state().codex,
+      threads: {
+        ...state().codex.threads,
+        current: {
+          ...state().codex.threads.current,
+          thread: { ...state().codex.threads.current.thread, status: "working" as const },
+        },
+      },
+    },
+  };
   const interrupt = api.interruptCodexTurn();
   const request = JSON.parse(socket.sent.at(-1) as string);
   expect(request).toMatchObject({ type: "interruptTurn", requestId: 1 });

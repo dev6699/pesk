@@ -7,7 +7,7 @@ export interface QueueManagerOptions {
     callback: (message: JsonRpcResponse<LocalQueueListResponse>) => void,
   ) => boolean;
   threadManager: CodexThreadManager;
-  publishRendererState: () => void;
+  onStateChanged: () => void;
 }
 
 /** Owns server queue synchronization for individual Codex threads. */
@@ -29,7 +29,7 @@ export class CodexQueueManager {
         this.options.threadManager.withThread(threadId, (thread) => {
           if (replace) thread.replaceQueueFromServer(message.result?.data ?? []);
           else thread.appendQueueFromServer(message.result?.data ?? []);
-          this.options.publishRendererState();
+          this.options.onStateChanged();
           const nextCursor = message.result?.nextCursor;
           if (nextCursor) this.loadPage(threadId, nextCursor, false);
         });

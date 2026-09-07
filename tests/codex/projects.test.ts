@@ -30,7 +30,7 @@ function projectManagerHarness() {
   const sent: Array<{ method: string; params: unknown }> = [];
   const setCommandNotice = jest.fn();
   const setConnectionError = jest.fn();
-  const publishRendererState = jest.fn();
+  const onStateChanged = jest.fn();
   const manager = new CodexProjectManager({
     request: (request, callback) => {
       if (!acceptsRequests) return false;
@@ -39,7 +39,7 @@ function projectManagerHarness() {
       requests.set(id, callback as (message: JsonRpcResponse<unknown>) => void);
       return true;
     },
-    publishRendererState,
+    onStateChanged,
     setCommandNotice,
     setConnectionError,
   });
@@ -49,7 +49,7 @@ function projectManagerHarness() {
     sent,
     setCommandNotice,
     setConnectionError,
-    publishRendererState,
+    onStateChanged,
     setRequestAccepted: (accepted: boolean) => {
       acceptsRequests = accepted;
     },

@@ -170,45 +170,51 @@ interface CodexGoal {
 }
 
 interface CodexRuntimeState {
-  threadId?: string;
+  connection: { status: "disconnected" | "connecting" | "ready"; error?: string };
+  account: { rateLimits?: CodexRateLimits };
+  threads: {
+    selectedId?: string;
+    items: Array<{ id: string; preview?: string; status?: unknown; projectId?: string | null }>;
+    activities: CodexThreadActivity[];
+    backgroundWork: { completed: number; total: number };
+    current: {
+      thread: CodexConversationSnapshot;
+      readOnly: boolean;
+      history: { loading: boolean; hasOlder: boolean };
+    };
+  };
+  projects: {
+    items: Array<{
+      id: string;
+      name: string;
+      roots: Array<{ path: string }>;
+      metadata: { [key: string]: string | undefined };
+      position: number;
+      createdAt: number;
+      updatedAt: number;
+      recencyAt: number | null;
+    }>;
+  };
+  modelPicker?: CodexModelPicker;
+}
+
+interface CodexConversationSnapshot {
   projectId?: string | null;
-  readOnly: boolean;
-  cwd?: string;
-  error?: string;
+  workingDirectory?: string;
   status: "idle" | "working" | "waiting";
   connected: boolean;
-  history: CodexHistoryItem[];
-  threads: Array<{ id: string; preview?: string; status?: unknown; projectId?: string | null }>;
-  projects?: Array<{
-    id: string;
-    name: string;
-    roots: Array<{ path: string }>;
-    metadata: { [key: string]: string | undefined };
-    position: number;
-    createdAt: number;
-    updatedAt: number;
-    recencyAt: number | null;
-  }>;
-  threadActivities: CodexThreadActivity[];
-  backgroundWork: {
-    completed: number;
-    total: number;
-  };
+  messages: CodexHistoryItem[];
   workingSince?: number;
   workedElapsed?: number;
   interrupted?: boolean;
   tokenUsage?: CodexTokenUsage;
   modelInfo?: CodexModelInfo;
-  rateLimits?: CodexRateLimits;
   collaborationMode: "default" | "plan";
   pendingUserInput?: CodexPendingUserInput;
   pendingApproval?: CodexPendingApproval;
   queuedSubmissions: CodexQueuedSubmission[];
   goal?: CodexGoal;
   commandNotice?: string;
-  modelPicker?: CodexModelPicker;
-  hasOlderHistory: boolean;
-  historyLoading: boolean;
 }
 
 interface RendererAssets {
