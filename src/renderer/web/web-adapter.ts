@@ -384,6 +384,9 @@ function sendCommand(
 }
 
 const webApi = {
+  openExternalUrl: async (url: string) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  },
   getSettings: () => (state ? Promise.resolve(state) : initialState),
   onSettingsChanged: (callback: (state: RendererState) => void) => listeners.add(callback),
   onCodexStreamDelta: (callback: (delta: CodexStreamDelta) => void) =>

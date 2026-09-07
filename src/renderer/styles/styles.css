@@ -1191,6 +1191,13 @@ body.chat-only #codex-chat {
   border-radius: 6px;
 }
 
+.codex-image-link {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  cursor: zoom-in;
+}
+
 .codex-message-user {
   margin-left: auto;
   margin-right: 0;

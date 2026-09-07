@@ -1,4 +1,4 @@
-import type { BrowserWindow } from "electron";
+import { BrowserWindow } from "electron";
 import type { ChatWindowController } from "../windows/chat";
 import type { PetWindowController } from "../windows/pet";
 
@@ -29,8 +29,7 @@ export class FocusController {
       setTimeout(() => {
         if (
           !this.fileDialogOpen &&
-          !this.pet.window?.isFocused() &&
-          !this.chat.window?.isFocused()
+          !BrowserWindow.getAllWindows().some((candidate) => candidate.isFocused())
         ) {
           this.pet.setFocusIndicator(false);
           this.chat.hide();

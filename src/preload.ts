@@ -40,6 +40,7 @@ function listenChannel<K extends keyof RendererEventContract>(
 }
 
 const api: PeskApi = {
+  openExternalUrl: invokeChannel("open-external-url"),
   getSettings: invokeChannel("get-settings"),
   refreshCodexRateLimits: sendChannel("refresh-codex-rate-limits"),
   getAnimations: invokeChannel("get-animations"),

@@ -9,6 +9,7 @@ import {
 } from "./codex-renderer-helpers.js";
 import { CodexActivityRenderer } from "./codex-activity-renderer.js";
 import { CodexHistoryScrollController } from "./codex-history-scroll-controller.js";
+import { makeImageOpenable, makeMarkdownLinksOpenable } from "./codex-image-links.js";
 
 interface HistoryRendererCallbacks {
   applySelectedMessage(): void;
@@ -434,7 +435,7 @@ export class CodexHistoryRenderer {
         preview.className = "codex-queued-submission-image";
         preview.src = image.url;
         preview.alt = image.name ? `Queued image: ${image.name}` : "Queued image";
-        item.append(preview);
+        item.append(makeImageOpenable(preview));
       }
       item.title = "Queued follow-up";
       queue.append(item);
@@ -639,6 +640,7 @@ export class CodexHistoryRenderer {
             return;
           }
           content.innerHTML = renderMarkdown(message.activity.details ?? "");
+          makeMarkdownLinksOpenable(content);
           this.renderedPlanDetails.set(activityKey, message.activity.details ?? "");
         }
         if (this.isAutoScrollAllowed()) this.scrollToLatest(false);

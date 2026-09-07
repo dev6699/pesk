@@ -1,6 +1,7 @@
 /// <reference path="./types.d.ts" />
 
 export interface PeskApi {
+  openExternalUrl: (url: string) => Promise<void>;
   getSettings: () => Promise<RendererState>;
   refreshCodexRateLimits: () => void;
   getAnimations: () => Promise<AnimationFrames[]>;

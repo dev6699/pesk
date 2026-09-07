@@ -5,6 +5,11 @@ import {
   isReviewActivity,
   renderMarkdown,
 } from "./codex-renderer-helpers.js";
+import {
+  makeImageOpenable,
+  makeMarkdownImagesOpenable,
+  makeMarkdownLinksOpenable,
+} from "./codex-image-links.js";
 
 export class CodexActivityRenderer {
   /** Renders markdown, attachments, and activity details for a message. */
@@ -56,6 +61,7 @@ export class CodexActivityRenderer {
       const body = document.createElement("div");
       body.className = "codex-plan-content codex-markdown";
       body.innerHTML = renderMarkdown(message.activity.details ?? "");
+      makeMarkdownLinksOpenable(body);
       details.append(body);
       return details;
     }
@@ -95,7 +101,7 @@ export class CodexActivityRenderer {
       preview.className = "codex-message-image";
       preview.src = image.url;
       preview.alt = image.name ? `Attached image: ${image.name}` : "Attached image";
-      content.append(preview);
+      content.append(makeImageOpenable(preview));
     }
     return content;
   }
@@ -103,6 +109,8 @@ export class CodexActivityRenderer {
   /** Renders assistant Markdown synchronously. */
   renderAssistantContent(content: HTMLElement, text: string): void {
     content.innerHTML = renderMarkdown(text);
+    makeMarkdownImagesOpenable(content);
+    makeMarkdownLinksOpenable(content);
   }
 
   /** Creates the expandable file-change activity presentation. */

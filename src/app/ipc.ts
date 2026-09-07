@@ -9,6 +9,15 @@ export function registerIpcHandlers(context: ApplicationContext): void {
   const { codex, pet, chat, presets, menu, webServer, state, focus } = context;
 
   // General application and renderer state
+  registerInvoke("open-external-url", (_event, url) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+      return shell.openExternal(parsed.toString());
+    } catch {
+      return;
+    }
+  });
   registerInvoke("get-settings", () => state.getState());
   registerInvoke("get-animations", () => pet.getAnimations());
   registerInvoke("get-chat-size", () => chat.getSize());

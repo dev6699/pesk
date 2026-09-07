@@ -25,6 +25,7 @@ export interface PresetInfo {
 }
 
 export interface IpcInvokeContract {
+  "open-external-url": { args: [url: string]; result: void };
   "get-settings": { args: []; result: RendererState };
   "get-animations": { args: []; result: AnimationFrames[] };
   "get-chat-size": { args: []; result: ChatSize };

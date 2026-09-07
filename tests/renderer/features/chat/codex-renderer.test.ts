@@ -110,6 +110,7 @@ function makeRenderer(
   elements.history.scrollBy = jest.fn();
   window.peskApi = {
     ...window.peskApi,
+    openExternalUrl: jest.fn(async () => undefined),
     selectCodexThread: jest.fn(),
     loadOlderCodexHistory: jest.fn(async () => false),
     setCodexCollaborationMode: jest.fn(),
@@ -276,6 +277,24 @@ test("renders session state, history, activities, approvals, and token usage", (
   expect(elements.history.querySelector(".codex-approval-pending")).not.toBeNull();
   expect(elements.tokenUsage.textContent).toContain("In 1.2k");
   expect(elements.tokenUsage.textContent).toContain("gpt-test");
+});
+
+test("opens Markdown images through the image opener", () => {
+  const { renderer, elements } = makeRenderer();
+  const settings = defaultRendererState();
+  settings.codex.threads.current.thread.messages = [
+    {
+      role: "assistant",
+      text: "![Diagram](https://example.com/diagram.png)",
+    },
+  ];
+
+  renderer.updateState(settings);
+
+  const image = elements.history.querySelector<HTMLImageElement>(".codex-image-link");
+  expect(image).not.toBeNull();
+  image?.click();
+  expect(window.peskApi.openExternalUrl).toHaveBeenCalledWith("https://example.com/diagram.png");
 });
 
 test("does not replace rendered history with a stale shorter snapshot", () => {
@@ -3658,6 +3677,14 @@ test("renders attached images in user message history", () => {
     src: "data:image/png;base64,abc",
     alt: "Attached image: screen.png",
   });
+  const createObjectURL = jest.fn(() => "blob:image");
+  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+  const open = jest.spyOn(window, "open").mockImplementation(() => window);
+  elements.history.querySelector<HTMLImageElement>(".codex-image-link")?.click();
+  expect(createObjectURL).toHaveBeenCalled();
+  expect(open).toHaveBeenCalledWith("blob:image", "_blank", "noopener,noreferrer");
+  delete (URL as unknown as { createObjectURL?: unknown }).createObjectURL;
+  open.mockRestore();
 });
 
 test("keeps web chat input focused before and after an async submission", async () => {

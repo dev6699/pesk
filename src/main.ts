@@ -1,7 +1,20 @@
-import { app } from "electron";
+import { app, Menu } from "electron";
 import { PeskApplication } from "./app/application";
 
 const application = new PeskApplication();
+
+app.on("browser-window-created", (_event, window) => {
+  window.webContents.on("context-menu", (event, params) => {
+    if (params.mediaType !== "image") return;
+    event.preventDefault();
+    Menu.buildFromTemplate([
+      {
+        label: "Copy image",
+        click: () => window.webContents.copyImageAt(params.x, params.y),
+      },
+    ]).popup({ window });
+  });
+});
 
 app.whenReady().then(() => {
   if (process.platform === "win32" && app.isPackaged) {

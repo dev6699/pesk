@@ -1,3 +1,5 @@
+import { makeImageOpenable } from "./codex-image-links.js";
+
 export class CodexAttachmentRenderer {
   private pendingImages: Array<{ url: string; name: string }> = [];
 
@@ -99,7 +101,7 @@ export class CodexAttachmentRenderer {
         this.pendingImages.splice(index, 1);
         this.renderImageAttachments();
       });
-      item.append(preview, name, remove);
+      item.append(makeImageOpenable(preview), name, remove);
       this.imageAttachments?.append(item);
     });
   }
