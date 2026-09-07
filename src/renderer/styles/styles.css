@@ -137,6 +137,33 @@ body {
   background: transparent;
 }
 
+/* Shared renderer scrollbar styling. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-corner {
+  display: none;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--border-subtle);
+}
+
 body {
   user-select: none;
   position: relative;
@@ -440,8 +467,6 @@ body.chat-only #codex-chat {
   border-radius: 6px;
   background: var(--surface-focus);
   box-shadow: 0 6px 16px var(--shadow-heavy);
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-subtle) transparent;
 }
 
 .codex-session-menu [role="option"] {
@@ -712,28 +737,6 @@ body.chat-only #codex-chat {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-subtle) transparent;
-}
-
-.codex-approval-command::-webkit-scrollbar {
-  width: 6px;
-  background: transparent;
-}
-
-.codex-approval-command::-webkit-scrollbar-button,
-.codex-approval-command::-webkit-scrollbar-corner {
-  display: none;
-  background: transparent;
-}
-
-.codex-approval-command::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.codex-approval-command::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: var(--border-subtle);
 }
 
 .codex-approval-command:focus-visible {
@@ -1062,8 +1065,6 @@ body.chat-only #codex-chat {
   padding: 8px;
   overflow-y: auto;
   overflow-anchor: none;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-subtle) transparent;
   scroll-padding-bottom: 28px;
   padding-bottom: 0;
 }
@@ -1850,6 +1851,31 @@ body.chat-only #codex-chat {
   display: none;
 }
 
+#codex-file-suggestions {
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+#codex-file-suggestions::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+#codex-file-suggestions::-webkit-scrollbar-button,
+#codex-file-suggestions::-webkit-scrollbar-corner {
+  display: none;
+  background: transparent;
+}
+
+#codex-file-suggestions::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#codex-file-suggestions::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--border-subtle);
+}
+
 .codex-file-suggestion {
   position: static;
   align-self: stretch;
@@ -2061,7 +2087,6 @@ body.chat-only #codex-chat {
   overflow-y: auto;
   white-space: pre-line;
   overflow-wrap: anywhere;
-  scrollbar-width: thin;
 }
 
 #codex-permission-actions {

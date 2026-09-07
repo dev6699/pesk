@@ -43,6 +43,33 @@ body {
   overflow: hidden;
 }
 
+/* Shared menu scrollbar styling. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--menu-border-subtle) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-corner {
+  display: none;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--menu-border-subtle);
+}
+
 main {
   position: relative;
   min-height: calc(100vh - 32px);
@@ -154,8 +181,6 @@ h2 {
   max-height: calc(100vh - 220px);
   overflow-y: auto;
   padding-right: 6px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--menu-border-subtle) transparent;
 }
 
 .theme-selector {
@@ -222,12 +247,6 @@ h2 {
   border-color: var(--menu-action-muted);
   outline: none;
   background: var(--menu-input-focus-surface);
-}
-
-#controls::-webkit-scrollbar,
-#animations::-webkit-scrollbar,
-#presets::-webkit-scrollbar {
-  width: 8px;
 }
 
 #pairing-qr {
@@ -301,13 +320,6 @@ h2 {
   width: auto;
   padding: 5px 8px;
   font-size: 12px;
-}
-
-#controls::-webkit-scrollbar-thumb,
-#animations::-webkit-scrollbar-thumb,
-#presets::-webkit-scrollbar-thumb {
-  border-radius: 8px;
-  background: var(--menu-border-subtle);
 }
 
 [hidden] {
