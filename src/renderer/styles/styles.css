@@ -980,13 +980,17 @@ body.chat-only #codex-chat {
   margin: 0 !important;
   padding: 0 0 0 5px !important;
   list-style-position: inside;
-  line-height: 0.9;
+  line-height: 1.3;
 }
 
 .codex-markdown li {
   margin: 0 !important;
   padding: 0 0 0 2px !important;
-  line-height: 1;
+  line-height: 1.3;
+}
+
+.codex-markdown li + li {
+  margin-top: 4px !important;
 }
 
 .codex-markdown li > p {
@@ -995,12 +999,12 @@ body.chat-only #codex-chat {
 
 .codex-markdown p + ul,
 .codex-markdown p + ol {
-  margin-top: -1em !important;
+  margin-top: -1.2em !important;
 }
 
 .codex-markdown ul + p,
 .codex-markdown ol + p {
-  margin-top: -1em !important;
+  margin-top: -1.2em !important;
 }
 
 .codex-markdown p {
