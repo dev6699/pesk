@@ -494,11 +494,12 @@ export class CodexThread {
     const restored: CodexMessage[] = [];
     for (const turn of [...turns].sort(comparePersistedTurns)) {
       const turnId = stringValue(turn.id);
+      const turnStartedAt = numberValue(turn.startedAt ?? turn.createdAt);
       const timestamp =
-        typeof turn.createdAt === "number"
-          ? turn.createdAt < 10_000_000_000
-            ? turn.createdAt * 1000
-            : turn.createdAt
+        turnStartedAt !== undefined
+          ? turnStartedAt < 10_000_000_000
+            ? turnStartedAt * 1000
+            : turnStartedAt
           : Date.now();
       const items = records(turn.items);
       const turnRestored: CodexMessage[] = [];

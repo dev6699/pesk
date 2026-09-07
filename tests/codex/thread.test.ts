@@ -261,6 +261,25 @@ describe("CodexThread", () => {
     );
   });
 
+  test("uses the persisted turn start time for restored message timestamps", () => {
+    const thread = new CodexThread("thread-1");
+
+    thread.restoreTurns([
+      {
+        id: "turn-1",
+        startedAt: 1_700_000_000,
+        items: [{ type: "agentMessage", text: "persisted answer" }],
+      },
+    ]);
+
+    expect(thread.state.history).toEqual([
+      expect.objectContaining({
+        text: "persisted answer",
+        timestamp: 1_700_000_000_000,
+      }),
+    ]);
+  });
+
   test("keeps the active-turn prompt visible when history is reloaded", () => {
     const thread = new CodexThread("thread-1");
     thread.addUserMessage("run this command");
