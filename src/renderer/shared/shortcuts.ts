@@ -14,6 +14,7 @@ export interface ShortcutDefinition {
 export const SHORTCUTS = {
   menu: { key: "ArrowDown", accelerator: "Ctrl+Down" },
   petFocus: { key: "ArrowUp", accelerator: "Ctrl+Up" },
+  chatLock: { key: "l", ctrl: true, shift: true, accelerator: "Ctrl+Shift+L" },
   sessionPrevious: { key: "ArrowLeft", ctrl: true },
   sessionNext: { key: "ArrowRight", ctrl: true },
   focusUserInput: { key: "ArrowUp", ctrl: true },
@@ -72,6 +73,6 @@ export function matchesShortcut(
   );
 }
 
-export function shortcutAccelerator(id: "menu" | "petFocus"): string {
+export function shortcutAccelerator(id: "menu" | "petFocus" | "chatLock"): string {
   return SHORTCUTS[id].accelerator as string;
 }

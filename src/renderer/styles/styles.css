@@ -228,7 +228,6 @@ body:not(.chat-only) #codex-chat {
 body.chat-only #chat {
   width: var(--chat-width, 330px);
   height: var(--chat-height, 360px);
-  min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
   overflow: hidden;
@@ -475,6 +474,28 @@ body.chat-only #codex-chat {
 #codex-session-copy:disabled {
   cursor: default;
   opacity: 0.45;
+}
+
+#codex-chat-lock {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-input);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  font:
+    14px/1 system-ui,
+    sans-serif;
+}
+
+#codex-chat-lock.chat-lock-active {
+  border-color: var(--status-warning-strong);
+  color: var(--status-warning-strong);
 }
 
 #codex-token-usage-row {
@@ -775,6 +796,7 @@ body.chat-only #codex-chat {
 #codex-user-input input:focus-visible,
 #codex-user-input button:focus-visible,
 #codex-session-copy:focus-visible,
+#codex-chat-lock:focus-visible,
 #codex-session-select:focus-visible,
 #codex-chat-input:focus-visible {
   outline: 2px solid var(--focus-ring);

@@ -16,6 +16,7 @@ export interface RendererEventContract {
   "pet-codex-status-sound": [];
   "codex-input-focus": [];
   "codex-user-input-focus": [];
+  "chat-lock-changed": [locked: boolean];
   "settings-changed": [state: RendererState];
   "codex-stream-delta": [delta: CodexStreamDelta];
 }
@@ -29,6 +30,7 @@ export interface IpcInvokeContract {
   "get-settings": { args: []; result: RendererState };
   "get-animations": { args: []; result: AnimationFrames[] };
   "get-chat-size": { args: []; result: ChatSize };
+  "get-chat-lock": { args: []; result: boolean };
   "get-presets": { args: []; result: PresetInfo[] };
   "set-theme": { args: [themeName: string]; result: RendererState };
   "create-pairing": { args: [name: string]; result: PairingInfo | undefined };
@@ -91,6 +93,7 @@ export interface IpcEventContract {
   "focus-pet": [];
   "unfocus-pesk": [];
   "focus-codex-input": [];
+  "toggle-chat-lock": [];
   "chat-file-dialog": [open: boolean];
   "select-codex-thread": [id: string];
   "set-codex-collaboration-mode": [mode: "default" | "plan"];

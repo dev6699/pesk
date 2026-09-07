@@ -45,6 +45,7 @@ const api: PeskApi = {
   refreshCodexRateLimits: sendChannel("refresh-codex-rate-limits"),
   getAnimations: invokeChannel("get-animations"),
   getChatSize: invokeChannel("get-chat-size"),
+  getChatLock: invokeChannel("get-chat-lock"),
   movePet: sendChannel("move-pet"),
   startDrag: sendChannel("drag-start"),
   endDrag: sendChannel("drag-end"),
@@ -67,6 +68,7 @@ const api: PeskApi = {
   loadOlderCodexHistory: invokeChannel("load-older-codex-history"),
   setCodexCollaborationMode: sendChannel("set-codex-collaboration-mode"),
   focusCodexInput: sendChannel("focus-codex-input"),
+  toggleChatLock: sendChannel("toggle-chat-lock"),
   setChatFileDialogOpen: sendChannel("chat-file-dialog"),
   implementCodexPlan: invokeChannel("implement-codex-plan"),
   respondCodexUserInput: sendChannel("respond-codex-user-input"),
@@ -101,6 +103,7 @@ const api: PeskApi = {
   onPetCodexStatusSound: listenChannel("pet-codex-status-sound"),
   onCodexInputFocus: listenChannel("codex-input-focus"),
   onCodexUserInputFocus: listenChannel("codex-user-input-focus"),
+  onChatLockChanged: listenChannel("chat-lock-changed"),
   onSettingsChanged: listenChannel("settings-changed"),
   onCodexStreamDelta: listenChannel("codex-stream-delta"),
 } satisfies Window["peskApi"];

@@ -257,11 +257,12 @@ options.
 
 #### Global and window controls
 
-| Shortcut    | Action                                         |
-| ----------- | ---------------------------------------------- |
-| `Ctrl+Down` | Open the Pesk menu                             |
-| `Ctrl+Up`   | Focus the pet, chat input, or pending question |
-| `Escape`    | Hide chat and unfocus the pet                  |
+| Shortcut       | Action                                         |
+| -------------- | ---------------------------------------------- |
+| `Ctrl+Down`    | Open the Pesk menu                             |
+| `Ctrl+Up`      | Focus the pet, chat input, or pending question |
+| `Ctrl+Shift+L` | Lock or unlock chat auto-hide on blur          |
+| `Escape`       | Hide chat and unfocus the pet                  |
 
 #### Chat history and navigation
 

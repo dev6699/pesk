@@ -36,6 +36,7 @@ test("supports Ctrl or Cmd shortcuts", () => {
 test("keeps Electron accelerator defaults centralized", () => {
   expect(SHORTCUTS.menu.accelerator).toBe("Ctrl+Down");
   expect(SHORTCUTS.petFocus.accelerator).toBe("Ctrl+Up");
+  expect(SHORTCUTS.chatLock.accelerator).toBe("Ctrl+Shift+L");
 });
 
 test.each(Object.keys(SHORTCUTS) as ShortcutId[])("matches the registered definition: %s", (id) => {

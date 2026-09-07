@@ -21,6 +21,7 @@ export function registerIpcHandlers(context: ApplicationContext): void {
   registerInvoke("get-settings", () => state.getState());
   registerInvoke("get-animations", () => pet.getAnimations());
   registerInvoke("get-chat-size", () => chat.getSize());
+  registerInvoke("get-chat-lock", () => focus.isChatLocked());
   registerInvoke("get-presets", () => presets.getPresets());
   registerInvoke("set-theme", (_event, themeName) => {
     if (typeof themeName === "string") context.setTheme(themeName);
@@ -61,6 +62,7 @@ export function registerIpcHandlers(context: ApplicationContext): void {
     focus.wireChatWindow();
     chat.focusInput(pet.window?.getBounds());
   });
+  registerEvent("toggle-chat-lock", () => focus.toggleChatLock());
   registerEvent("chat-file-dialog", (_event, open) => focus.setFileDialogOpen(open === true));
 
   // Codex threads, turns, prompts, and responses

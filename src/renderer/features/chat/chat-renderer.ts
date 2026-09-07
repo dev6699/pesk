@@ -23,6 +23,22 @@ const codex = new CodexRenderer(
   document.getElementById("codex-command-mode") as HTMLElement,
 );
 
+const chatLockButton = document.getElementById("codex-chat-lock") as HTMLButtonElement | null;
+if (chatLockButton) {
+  const button = chatLockButton;
+  function updateChatLockIndicator(locked: boolean): void {
+    button.textContent = locked ? "🔒" : "🔓";
+    button.setAttribute("aria-label", locked ? "Unlock chat window" : "Lock chat window");
+    button.title = locked
+      ? "Allow chat to hide when it loses focus (Ctrl+Shift+L)"
+      : "Keep chat visible when it loses focus (Ctrl+Shift+L)";
+    button.classList.toggle("chat-lock-active", locked);
+  }
+  button.addEventListener("click", () => window.peskApi.toggleChatLock());
+  window.peskApi.onChatLockChanged(updateChatLockIndicator);
+  void window.peskApi.getChatLock().then(updateChatLockIndicator);
+}
+
 if (document.body.classList.contains("web-chat")) {
   requestAnimationFrame(() => {
     if (

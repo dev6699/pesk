@@ -212,5 +212,6 @@ export class PeskApplication implements ApplicationContext {
         Boolean(this.codex.getState().threads.current.thread.pendingUserInput),
       ),
     );
+    globalShortcut.register(shortcutAccelerator("chatLock"), () => this.focus.toggleChatLock());
   }
 }

@@ -6,6 +6,7 @@ export interface PeskApi {
   refreshCodexRateLimits: () => void;
   getAnimations: () => Promise<AnimationFrames[]>;
   getChatSize: () => Promise<{ width: number; height: number }>;
+  getChatLock: () => Promise<boolean>;
   movePet: (dx: number, dy: number) => void;
   startDrag: () => void;
   endDrag: () => void;
@@ -39,6 +40,7 @@ export interface PeskApi {
   loadOlderCodexHistory: () => Promise<boolean>;
   setCodexCollaborationMode: (mode: "default" | "plan") => void;
   focusCodexInput: () => void;
+  toggleChatLock: () => void;
   setChatFileDialogOpen: (open: boolean) => void;
   implementCodexPlan: (planText: string, clearContext: boolean) => Promise<RendererState>;
   respondCodexUserInput: (requestId: string | number, answers: Record<string, string[]>) => void;
@@ -88,6 +90,7 @@ export interface PeskApi {
   onPetCodexStatusSound: (callback: () => void) => void;
   onCodexInputFocus: (callback: () => void) => void;
   onCodexUserInputFocus: (callback: () => void) => void;
+  onChatLockChanged: (callback: (locked: boolean) => void) => void;
   onSettingsChanged: (callback: (state: RendererState) => void) => void;
   onCodexStreamDelta: (callback: (delta: CodexStreamDelta) => void) => void;
 }

@@ -6,6 +6,7 @@ import type { PetWindowController } from "../windows/pet";
 export class FocusController {
   private wiredWindow: BrowserWindow | null = null;
   private fileDialogOpen = false;
+  private chatLocked = false;
 
   constructor(
     private readonly chat: ChatWindowController,
@@ -32,7 +33,7 @@ export class FocusController {
           !BrowserWindow.getAllWindows().some((candidate) => candidate.isFocused())
         ) {
           this.pet.setFocusIndicator(false);
-          this.chat.hide();
+          if (!this.chatLocked) this.chat.hide();
         }
       }, 50);
     });
@@ -40,6 +41,15 @@ export class FocusController {
 
   setFileDialogOpen(open: boolean): void {
     this.fileDialogOpen = open;
+  }
+
+  isChatLocked(): boolean {
+    return this.chatLocked;
+  }
+
+  toggleChatLock(): void {
+    this.chatLocked = !this.chatLocked;
+    this.chat.window?.webContents.send("chat-lock-changed", this.chatLocked);
   }
 
   routeGlobalShortcut(hasPendingUserInput: boolean): void {

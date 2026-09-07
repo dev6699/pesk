@@ -1,5 +1,9 @@
 /// <reference types="jest" />
 
+jest.mock("electron", () => ({
+  BrowserWindow: { getAllWindows: jest.fn(() => []) },
+}));
+
 import { FocusController } from "../../src/app/focus";
 
 function makeTargets(focused: boolean) {
@@ -10,7 +14,11 @@ function makeTargets(focused: boolean) {
       focusInput: jest.fn(),
       hide: jest.fn(),
     },
-    pet: { window: null, focus: jest.fn() },
+    pet: {
+      window: null,
+      focus: jest.fn(),
+      setFocusIndicator: jest.fn(),
+    },
   };
 }
 
@@ -61,4 +69,28 @@ test("does not hide chat while a file dialog is open", () => {
   controller.wireChatWindow();
 
   expect(chat.hide).not.toHaveBeenCalled();
+});
+
+test("does not hide chat on blur while chat lock is active", () => {
+  jest.useFakeTimers();
+  const { chat, pet } = makeTargets(true);
+  const chatWindow = {
+    isFocused: jest.fn(() => false),
+    webContents: { send: jest.fn() },
+    on: jest.fn((event: string, callback: () => void) => {
+      if (event === "blur") callback();
+    }),
+  };
+  chat.window = chatWindow as never;
+  pet.window = { isFocused: jest.fn(() => false) } as never;
+  const controller = new FocusController(chat as never, pet as never);
+
+  controller.toggleChatLock();
+  controller.wireChatWindow();
+  jest.advanceTimersByTime(50);
+
+  expect(chat.hide).not.toHaveBeenCalled();
+  expect(pet.setFocusIndicator).toHaveBeenCalledWith(false);
+  expect(chatWindow.webContents.send).toHaveBeenCalledWith("chat-lock-changed", true);
+  jest.useRealTimers();
 });
