@@ -3733,6 +3733,7 @@ test("adjusts web chat form visibility on visual viewport resize", () => {
 
 test("renders approval options and completed approval states", () => {
   const { renderer, elements } = makeRenderer();
+  const longCommand = `${"/bin/bash -lc ".repeat(100)}echo approval`;
   renderer.updateState({
     ...defaultRendererState(),
     codex: {
@@ -3746,7 +3747,7 @@ test("renders approval options and completed approval states", () => {
             ...defaultRendererState().codex.threads.current.thread,
             pendingApproval: {
               requestId: 7,
-              command: "permission",
+              command: longCommand,
               reason: "Needs approval",
               options: [
                 { id: "accept", label: "Approve once", description: "" },
@@ -3758,6 +3759,12 @@ test("renders approval options and completed approval states", () => {
       },
     },
   });
+  const command = elements.userInput.querySelector<HTMLElement>(".codex-approval-command");
+  expect(command?.textContent).toBe(longCommand);
+  expect(command?.tabIndex).toBe(0);
+  expect(command?.getAttribute("role")).toBe("region");
+  expect(command?.getAttribute("aria-label")).toBe("Command requiring approval");
+  expect(elements.userInput.querySelector("button[type='submit']")).not.toBeNull();
   const approve = elements.userInput.querySelector(
     "input[type='radio'][value='accept']",
   ) as HTMLInputElement;

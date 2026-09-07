@@ -391,8 +391,15 @@ export class CodexPromptRenderer {
     form.dataset.approvalRequestId = String(pending.requestId);
     const fieldset = document.createElement("fieldset");
     const legend = document.createElement("legend");
-    legend.textContent = pending.command || "Approval request";
+    legend.textContent = "Command requiring approval";
     fieldset.append(legend);
+    const command = document.createElement("div");
+    command.className = "codex-approval-command";
+    command.tabIndex = 0;
+    command.setAttribute("role", "region");
+    command.setAttribute("aria-label", "Command requiring approval");
+    command.textContent = pending.command || "Approval request";
+    fieldset.append(command);
     if (pending.reason) {
       const reason = document.createElement("div");
       reason.className = "codex-user-input-question";

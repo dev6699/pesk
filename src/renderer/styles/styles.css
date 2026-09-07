@@ -620,6 +620,27 @@ body.chat-only #codex-chat {
   overflow-wrap: anywhere;
 }
 
+.codex-approval-command {
+  box-sizing: border-box;
+  max-height: min(24vh, 140px);
+  margin: 3px 0 5px;
+  padding: 4px 5px;
+  border: 1px solid var(--border-very-faint);
+  border-radius: 4px;
+  background: var(--surface-muted);
+  font-size: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.codex-approval-command:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
 .codex-user-input-form label {
   display: block;
   margin: 3px 0;
