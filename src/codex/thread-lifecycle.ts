@@ -552,7 +552,7 @@ export class CodexThreadLifecycle {
       (message) => {
         this.deps.threadManager.withThread(threadId, (thread) => {
           const serverThread = message.result?.thread;
-          if (isThread(serverThread)) this.deps.threadManager.upsertThread(serverThread);
+          if (isThread(serverThread)) this.deps.threadManager.updateThread(serverThread);
           thread.syncServerThread(serverThread);
           thread.setConnected(true);
           thread.applyServerStatus(serverThread?.status ?? {});

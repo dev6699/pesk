@@ -169,6 +169,16 @@ export class CodexThreadManager {
     ]);
   }
 
+  /** Updates one server thread without changing its current display position. */
+  updateThread(thread: Thread): void {
+    const index = this.threads.findIndex((candidate) => candidate.id === thread.id);
+    if (index < 0) {
+      this.threads.unshift(thread);
+      return;
+    }
+    this.threads[index] = thread;
+  }
+
   /** Removes one server thread from the metadata collection. */
   removeThread(threadId: string): void {
     this.replaceThreads(this.threads.filter((thread) => thread.id !== threadId));

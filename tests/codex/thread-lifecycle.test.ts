@@ -74,6 +74,24 @@ test("retains the model returned while resuming a thread", () => {
   });
 });
 
+test("refreshing a selected thread does not change its display position", () => {
+  const { lifecycle, threadManager, requests } = fixture();
+  threadManager.threads.push(
+    { id: "thread-1", status: { type: "idle" } } as never,
+    { id: "thread-2", status: { type: "idle" } } as never,
+  );
+  threadManager.thread("thread-2");
+  threadManager.select("thread-2");
+
+  lifecycle.readThread("thread-2");
+  requests[0].callback({
+    id: 1,
+    result: { thread: { id: "thread-2", status: { type: "idle" } } },
+  });
+
+  expect(threadManager.threads.map((thread) => thread.id)).toEqual(["thread-1", "thread-2"]);
+});
+
 test("starts a new thread using the active working directory", () => {
   const { lifecycle, threadManager, requests } = fixture();
   threadManager.activeThread.setWorkingDirectory("/workspace/project");
