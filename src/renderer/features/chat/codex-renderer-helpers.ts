@@ -102,7 +102,35 @@ export function isSuffix(previous: string[], next: string[]): boolean {
 
 export function renderMarkdown(value: string): string {
   const html = marked.parse(value, { async: false, breaks: true, gfm: true });
-  return sanitizeMarkdownHtml(String(html));
+  const sanitized = sanitizeMarkdownHtml(String(html));
+  const template = document.createElement("template");
+  template.innerHTML = sanitized;
+  template.content.querySelectorAll<HTMLPreElement>("pre").forEach((pre) => {
+    const code = pre.querySelector<HTMLElement>(":scope > code");
+    if (
+      !code ||
+      !["language-bash", "language-shell", "language-sh"].some((name) =>
+        code.classList.contains(name),
+      )
+    ) {
+      return;
+    }
+
+    pre.classList.add("codex-markdown-code");
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "codex-code-copy";
+    copyButton.setAttribute("aria-label", "Copy code");
+    copyButton.title = "Copy code";
+    const copyIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    copyIcon.setAttribute("viewBox", "0 0 24 24");
+    copyIcon.setAttribute("aria-hidden", "true");
+    copyIcon.innerHTML =
+      '<rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path>';
+    copyButton.append(copyIcon);
+    pre.insertBefore(copyButton, code);
+  });
+  return template.innerHTML;
 }
 
 export function sanitizeMarkdownHtml(html: string): string {
@@ -153,7 +181,10 @@ export function sanitizeMarkdownHtml(html: string): string {
                   /^(https?:|data:image\/(?:png|jpe?g|gif|webp|avif);)/i.test(attribute.value)) ||
                 name === "alt" ||
                 name === "title"
-              : false;
+              : child.tagName === "CODE"
+                ? name === "class" &&
+                  /^(?:language-bash|language-shell|language-sh)$/.test(attribute.value)
+                : false;
         if (!keep) child.removeAttribute(attribute.name);
       }
       if (child.tagName === "IMG" && !child.getAttribute("src")) {
@@ -169,6 +200,22 @@ export function sanitizeMarkdownHtml(html: string): string {
   };
   visit(template.content as unknown as Element);
   return template.innerHTML;
+}
+
+/** Copies text using the Clipboard API with a desktop-compatible fallback. */
+export async function copyTextToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const copyTarget = document.createElement("textarea");
+    copyTarget.value = text;
+    copyTarget.style.position = "fixed";
+    copyTarget.style.opacity = "0";
+    document.body.append(copyTarget);
+    copyTarget.select();
+    document.execCommand("copy");
+    copyTarget.remove();
+  }
 }
 
 export function formatCommandActivity(activity: CodexActivity): string {

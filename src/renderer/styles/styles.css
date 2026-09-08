@@ -1237,6 +1237,7 @@ body.chat-only #codex-chat {
 }
 
 .codex-markdown pre {
+  position: relative;
   margin: 0;
 }
 
@@ -1245,19 +1246,59 @@ body.chat-only #codex-chat {
   padding: 7px;
   border: 1px solid var(--border-very-faint);
   border-radius: 5px;
-  overflow-x: auto;
+  overflow-x: hidden;
   background: var(--surface-code);
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.codex-code-copy {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 1;
+  display: grid;
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border-very-faint);
+  border-radius: 3px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  font:
+    11px ui-sans-serif,
+    sans-serif;
+  cursor: pointer;
+}
+
+.codex-code-copy svg {
+  width: 13px;
+  height: 13px;
+  place-self: center;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.codex-code-copy:hover,
+.codex-code-copy:focus-visible {
+  background: var(--surface-shadow-soft);
+}
+
+.codex-code-copy-copied {
+  color: var(--status-success);
 }
 
 .codex-markdown-code code {
   display: block;
   max-width: none;
-  padding: 0;
+  padding: 0 52px 0 0;
   background: transparent;
   color: inherit;
-  overflow-wrap: normal;
-  white-space: pre;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .codex-markdown a {

@@ -11,6 +11,7 @@ import {
   formatRateLimitDetails,
   formatReset,
   formatTokens,
+  copyTextToClipboard,
 } from "./codex-renderer-helpers.js";
 import { openProjectManager } from "./project-manager.js";
 import { openProjectThreadPrompt } from "./project-thread-renderer.js";
@@ -301,6 +302,34 @@ export class CodexRenderer {
 
   /** Wires history scrolling and older-history pagination. */
   private setupHistoryControls(): void {
+    this.history.addEventListener("click", (event) => {
+      const copyButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
+        ".codex-code-copy",
+      );
+      if (!copyButton || !this.history.contains(copyButton)) return;
+      const code = copyButton.parentElement?.querySelector<HTMLElement>(":scope > code");
+      if (!code) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void copyTextToClipboard(code.textContent ?? "").then(() => {
+        const icon = copyButton.querySelector("svg");
+        if (icon) {
+          icon.innerHTML = '<path d="m5 12 4 4L19 6"></path>';
+        }
+        copyButton.classList.add("codex-code-copy-copied");
+        copyButton.setAttribute("aria-label", "Copied");
+        copyButton.title = "Copied";
+        window.setTimeout(() => {
+          if (icon) {
+            icon.innerHTML =
+              '<rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path>';
+          }
+          copyButton.classList.remove("codex-code-copy-copied");
+          copyButton.setAttribute("aria-label", "Copy code");
+          copyButton.title = "Copy code";
+        }, 1600);
+      });
+    });
     this.history.addEventListener("scroll", () => {
       this.historyRenderer.handleHistoryScroll();
       if (
@@ -752,18 +781,7 @@ export class CodexRenderer {
   private async copySelectedMessageToClipboard(): Promise<void> {
     const text = this.selectedMessageText();
     if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const copyTarget = document.createElement("textarea");
-      copyTarget.value = text;
-      copyTarget.style.position = "fixed";
-      copyTarget.style.opacity = "0";
-      document.body.append(copyTarget);
-      copyTarget.select();
-      document.execCommand("copy");
-      copyTarget.remove();
-    }
+    await copyTextToClipboard(text);
   }
 
   /** Reports whether the document currently contains selected text. */
@@ -785,18 +803,7 @@ export class CodexRenderer {
   private async copySessionId(): Promise<void> {
     const sessionId = this.sessionSelect.value;
     if (!sessionId) return;
-    try {
-      await navigator.clipboard.writeText(sessionId);
-    } catch {
-      const copyTarget = document.createElement("textarea");
-      copyTarget.value = sessionId;
-      copyTarget.style.position = "fixed";
-      copyTarget.style.opacity = "0";
-      document.body.append(copyTarget);
-      copyTarget.select();
-      document.execCommand("copy");
-      copyTarget.remove();
-    }
+    await copyTextToClipboard(sessionId);
     const originalLabel = this.sessionCopy.textContent;
     this.sessionCopy.textContent = "Copied";
     window.setTimeout(() => {
