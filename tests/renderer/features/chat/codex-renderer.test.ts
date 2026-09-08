@@ -213,6 +213,40 @@ test("supports keyboard navigation and selection in the session picker", () => {
   expect(menu?.hidden).toBe(true);
 });
 
+test("shows only the pending thread as selected during shortcut navigation", () => {
+  const { renderer } = makeRenderer();
+  const base = defaultRendererState();
+  renderer.updateState({
+    ...base,
+    codex: {
+      ...base.codex,
+      threads: {
+        ...base.codex.threads,
+        selectedId: "thread-1",
+        items: [{ id: "thread-1" }, { id: "thread-2" }],
+      },
+    },
+  });
+
+  const trigger = document.querySelector<HTMLButtonElement>(".codex-session-trigger");
+  trigger?.click();
+  renderer.handleKeydown(
+    new KeyboardEvent("keydown", {
+      key: "ArrowRight",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+
+  const selected = Array.from(
+    document.querySelectorAll<HTMLElement>('.codex-session-menu [role="option"]'),
+  ).filter((option) => option.getAttribute("aria-selected") === "true");
+  expect(selected).toHaveLength(1);
+  expect(selected[0]?.dataset.value).toBe("thread-2");
+  expect(window.peskApi.selectCodexThread).toHaveBeenCalledWith("thread-2");
+});
+
 afterEach(() => {
   jest.useRealTimers();
   document.body.replaceChildren();

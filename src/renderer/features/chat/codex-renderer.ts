@@ -265,6 +265,11 @@ export class CodexRenderer {
     if (threadId) window.peskApi.selectCodexThread(threadId);
   }
 
+  /** Returns the thread currently targeted by visible session navigation. */
+  private sessionPickerSelectionId(): string {
+    return this.pendingSessionId ?? this.sessionSelect.value;
+  }
+
   /** Closes the custom session menu. */
   private closeSessionMenu(): void {
     this.toggleSessionMenu(false);
@@ -276,13 +281,14 @@ export class CodexRenderer {
     this.sessionTrigger.textContent = selected?.textContent ?? "No active session";
     this.sessionTrigger.title = selected?.textContent ?? "No active session";
     this.sessionMenu.replaceChildren();
+    const selectedId = this.sessionPickerSelectionId();
     for (const [index, option] of Array.from(this.sessionSelect.options).entries()) {
       const item = document.createElement("div");
       item.id = `codex-session-option-${index}`;
       item.setAttribute("role", "option");
       item.dataset.value = option.value;
       item.title = option.title;
-      item.setAttribute("aria-selected", String(option.value === this.sessionSelect.value));
+      item.setAttribute("aria-selected", String(option.value === selectedId));
       const title = document.createElement("div");
       title.className = "codex-session-thread-title";
       title.textContent = option.textContent;
@@ -297,7 +303,13 @@ export class CodexRenderer {
       }
       this.sessionMenu.append(item);
     }
-    if (!this.sessionMenu.hidden) this.updateSessionMenuHighlight();
+    if (!this.sessionMenu.hidden) {
+      const selectedIndex = Array.from(this.sessionSelect.options).findIndex(
+        (option) => option.value === selectedId,
+      );
+      if (selectedIndex >= 0) this.sessionMenuIndex = selectedIndex;
+      this.updateSessionMenuHighlight();
+    }
   }
 
   /** Wires history scrolling and older-history pagination. */
@@ -656,6 +668,7 @@ export class CodexRenderer {
     const nextId = this.sessionNavigationIds[currentIndex + direction];
     if (!nextId) return false;
     this.pendingSessionId = nextId;
+    this.renderSessionPicker();
     window.peskApi.selectCodexThread(nextId);
     return true;
   }
