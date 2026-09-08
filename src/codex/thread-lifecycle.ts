@@ -101,7 +101,7 @@ export class CodexThreadLifecycle {
     const accepted = this.request<ThreadListResponse>(
       {
         method: "thread/list",
-        params: { limit: 10, sortKey: "recency_at", sortDirection: "desc" },
+        params: { limit: 20, sortKey: "recency_at", sortDirection: "desc" },
       },
       (message) => {
         this.discoveryPending = false;
