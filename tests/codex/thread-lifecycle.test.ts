@@ -7,8 +7,9 @@ import {
 } from "../../src/codex/thread-lifecycle";
 import { CodexThreadManager } from "../../src/codex/thread-manager";
 import type { JsonRpcResponse } from "../../src/codex/protocol";
+import { REMOTE_TERMINAL_TOOLS } from "../../src/features/remote-terminal/tools";
 
-function fixture(requestAccepted = true) {
+function fixture(requestAccepted = true, dynamicTools = REMOTE_TERMINAL_TOOLS) {
   const threadManager = new CodexThreadManager();
   const projectManager = new CodexProjectManager({
     request: jest.fn(() => true),
@@ -36,6 +37,7 @@ function fixture(requestAccepted = true) {
     cancelModelPicker: jest.fn(),
     setStarting: jest.fn(),
     startTurn: jest.fn(),
+    dynamicTools,
   });
   return { lifecycle, threadManager, requests, onStateChanged };
 }
@@ -101,6 +103,36 @@ test("starts a new thread using the active working directory", () => {
     method: "thread/start",
     params: { cwd: "/workspace/project", serviceName: "pesk" },
   });
+});
+
+test("passes configured dynamic tools to new threads", () => {
+  const { lifecycle, threadManager, requests } = fixture(true, REMOTE_TERMINAL_TOOLS);
+  threadManager.activeThread.setWorkingDirectory("/workspace/project");
+
+  expect(lifecycle.startNew(undefined)).toBe(true);
+  expect(requests[0].message).toMatchObject({
+    method: "thread/start",
+    params: {
+      cwd: "/workspace/project",
+      dynamicTools: [
+        {
+          type: "namespace",
+          name: "remote_terminal",
+          tools: [
+            { type: "function", name: "read" },
+            { type: "function", name: "execute" },
+          ],
+        },
+      ],
+    },
+  });
+
+  expect(lifecycle.startNew(undefined)).toBe(true);
+  expect(requests[1].message).toMatchObject({
+    method: "thread/start",
+    params: { cwd: "/workspace/project" },
+  });
+  expect((requests[1].message.params as { dynamicTools?: unknown }).dynamicTools).toBeDefined();
 });
 
 test("sends archive and delete requests for the selected thread", () => {

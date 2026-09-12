@@ -1,6 +1,7 @@
 import { CodexRenderer } from "./codex-renderer.js";
 import { defaultRendererState } from "../../shared/default-settings.js";
 import { matchesShortcut } from "../../shared/shortcuts.js";
+import { setupRtermRenderer } from "./rterm-renderer.js";
 import { applyRendererTheme } from "../../shared/theme.js";
 
 const codex = new CodexRenderer(
@@ -74,12 +75,14 @@ document.addEventListener("keydown", (event) => {
 window.peskApi.onSettingsChanged((next) => {
   applyRendererTheme(next.assets.theme);
   codex.updateState(next);
+  rtermRenderer?.setThread(next.codex.threads.selectedId);
   updateInterruptButton(next);
   if (next.codex.threads.current.thread.connected && !next.codex.account.rateLimits) {
     void window.peskApi.refreshCodexRateLimits();
   }
 });
 window.peskApi.onCodexStreamDelta((delta) => codex.applyStreamDelta(delta));
+const rtermRenderer = setupRtermRenderer();
 window.peskApi.onCodexInputFocus(() => codex.focusInput());
 window.peskApi.onCodexUserInputFocus(() => codex.focusUserInputOption());
 
@@ -91,6 +94,7 @@ void window.peskApi.getChatSize().then(({ width, height }) => {
 void window.peskApi.getSettings().then((next) => {
   applyRendererTheme(next.assets.theme);
   codex.updateState(next);
+  rtermRenderer?.setThread(next.codex.threads.selectedId);
   updateInterruptButton(next);
   if (next.codex.threads.current.thread.connected && !next.codex.account.rateLimits) {
     void window.peskApi.refreshCodexRateLimits();

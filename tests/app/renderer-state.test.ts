@@ -60,6 +60,7 @@ function fixture() {
     () => petWindow as never,
     () => chatWindow as never,
     webServer as never,
+    { remoteTerminal: { enabled: false } },
   );
   return { publisher, firstState, getCodexState, petWindow, chatWindow, webServer };
 }

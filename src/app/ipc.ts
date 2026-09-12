@@ -19,6 +19,20 @@ export function registerIpcHandlers(context: ApplicationContext): void {
     }
   });
   registerInvoke("get-settings", () => state.getState());
+  registerInvoke("toggle-rterm-connection", () => context.rterm.toggleConnection());
+  registerInvoke("rterm-authenticate", (_event, code) =>
+    typeof code === "string" ? context.rterm.authenticate(code) : false,
+  );
+  registerInvoke("rterm-write", (_event, input) =>
+    typeof input === "string" ? context.rterm.write(input) : false,
+  );
+  registerInvoke("get-rterm", () => context.rterm.getSnapshot());
+  registerInvoke("get-rterm-embed-url", () => context.rterm.getEmbedUrl());
+  registerInvoke("rterm-resize", (_event, cols, rows) =>
+    Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0
+      ? context.rterm.resize(cols, rows)
+      : false,
+  );
   registerInvoke("get-animations", () => pet.getAnimations());
   registerInvoke("get-chat-size", () => chat.getSize());
   registerInvoke("get-chat-lock", () => focus.isChatLocked());

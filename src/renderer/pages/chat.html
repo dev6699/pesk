@@ -58,6 +58,21 @@
             Plan
           </span>
         </div>
+        <section id="rterm-panel" aria-label="Remote terminal" hidden>
+          <div
+            id="rterm-resize-handle"
+            role="separator"
+            aria-label="Resize remote terminal"
+            aria-orientation="horizontal"
+            tabindex="0"
+          ></div>
+          <div id="rterm-toolbar">
+            <span id="rterm-status">Terminal disconnected</span>
+            <button id="rterm-connection" type="button">Reconnect</button>
+            <button id="rterm-close" type="button">Close</button>
+          </div>
+          <iframe id="rterm-frame" title="Remote terminal" tabindex="0"></iframe>
+        </section>
         <div id="codex-read-only" aria-live="polite" hidden></div>
         <section id="codex-user-input" aria-live="assertive" hidden></section>
         <form id="codex-chat-form">

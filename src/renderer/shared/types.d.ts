@@ -68,6 +68,14 @@ interface CodexStreamDelta {
   completed?: boolean;
 }
 
+interface RtermSnapshot {
+  enabled: boolean;
+  state: "disconnected" | "connecting" | "authenticating" | "connected";
+  output: string;
+  hostLabel: string;
+  authFailed: boolean;
+}
+
 interface TokenCounts {
   totalTokens: number;
   inputTokens?: number;
@@ -230,10 +238,17 @@ interface RendererAssets {
   themeNames?: ReadonlyArray<string>;
 }
 
+interface RendererFeatures {
+  remoteTerminal: {
+    enabled: boolean;
+  };
+}
+
 interface RendererState {
   settings: SavedPeskSettings;
   codex: CodexRuntimeState;
   assets: RendererAssets;
+  features: RendererFeatures;
 }
 
 interface Window {

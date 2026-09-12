@@ -11,7 +11,8 @@ jest.mock("node:fs", () => ({
 }));
 
 import * as fs from "node:fs";
-import { getConfigDirectory } from "../../src/config/config";
+import path from "node:path";
+import { getConfigDirectory, loadConfig } from "../../src/config/config";
 
 const readFileSync = fs.readFileSync as jest.Mock;
 
@@ -30,5 +31,43 @@ describe("configuration directory", () => {
     readFileSync.mockReturnValue(JSON.stringify({ codexStatusSound: "custom.mp3" }));
 
     expect(getConfigDirectory()).toBe("/user-data");
+  });
+
+  test("loads the remote terminal feature from the nested configuration group", () => {
+    readFileSync.mockImplementation((filePath: string) => {
+      if (filePath === path.join("/app", "config.json"))
+        return JSON.stringify({
+          features: { remoteTerminal: { enabled: true, url: "ws://remote:5000/bash/ws" } },
+        });
+      throw new Error("missing user config");
+    });
+
+    expect(loadConfig().features.remoteTerminal).toEqual({
+      enabled: true,
+      url: "ws://remote:5000/bash/ws",
+    });
+  });
+
+  test("preserves bundled remote terminal settings when the user overrides one field", () => {
+    readFileSync.mockImplementation((filePath: string) => {
+      if (filePath === path.join("/app", "config.json"))
+        return JSON.stringify({
+          features: { remoteTerminal: { url: "ws://remote:5000/bash/ws" } },
+        });
+      return JSON.stringify({ features: { remoteTerminal: { enabled: true } } });
+    });
+
+    expect(loadConfig().features.remoteTerminal).toEqual({
+      enabled: true,
+      url: "ws://remote:5000/bash/ws",
+    });
+  });
+
+  test("disables the remote terminal when the feature is omitted", () => {
+    readFileSync.mockImplementation(() => {
+      throw new Error("missing config");
+    });
+
+    expect(loadConfig().features.remoteTerminal).toEqual({ enabled: false, url: "" });
   });
 });

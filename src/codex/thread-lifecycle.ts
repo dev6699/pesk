@@ -8,6 +8,7 @@ import type {
   ThreadForkResponse,
   ThreadStartResponse,
   ThreadCompactStartResponse,
+  DynamicToolSpec,
 } from "../codex-schema/v2";
 import type {
   JsonRpcResponse,
@@ -19,6 +20,7 @@ import type {
   ThreadListRequest,
   ThreadReadRequest,
   ThreadResumeRequest,
+  ThreadStartRequestWithTools,
   ThreadTurnsListRequest,
   ThreadCompactStartRequest,
 } from "./protocol";
@@ -39,11 +41,13 @@ export type ThreadLifecycleRequestInput =
   | WithoutRequestId<ThreadDeleteRequest>
   | WithoutRequestId<ThreadForkRequest>
   | WithoutRequestId<ThreadCompactStartRequest>
+  | WithoutRequestId<ThreadStartRequestWithTools>
   | WithoutRequestId<ProjectThreadStartRequest>;
 
 export interface ThreadLifecycleDependencies {
   threadManager: CodexThreadManager;
   projectManager: CodexProjectManager;
+  dynamicTools?: DynamicToolSpec[];
   request: <T>(
     message: ThreadLifecycleRequestInput,
     callback: (message: JsonRpcResponse<T>) => void,
@@ -65,9 +69,12 @@ export interface ThreadLifecycleDependencies {
  */
 export class CodexThreadLifecycle {
   private discoveryPending = false;
+  private readonly dynamicTools: DynamicToolSpec[];
 
   /** Creates a lifecycle coordinator with its manager and integration hooks. */
-  constructor(private readonly deps: ThreadLifecycleDependencies) {}
+  constructor(private readonly deps: ThreadLifecycleDependencies) {
+    this.dynamicTools = deps.dynamicTools ?? [];
+  }
 
   /** Sends a typed lifecycle request through the controller-owned transport. */
   private request<T>(
@@ -294,7 +301,11 @@ export class CodexThreadLifecycle {
     const accepted = this.request<ThreadStartResponse>(
       {
         method: "thread/start",
-        params: { cwd: standalone.snapshot().workingDirectory ?? ".", serviceName: "pesk" },
+        params: {
+          cwd: standalone.snapshot().workingDirectory ?? ".",
+          serviceName: "pesk",
+          dynamicTools: this.dynamicTools,
+        },
       },
       (message) => {
         this.deps.setStarting(false);
@@ -326,7 +337,11 @@ export class CodexThreadLifecycle {
     const accepted = this.request<ThreadStartResponse>(
       {
         method: "thread/start",
-        params: { cwd: standalone.snapshot().workingDirectory ?? ".", serviceName: "pesk" },
+        params: {
+          cwd: standalone.snapshot().workingDirectory ?? ".",
+          serviceName: "pesk",
+          dynamicTools: this.dynamicTools,
+        },
       },
       (message) => {
         this.deps.setStarting(false);
@@ -379,7 +394,12 @@ export class CodexThreadLifecycle {
     const accepted = this.request<ThreadStartResponse>(
       {
         method: "thread/start",
-        params: projectId ? { cwd, projectId, serviceName: "pesk" } : { cwd, serviceName: "pesk" },
+        params: {
+          ...(projectId ? { projectId } : {}),
+          cwd,
+          serviceName: "pesk",
+          dynamicTools: this.dynamicTools,
+        },
       },
       (message) => {
         this.deps.setStarting(false);

@@ -27,6 +27,12 @@ export interface PeskSettings {
 
 export interface AppConfig {
   codexAppServerUrl: string;
+  features: {
+    remoteTerminal: {
+      enabled: boolean;
+      url: string;
+    };
+  };
   codexStatusSound: string;
   webAccessEnabled: boolean;
   webPort: number;
@@ -55,6 +61,14 @@ export function loadRawConfig(): Record<string, any> {
     ...bundled,
     ...user,
     animations: { ...(bundled.animations ?? {}), ...(user.animations ?? {}) },
+    features: {
+      ...(bundled.features ?? {}),
+      ...(user.features ?? {}),
+      remoteTerminal: {
+        ...(bundled.features?.remoteTerminal ?? {}),
+        ...(user.features?.remoteTerminal ?? {}),
+      },
+    },
   };
 }
 
@@ -86,6 +100,7 @@ const defaultSettings: PeskSettings = {
 
 const defaultConfig: AppConfig = {
   codexAppServerUrl: "ws://127.0.0.1:4500",
+  features: { remoteTerminal: { enabled: false, url: "" } },
   codexStatusSound: "",
   webAccessEnabled: false,
   webPort: 4587,
@@ -127,6 +142,16 @@ export function loadConfig(): AppConfig {
         typeof config.codexStatusSound === "string" && config.codexStatusSound.trim()
           ? path.resolve(getConfigDirectory(), config.codexStatusSound.trim())
           : defaultConfig.codexStatusSound,
+      features: {
+        remoteTerminal: {
+          enabled: config.features?.remoteTerminal?.enabled === true,
+          url:
+            typeof config.features?.remoteTerminal?.url === "string" &&
+            /^wss?:\/\//.test(config.features.remoteTerminal.url)
+              ? config.features.remoteTerminal.url
+              : defaultConfig.features.remoteTerminal.url,
+        },
+      },
       webAccessEnabled: config.webAccessEnabled === true,
       webPort:
         typeof config.webPort === "number" &&

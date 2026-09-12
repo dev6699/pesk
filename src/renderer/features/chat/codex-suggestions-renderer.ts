@@ -1,6 +1,11 @@
 import { matchesShortcut } from "../../shared/shortcuts.js";
 
-const slashCommands = [
+export interface SlashCommand {
+  command: string;
+  description: string;
+}
+
+const slashCommands: SlashCommand[] = [
   { command: "/plan", description: "Switch to Plan mode" },
   { command: "/goal", description: "Usage: /goal [<objective>|clear|edit|pause|resume]" },
   { command: "/project", description: "Manage projects" },
@@ -30,6 +35,7 @@ export class CodexSuggestionRenderer {
     private readonly getWorkingDirectory: () => string | undefined,
     private readonly onResize: () => void,
     private readonly onCommandMode: () => void,
+    private readonly additionalCommands: SlashCommand[] = [],
   ) {
     this.input = input;
     this.suggestionInput = input;
@@ -39,6 +45,10 @@ export class CodexSuggestionRenderer {
     return this.suggestionKind === "command"
       ? this.slashCommandResults.length > 0
       : this.fileSuggestionResults.length > 0;
+  }
+
+  setAdditionalCommands(commands: SlashCommand[]): void {
+    this.additionalCommands.splice(0, this.additionalCommands.length, ...commands);
   }
 
   private suggestionCount(): number {
@@ -97,8 +107,8 @@ export class CodexSuggestionRenderer {
       const query = commandMatch[1].toLowerCase();
       this.fileSearchSerial += 1;
       this.suggestionKind = "command";
-      this.slashCommandResults = slashCommands.filter(({ command }) =>
-        command.slice(1).startsWith(query),
+      this.slashCommandResults = [...slashCommands, ...this.additionalCommands].filter(
+        ({ command }) => command.slice(1).startsWith(query),
       );
       this.fileSuggestionIndex = this.slashCommandResults.length ? 0 : -1;
       this.renderFileSuggestions();

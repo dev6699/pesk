@@ -12,6 +12,7 @@ describe("CodexThread", () => {
     thread.setConnected(true);
 
     expect(thread.snapshot()).toEqual({
+      projectId: undefined,
       status: "idle",
       connected: true,
       messages: [expect.objectContaining({ text: "thread prompt" })],
@@ -25,6 +26,8 @@ describe("CodexThread", () => {
       pendingUserInput: undefined,
       pendingApproval: undefined,
       queuedSubmissions: [],
+      goal: undefined,
+      commandNotice: undefined,
     });
   });
 

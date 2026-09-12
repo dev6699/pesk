@@ -40,5 +40,6 @@ export function defaultRendererState(): RendererState {
     settings: defaultPeskSettings(),
     codex: defaultCodexRuntimeState(),
     assets: { codexStatusSoundUrl: "" },
+    features: { remoteTerminal: { enabled: false } },
   };
 }

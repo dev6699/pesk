@@ -15,6 +15,10 @@ import {
 } from "./codex-renderer-helpers.js";
 import { openProjectManager } from "./project-manager.js";
 import { openProjectThreadPrompt } from "./project-thread-renderer.js";
+import {
+  REMOTE_TERMINAL_COMMANDS,
+  handleRemoteTerminalCommand,
+} from "../remote-terminal/commands.js";
 
 export class CodexRenderer {
   private readonly webChat = document.body.classList.contains("web-chat");
@@ -82,6 +86,7 @@ export class CodexRenderer {
       () => this.state.codex.threads.current.thread.workingDirectory,
       () => this.inputController.resize(),
       () => this.inputController.renderCommandMode(),
+      [],
     );
     this.historyRenderer = new CodexHistoryRenderer(this.history, () => this.state, {
       applySelectedMessage: () => this.applySelectedMessage(),
@@ -111,12 +116,16 @@ export class CodexRenderer {
         updateState: (next) => this.updateState(next),
         openReviewPrompt: () => this.promptRenderer.openReviewPrompt(),
         openProjectManager: () =>
-          void openProjectManager(this.userInput ?? document.createElement("section")),
+          openProjectManager(this.userInput ?? document.createElement("section")),
         openNewThreadPrompt: () =>
-          void openProjectThreadPrompt(this.userInput ?? document.createElement("section")),
+          openProjectThreadPrompt(this.userInput ?? document.createElement("section")),
         renderUserInput: (force) => this.renderUserInput(force),
         scrollHistoryToLatest: (force) => this.scrollHistoryToLatest(force),
         isHistoryNearBottom: () => this.historyRenderer.isNearBottom(),
+        handleLocalCommand: (prompt) =>
+          !this.webChat && this.state.features.remoteTerminal.enabled
+            ? handleRemoteTerminalCommand(prompt)
+            : false,
       },
     );
     this.promptRenderer = new CodexPromptRenderer(
@@ -166,6 +175,7 @@ export class CodexRenderer {
     this.sessionSelect.setAttribute("aria-hidden", "true");
     this.statusRenderer.update();
     this.inputController.setup();
+    this.updateRemoteTerminalCommands();
     this.inputController.renderCommandMode();
     this.setupSessionControls();
     this.setupHistoryControls();
@@ -403,6 +413,7 @@ export class CodexRenderer {
       this.historyRenderer.reset();
     }
     this.state = next;
+    this.updateRemoteTerminalCommands();
     const displayedThreads = [...next.codex.threads.items];
     if (
       next.codex.threads.selectedId &&
@@ -502,6 +513,12 @@ export class CodexRenderer {
       this.modeToggle.classList.toggle("codex-mode-plan", plan);
       this.modeToggle.title = plan ? "Plan mode enabled for the next turn" : "Default mode";
     }
+  }
+
+  private updateRemoteTerminalCommands(): void {
+    this.suggestionRenderer.setAdditionalCommands(
+      this.webChat || !this.state.features.remoteTerminal.enabled ? [] : REMOTE_TERMINAL_COMMANDS,
+    );
   }
 
   /** Returns the display name for a thread's project group. */

@@ -3081,7 +3081,9 @@ test("searches and selects a file with the @ picker", async () => {
 });
 
 test("shows and selects slash commands", () => {
-  const { elements } = makeRenderer();
+  const settings = defaultRendererState();
+  settings.features.remoteTerminal.enabled = true;
+  const { elements } = makeRenderer(settings);
   elements.input.value = "/";
   elements.input.dispatchEvent(new Event("input", { bubbles: true }));
 
@@ -3101,6 +3103,7 @@ test("shows and selects slash commands", () => {
     "/reviewReview current changes",
     "/execRun a sandboxed command",
     "/modelSelect model and reasoning level",
+    "/rtermShow or hide the Remote Terminal",
   ]);
 
   elements.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));

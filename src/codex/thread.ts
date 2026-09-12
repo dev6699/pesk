@@ -9,6 +9,7 @@ import type {
   PendingApproval,
 } from "./types";
 import { records, stringValue } from "./protocol";
+import type { RequestId } from "../codex-schema";
 import type { ThreadGoal, ThreadTokenUsage, TokenUsageBreakdown } from "../codex-schema/v2";
 
 export type ThreadStatus = "idle" | "working" | "waiting";
@@ -735,6 +736,18 @@ export class CodexThread {
     this.state.pendingUserInput = undefined;
   }
 
+  /** Shows a local approval request without creating an app-server approval. */
+  setLocalApproval(approval: CodexPendingApproval): void {
+    this.state.pendingApproval = approval;
+  }
+
+  /** Clears a local approval request when its owning controller resolves it. */
+  clearLocalApproval(requestId: RequestId): boolean {
+    if (this.state.pendingApproval?.requestId !== requestId) return false;
+    this.state.pendingApproval = undefined;
+    return true;
+  }
+
   /** Initializes transient state for a newly submitted turn. */
   prepareTurn(): void {
     this.state.workingSince = undefined;
@@ -816,8 +829,9 @@ export class CodexThread {
   /** Captures the server-owned identity fields for this thread. */
   syncServerThread(thread: unknown): void {
     if (!thread || typeof thread !== "object") return;
-    const cwd = (thread as { cwd?: unknown }).cwd;
-    const projectId = (thread as { projectId?: unknown }).projectId;
+    const serverThread = thread as { cwd?: unknown; projectId?: unknown };
+    const cwd = serverThread.cwd;
+    const projectId = serverThread.projectId;
     if (typeof projectId === "string" || projectId === null) this.state.projectId = projectId;
     if (typeof cwd === "string") this.setWorkingDirectory(cwd);
   }

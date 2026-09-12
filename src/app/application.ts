@@ -4,6 +4,11 @@ import { ChatWindowController } from "../windows/chat";
 import { FocusController } from "./focus";
 import { ChatWebServer } from "../services/chat-web-server";
 import { CodexController, CodexWebSocketTransport } from "../codex";
+import {
+  REMOTE_TERMINAL_TOOLS,
+  RemoteTerminalManager,
+  RemoteTerminalToolHandler,
+} from "../features/remote-terminal";
 import { loadConfig, loadSettings, saveSettings, saveTheme } from "../config/config";
 import { themes, type RendererTheme } from "../config/themes";
 import type { PeskSettings } from "../config/config";
@@ -26,6 +31,7 @@ export interface ApplicationContext {
   state: RendererStatePublisher;
   focus: FocusController;
   userDataPath: string;
+  rterm: RemoteTerminalManager;
   quit: () => void;
   setTheme: (themeName: string) => void;
 }
@@ -45,6 +51,9 @@ export class PeskApplication implements ApplicationContext {
   private _focus!: FocusController;
   private theme!: RendererTheme;
   private themeName!: string;
+  private _rterm!: RemoteTerminalManager;
+  private currentThreadId: string | undefined;
+  private _remoteTerminalTools!: RemoteTerminalToolHandler;
 
   get codex() {
     return this._codex;
@@ -70,6 +79,9 @@ export class PeskApplication implements ApplicationContext {
   get focus() {
     return this._focus;
   }
+  get rterm() {
+    return this._rterm;
+  }
   get userDataPath() {
     return app.getPath("userData");
   }
@@ -85,6 +97,23 @@ export class PeskApplication implements ApplicationContext {
   start(): void {
     this.settings = loadSettings();
     const config = loadConfig();
+    this._rterm = new RemoteTerminalManager({
+      enabled: config.features.remoteTerminal.enabled,
+      url: config.features.remoteTerminal.url,
+      onChanged: (threadId, snapshot) => {
+        if (threadId === this.currentThreadId) this._state?.publishRterm(snapshot);
+      },
+      onOutput: (threadId, data) => {
+        if (threadId === this.currentThreadId)
+          this._state?.publishRtermOutput(Buffer.from(data).toString("base64"));
+      },
+    });
+    this._remoteTerminalTools = new RemoteTerminalToolHandler({
+      getRterm: (threadId) => this._rterm.getClient(threadId),
+      requestApproval: (threadId, callId, command, reason) =>
+        this.codex.requestDynamicApproval(threadId, callId, command, reason),
+    });
+
     this.theme = config.theme;
     this.themeName = config.themeName;
     this.statusSoundUrl = config.codexStatusSound;
@@ -143,11 +172,18 @@ export class PeskApplication implements ApplicationContext {
     });
     this._codex = new CodexController(
       {
-        onStateChanged: (state) => this.state.publishCodex(state),
+        onStateChanged: (state) => {
+          this.currentThreadId = state.threads.selectedId;
+          this._rterm.setCurrentThread(this.currentThreadId);
+          this.state.publishCodex(state);
+          this.state.publishRterm(this._rterm.getSnapshot());
+        },
         onStreamDelta: (delta) => this.state.publishStreamDelta(delta),
         onAttention: (event) => this.notifications.handle(event),
         onAttentionCleared: () => this.notifications.clear(),
         debug,
+        onDynamicToolCall: (params) => this._remoteTerminalTools.handle(params),
+        dynamicTools: config.features.remoteTerminal.enabled ? REMOTE_TERMINAL_TOOLS : [],
       },
       new CodexWebSocketTransport(config.codexAppServerUrl),
     );
@@ -164,6 +200,7 @@ export class PeskApplication implements ApplicationContext {
       () => this.pet.window,
       () => this.chat.window,
       this.webServer,
+      { remoteTerminal: { enabled: config.features.remoteTerminal.enabled } },
     );
     this.normalizeAnimation();
     registerIpcHandlers(this);
@@ -181,6 +218,7 @@ export class PeskApplication implements ApplicationContext {
     this.stopped = true;
     globalShortcut.unregisterAll();
     this.codex.stop();
+    this.rterm.disconnectAll();
     void this.webServer.stop();
     this.chat.close();
     this.pet.close();

@@ -7,6 +7,7 @@ import type {
 } from "../codex-schema";
 import type { CollaborationMode } from "../codex-schema/CollaborationMode";
 import type { Thread } from "../codex-schema/v2";
+import type { DynamicToolSpec } from "../codex-schema/v2";
 import type {
   CommandExecutionRequestApprovalResponse,
   FileChangeRequestApprovalResponse,
@@ -69,6 +70,9 @@ export function approvalDecisions(
 type RequestOf<Method extends ClientRequest["method"]> = Extract<ClientRequest, { method: Method }>;
 export type InitializeRequest = RequestOf<"initialize">;
 export type ThreadStartRequest = RequestOf<"thread/start">;
+export type ThreadStartRequestWithTools = Omit<ThreadStartRequest, "params"> & {
+  params: ThreadStartRequest["params"] & { dynamicTools?: DynamicToolSpec[]; projectId?: string };
+};
 export type ProjectThreadStartRequest = {
   method: "thread/start";
   id: number;
@@ -166,6 +170,7 @@ export type OutgoingRequestInput = RequestWithoutId<
   | LocalQueueAddRequest
   | LocalQueueListRequest
   | ProjectRequest
+  | ThreadStartRequestWithTools
 >;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

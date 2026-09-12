@@ -1,9 +1,9 @@
 /** @jest-environment jsdom */
 /// <reference types="jest" />
-/// <reference path="../../../src/renderer/shared/types.d.ts" />
+/// <reference path="../../../../src/renderer/shared/types.d.ts" />
 
-import { defaultRendererState } from "../../../src/renderer/shared/default-settings";
-import { openProjectManager } from "../../../src/renderer/features/chat/project-manager";
+import { defaultRendererState } from "../../../../src/renderer/shared/default-settings";
+import { openProjectManager } from "../../../../src/renderer/features/chat/project-manager";
 
 const project = (id = "project-1", name = "Workspace") => ({
   id,

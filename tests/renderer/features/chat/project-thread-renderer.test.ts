@@ -1,9 +1,9 @@
 /** @jest-environment jsdom */
 /// <reference types="jest" />
-/// <reference path="../../../src/renderer/shared/types.d.ts" />
+/// <reference path="../../../../src/renderer/shared/types.d.ts" />
 
-import { defaultRendererState } from "../../../src/renderer/shared/default-settings";
-import { openProjectThreadPrompt } from "../../../src/renderer/features/chat/project-thread-renderer";
+import { defaultRendererState } from "../../../../src/renderer/shared/default-settings";
+import { openProjectThreadPrompt } from "../../../../src/renderer/features/chat/project-thread-renderer";
 
 const project = (id = "project-1", name = "Workspace") => ({
   id,

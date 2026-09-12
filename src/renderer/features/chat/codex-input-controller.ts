@@ -11,6 +11,7 @@ interface CodexInputControllerCallbacks {
   renderUserInput(force: boolean): void;
   scrollHistoryToLatest(force?: boolean): void;
   isHistoryNearBottom(): boolean;
+  handleLocalCommand?(prompt: string): boolean;
 }
 
 /**
@@ -143,6 +144,14 @@ export class CodexInputController {
   private async submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     const prompt = this.input.value.trim();
+    if (this.callbacks.handleLocalCommand?.(prompt)) {
+      this.rememberPrompt(prompt);
+      this.input.value = "";
+      this.hideSuggestions();
+      this.resize();
+      this.input.focus();
+      return;
+    }
     if (/^\/project$/i.test(prompt)) {
       this.rememberPrompt(prompt);
       this.input.value = "";

@@ -1021,6 +1021,136 @@ body.chat-only #codex-chat {
   overflow: hidden;
 }
 
+#rterm-panel {
+  display: flex;
+  flex: 0 0 140px;
+  min-height: 0;
+  max-height: 420px;
+  height: 140px;
+  flex-direction: column;
+  border: 1px solid var(--shell-border);
+  background: var(--shell-surface);
+  color: var(--shell-text);
+}
+
+#rterm-panel[hidden] {
+  display: none;
+}
+
+#rterm-resize-handle {
+  position: relative;
+  flex: 0 0 5px;
+  cursor: ns-resize;
+  touch-action: none;
+  background: color-mix(in srgb, var(--shell-border) 30%, transparent);
+}
+
+#rterm-resize-handle::after {
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  width: 36px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--shell-border);
+  content: "";
+  opacity: 0.7;
+  transform: translateX(-50%);
+}
+
+#rterm-resize-handle:hover,
+#rterm-resize-handle:focus-visible {
+  background: color-mix(in srgb, var(--shell-border) 65%, transparent);
+  outline: none;
+}
+
+#rterm-resize-handle:hover::after,
+#rterm-resize-handle:focus-visible::after {
+  opacity: 1;
+}
+
+#rterm-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--shell-border);
+  font-size: 12px;
+}
+
+#rterm-status {
+  flex: 1 1 0;
+}
+
+#rterm-connection,
+#rterm-close {
+  border: 1px solid var(--border-overlay);
+  border-radius: 7px;
+  padding: 4px 8px;
+  background: var(--action-primary);
+  color: var(--text-on-action);
+  cursor: pointer;
+  font:
+    700 11px/1 system-ui,
+    sans-serif;
+}
+
+#rterm-connection:hover,
+#rterm-connection:focus-visible,
+#rterm-close:hover,
+#rterm-close:focus-visible {
+  border-color: var(--status-info-strong);
+  background: var(--action-hover);
+  outline: 2px solid var(--status-info-border);
+  outline-offset: 2px;
+}
+
+#rterm-connection:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+#rterm-output {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  padding: 8px;
+  font:
+    12px/1.35 Consolas,
+    "Cascadia Mono",
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#rterm-frame {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+  width: 100%;
+  border: 0;
+  background: #000;
+}
+
+#rterm-input-label {
+  border-top: 1px solid var(--shell-border);
+}
+
+#rterm-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  padding: 6px 8px;
+  background: transparent;
+  color: inherit;
+  font:
+    12px Consolas,
+    "Cascadia Mono",
+    monospace;
+  outline: none;
+}
+
 #codex-goal {
   flex: 0 0 auto;
   min-width: 0;

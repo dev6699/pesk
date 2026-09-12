@@ -4,7 +4,7 @@
 
 # Pesk
 
-Pesk is a lightweight Windows desktop pet built with Electron and TypeScript. It combines an animated, always-on-top companion with a dedicated Codex chat window, keyboard-driven controls, configurable presets, and a system-tray menu.
+Pesk is an Electron and TypeScript application for working with Codex through a dedicated chat workspace, remote-machine investigation, configurable Windows workflows, and remote Codex session access.
 
 <p align="center">
   <img src="docs/screenshot.png" alt="Pesk desktop companion and Codex chat window" width="720" />
@@ -14,13 +14,14 @@ Pesk is a lightweight Windows desktop pet built with Electron and TypeScript. It
 
 - Animated desktop companion with customizable visual themes
 - Integrated Codex workspace for interactive development assistance
+- Remote-machine investigation through an embedded terminal, with human approval
 - Extensible configuration and external content support after installation
 - Productivity automation through configurable Windows application presets
 - Native Windows integration through the system tray, keyboard shortcuts, and login startup
 
 ## Architecture
 
-Pesk is a Windows Electron desktop pet with a terminal-first Codex companion. The pet remains a lightweight, always-on-top visual and notification surface; the chat window and optional browser client provide focused ways to observe or submit Codex work.
+The architecture separates renderer windows from main-process services: a secure IPC bridge carries UI actions and state, while focused services own Codex communication, remote-machine terminal access, browser connectivity, and persisted user data.
 
 ### Runtime topology
 
@@ -76,7 +77,33 @@ flowchart LR
   class Storage storage
 ```
 
-`src/main.ts` is the Electron entrypoint. `PeskApplication` in `src/app/application.ts` loads configuration and settings, creates the controllers, registers IPC handlers and global shortcuts, starts the Codex controller and optional web server, and performs shutdown cleanup. Business ownership stays in the focused controller modules rather than in renderer code or the entrypoint.
+### Remote Machine Investigation Flow
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant Pesk as Pesk main process
+  participant Codex
+  participant Remote as Remote machine
+
+  User->>Pesk: Investigate high model latency on the remote host
+  Pesk->>Codex: Forward investigation request
+  loop Repeat until the issue is understood
+    Codex->>Pesk: Request next diagnostic step
+    Pesk->>User: Ask for human command approval
+    alt Approved
+      User->>Pesk: Approve command
+      Pesk->>Remote: Execute approved command
+      Remote-->>Pesk: Return terminal output
+      Pesk->>Codex: Provide terminal output
+    else Rejected
+      User-->>Pesk: Reject command
+      Pesk-->>Codex: Tool request rejected
+    end
+  end
+  Codex->>Pesk: Explain result
+  Pesk-->>User: Display result
+```
 
 ### Component ownership
 
@@ -86,58 +113,11 @@ flowchart LR
 | Secure IPC bridge    | The preload boundary that safely carries window requests and main-process state updates.                                      |
 | Application services | Main-process coordination for configuration, settings, animations, presets, window lifecycle, and cross-component behavior.   |
 | Codex client         | Main-process connection and state owner for JSON-RPC requests, threads, turns, streaming, approvals, and user-input requests. |
+| Remote Terminal      | Per-thread bridge to a remote machine, providing an embedded terminal and approval-gated Codex tools.                         |
 | Chat web server      | Main-process LAN server for pairing, authenticated browser chat, state broadcasts, and push notification requests.            |
 | User data            | Local persisted configuration, settings, device credentials, VAPID keys, subscriptions, and external content.                 |
 | Codex app-server     | External service that receives and streams Codex JSON-RPC traffic.                                                            |
 | Browser push service | External browser-vendor delivery service used for Web Push notifications.                                                     |
-
-### Interaction flow
-
-Desktop windows communicate with the Electron main process through the secure preload IPC bridge. The main process publishes shared pet and Codex state back to the desktop surfaces and, when enabled, the browser client.
-
-The Codex client uses JSON-RPC over WebSocket with the app-server. It initializes the connection before other requests, handles streamed thread and turn events, and answers server-initiated approvals and user-input requests with their original request IDs. The terminal remains the primary Codex interaction; Pesk mirrors relevant activity and provides a focused companion chat.
-
-The Electron main-process services own configuration, persisted data, browser pairing, browser WebSocket access, and Web Push. These remain within the Electron main-process boundary and use the user-data directory for local state.
-
-### Build and packaging
-
-```mermaid
-flowchart LR
-  subgraph Inputs[Source inputs]
-    MainSource[Main-process source]
-    RendererSource[Renderer source]
-    StaticAssets[Pages and static assets]
-  end
-
-  subgraph Build[Build steps]
-    MainBuild[Compile main process]
-    RendererBuild[Compile renderers]
-    Copy[Copy static assets]
-  end
-
-  Runtime[(Build output)]
-  App[Electron application]
-  Installer[Windows installer]
-
-  MainSource --> MainBuild
-  RendererSource --> RendererBuild
-  StaticAssets --> Copy
-  MainBuild --> Runtime
-  RendererBuild --> Runtime
-  Copy --> Runtime
-  Runtime --> App --> Installer
-
-  classDef input fill:#dbeafe,stroke:#2563eb,color:#172554
-  classDef build fill:#ffedd5,stroke:#ea580c,color:#431407
-  classDef runtime fill:#dcfce7,stroke:#16a34a,color:#14532d
-  classDef package fill:#ede9fe,stroke:#7c3aed,color:#2e1065
-  class MainSource,RendererSource,StaticAssets input
-  class MainBuild,RendererBuild,Copy build
-  class Runtime,App runtime
-  class Installer package
-```
-
-`npm run build` compiles the main/preload and renderer TypeScript, then copies renderer HTML, CSS, web assets, and required vendor files into `build/renderer`. Electron executes `build/main.js`, so source changes affecting runtime behavior require a rebuild. Electron Builder packages `build/**/*`, `assets/**/*`, and `package.json`; installer artifacts belong in `dist/`. User configuration and mutable animations are intentionally external to the packaged executable.
 
 ## Requirements
 
@@ -189,6 +169,12 @@ Example application configuration:
   "chatHeight": 700,
   "animationsDir": "animations",
   "codexAppServerUrl": "ws://127.0.0.1:4500",
+  "features": {
+    "remoteTerminal": {
+      "enabled": true,
+      "url": "ws://127.0.0.1:5000/bash/ws"
+    }
+  },
   "codexStatusSound": "audio.mp3",
   "webAccessEnabled": false,
   "webPort": 4587,
@@ -203,6 +189,8 @@ Configuration fields:
 - `chatWidth` and `chatHeight` control the desktop chat window dimensions.
 - `animationsDir` selects the external animation directory. Relative paths are resolved beside the active configuration file.
 - `codexAppServerUrl` specifies the Codex app-server WebSocket endpoint.
+- `features.remoteTerminal.enabled` enables remote-machine investigation through the embedded terminal and approval-gated Codex terminal tools.
+- `features.remoteTerminal.url` points to the remote terminal WebSocket command endpoint, such as `ws://127.0.0.1:5000/bash/ws`. Pesk uses it for the terminal session and derives the embedded terminal page from the same endpoint, preserving any query parameters.
 - `codexStatusSound` specifies an optional sound file. Relative paths are resolved beside the active configuration file.
 - `webAccessEnabled` enables the browser-based chat endpoint. It is disabled by default.
 - `webPort` specifies the HTTP/WebSocket listening port. The default is `4587`.

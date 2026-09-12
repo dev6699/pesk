@@ -66,6 +66,7 @@ function state(): RendererState {
       projects: { items: [] },
     },
     assets: { codexStatusSoundUrl: "" },
+    features: { remoteTerminal: { enabled: false } },
   };
 }
 

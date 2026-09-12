@@ -7,6 +7,7 @@ import type { FuzzyFileSearchResult } from "../codex-schema/FuzzyFileSearchResul
 import type { ImageInput, RequestId } from "./validation";
 import type { CodexStreamDelta } from "../codex/types";
 import type { RendererState } from "./renderer-state";
+import type { RtermSnapshot } from "../features/remote-terminal";
 
 export interface RendererEventContract {
   "menu-updated": [];
@@ -19,6 +20,8 @@ export interface RendererEventContract {
   "chat-lock-changed": [locked: boolean];
   "settings-changed": [state: RendererState];
   "codex-stream-delta": [delta: CodexStreamDelta];
+  "rterm-changed": [snapshot: RtermSnapshot];
+  "rterm-output": [data: string];
 }
 
 export interface PresetInfo {
@@ -74,6 +77,12 @@ export interface IpcInvokeContract {
   "move-codex-project": { args: [id: string, beforeId: string | null]; result: RendererState };
   "delete-codex-project": { args: [id: string]; result: RendererState };
   "choose-codex-project-root": { args: []; result: string | undefined };
+  "toggle-rterm-connection": { args: []; result: boolean };
+  "rterm-authenticate": { args: [code: string]; result: boolean };
+  "rterm-write": { args: [input: string]; result: boolean };
+  "get-rterm": { args: []; result: RtermSnapshot };
+  "get-rterm-embed-url": { args: []; result: string };
+  "rterm-resize": { args: [cols: number, rows: number]; result: boolean };
 }
 
 export interface IpcEventContract {

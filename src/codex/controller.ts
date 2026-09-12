@@ -12,6 +12,11 @@ import type {
   OutgoingRequestInput,
   ServerMessage,
 } from "./protocol";
+import type {
+  DynamicToolCallParams,
+  DynamicToolCallResponse,
+  DynamicToolSpec,
+} from "../codex-schema/v2";
 import { CodexGoalManager } from "./goal";
 import { CodexInteraction } from "./interaction";
 import { CodexModelManager } from "./model";
@@ -25,6 +30,7 @@ import { CodexTurnManager } from "./turn";
 import type { CodexState, CodexStreamDelta } from "./types";
 import { parsePrompt, type PromptImages } from "./prompt";
 import { CodexWebSocketTransport, type CodexSocketTransport } from "./websocket";
+import { DynamicToolApprovalManager } from "./dynamic-tools";
 
 export interface CodexControllerOptions {
   onStateChanged: (state: CodexState) => void;
@@ -32,6 +38,8 @@ export interface CodexControllerOptions {
   onAttention: (event: CodexAttentionEvent) => void;
   onAttentionCleared?: () => void;
   debug: (...values: unknown[]) => void;
+  onDynamicToolCall?: (params: DynamicToolCallParams) => Promise<DynamicToolCallResponse>;
+  dynamicTools?: DynamicToolSpec[];
 }
 
 export interface CodexAttentionEvent {
@@ -69,6 +77,7 @@ export class CodexController {
   private readonly queueManager: CodexQueueManager;
   private readonly rateLimitManager: CodexRateLimitManager;
   private readonly turnManager: CodexTurnManager;
+  private readonly dynamicApprovals: DynamicToolApprovalManager;
 
   /** Creates a controller with application-level event callbacks. */
   constructor(
@@ -77,6 +86,11 @@ export class CodexController {
   ) {
     this.options = options;
     this.socket = socket;
+    this.dynamicApprovals = new DynamicToolApprovalManager({
+      threadManager: this.threadManager,
+      notifyStateChanged: () => this.notifyStateChanged(),
+      onAttentionCleared: options.onAttentionCleared,
+    });
     this.queueManager = new CodexQueueManager({
       request: (request, callback) => this.request(request, callback),
       threadManager: this.threadManager,
@@ -130,6 +144,7 @@ export class CodexController {
         this.startingNewThread = value;
       },
       startTurn: (threadId, prompt) => this.turnManager.start(threadId, prompt),
+      dynamicTools: options.dynamicTools,
     });
     this.interaction = new CodexInteraction({
       threadManager: this.threadManager,
@@ -393,7 +408,18 @@ export class CodexController {
 
   /** Sends an approval response for an app-server request. */
   respondPermission(requestId: RequestId, optionId: string): void {
+    if (this.dynamicApprovals.respond(requestId, optionId)) return;
     this.interaction.respondPermission(requestId, optionId);
+  }
+
+  /** Blocks a dynamic tool call behind Pesk's normal approval renderer. */
+  requestDynamicApproval(
+    threadId: string,
+    callId: string,
+    command: string,
+    reason: string,
+  ): Promise<boolean> {
+    return this.dynamicApprovals.request(threadId, callId, command, reason);
   }
 
   /** Initializes the app-server session after the transport opens. */
@@ -645,6 +671,25 @@ export class CodexController {
             selectedThreadId: this.threadManager.selectedThreadId,
           });
         }
+        break;
+      case "item/tool/call":
+        void (
+          this.options.onDynamicToolCall
+            ? this.options.onDynamicToolCall(message.params)
+            : Promise.resolve({
+                contentItems: [
+                  { type: "inputText" as const, text: "Terminal tools are unavailable." },
+                ],
+                success: false,
+              })
+        )
+          .then((result) => this.sendResponse(message.id, result))
+          .catch((error: unknown) =>
+            this.sendResponse(message.id, {
+              contentItems: [{ type: "inputText", text: `Terminal tool failed: ${String(error)}` }],
+              success: false,
+            }),
+          );
         break;
       case "serverRequest/resolved":
         this.threadManager.handleServerRequestResolved(message, thread);
