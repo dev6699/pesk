@@ -1,5 +1,5 @@
 import { createReadStream, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { createHash, randomBytes, X509Certificate } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual, X509Certificate } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { createServer as createTlsServer } from "node:https";
 import type { AddressInfo } from "node:net";
@@ -210,7 +210,7 @@ export class ChatWebServer {
     const uniqueName = requestedName;
     this.completedPairingName = undefined;
     this.pairing = {
-      codeHash: hashSecret(code),
+      codeHash: hashSecret(code).toString("hex"),
       expiresAt,
       deviceName: uniqueName,
     };
@@ -325,7 +325,7 @@ export class ChatWebServer {
   private authenticateCredential(credential: string): StoredDevice | undefined {
     const hash = hashSecret(credential);
     for (const device of this.devices.values()) {
-      if (device.credentialHash !== hash) continue;
+      if (!matchesSecretHash(device.credentialHash, hash)) continue;
       device.lastUsedAt = Date.now();
       saveDevices(this.options.deviceCredentialsPath, this.devices);
       return device;
@@ -350,7 +350,7 @@ export class ChatWebServer {
         !this.pairing ||
         this.pairing.expiresAt < Date.now() ||
         typeof body.code !== "string" ||
-        hashSecret(body.code.toUpperCase()) !== this.pairing.codeHash
+        !matchesSecretHash(this.pairing.codeHash, hashSecret(body.code.toUpperCase()))
       ) {
         this.writeJson(response, { error: "Pairing code expired or invalid" }, 400);
         return;
@@ -364,7 +364,7 @@ export class ChatWebServer {
         lastUsedAt: Date.now(),
         pushEnabled: true,
         pushRegistered: false,
-        credentialHash: hashSecret(credential),
+        credentialHash: hashSecret(credential).toString("hex"),
       };
       this.devices.set(id, device);
       saveDevices(this.options.deviceCredentialsPath, this.devices);
@@ -688,8 +688,13 @@ function saveDevices(file: string, devices: Map<string, StoredDevice>): void {
   });
 }
 
-function hashSecret(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
+function hashSecret(value: string): Buffer {
+  return createHash("sha256").update(value).digest();
+}
+
+function matchesSecretHash(storedHash: string, candidateHash: Buffer): boolean {
+  if (!/^[0-9a-f]{64}$/i.test(storedHash)) return false;
+  return timingSafeEqual(Buffer.from(storedHash, "hex"), candidateHash);
 }
 
 function saveSubscriptions(file: string, subscriptions: Map<string, PushSubscription>): void {
