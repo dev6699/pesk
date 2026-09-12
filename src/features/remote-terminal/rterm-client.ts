@@ -156,10 +156,6 @@ export class RtermClient {
   execute(command: string): RtermExecution | undefined {
     if (this.state !== "connected") return undefined;
     const id = randomUUID();
-    // Emit an internal OSC (Operating System Command) completion marker after
-    // the command. The client uses its execution ID and shell status to resolve waits.
-    const wrapped = `{ ${command}\n}; status=$?; printf '\\033]9;pesk-done;${id};%s\\007' "$status"\n`;
-    if (!this.write(wrapped)) return undefined;
     const execution: RtermExecution = {
       id,
       status: "running",
@@ -167,6 +163,13 @@ export class RtermClient {
       startOffset: this.buffer.length,
     };
     this.executions.set(id, execution);
+    // Emit an internal OSC (Operating System Command) completion marker after
+    // the command. The client uses its execution ID and shell status to resolve waits.
+    const wrapped = `{ ${command}\n}; status=$?; printf '\\033]9;pesk-done;${id};%s\\007' "$status"\n`;
+    if (!this.write(wrapped)) {
+      this.executions.delete(id);
+      return undefined;
+    }
     return execution;
   }
 
