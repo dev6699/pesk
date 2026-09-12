@@ -498,15 +498,6 @@ export class ChatWebServer {
       response.writeHead(401).end("Authentication required");
       return;
     }
-    if (request.method === "DELETE") {
-      const endpoint = requestUrl.searchParams.get("endpoint");
-      if (endpoint) {
-        this.subscriptions.delete(endpoint);
-        saveSubscriptions(this.options.webPushSubscriptionsPath, this.subscriptions);
-      }
-      this.writeJson(response, { ok: true });
-      return;
-    }
     if (request.method !== "POST") {
       response.writeHead(405).end();
       return;

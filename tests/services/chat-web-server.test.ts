@@ -217,15 +217,7 @@ describe("ChatWebServer", () => {
       deviceId: paired.deviceId,
     });
 
-    const deleted = await httpRequest(
-      port,
-      "DELETE",
-      "/web-push/subscribe?endpoint=https%3A%2F%2Fpush.test%2Ftwo",
-      undefined,
-      paired.credential,
-    );
-    expect(deleted.status).toBe(200);
-    expect(server.listDevices()[0].pushRegistered).toBe(false);
+    expect(server.listDevices()[0].pushRegistered).toBe(true);
   });
 
   test("toggles delivery policy without changing registration", async () => {
