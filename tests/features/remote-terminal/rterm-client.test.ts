@@ -6,6 +6,7 @@ jest.mock("ws", () => {
   class FakeWebSocket {
     static readonly OPEN = 1;
     static readonly instances: FakeWebSocket[] = [];
+    static onSend: ((socket: FakeWebSocket, message: string) => void) | undefined;
     readonly sent: string[] = [];
     readyState = 0;
     private readonly handlers = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -21,6 +22,7 @@ jest.mock("ws", () => {
 
     send(message: string): void {
       this.sent.push(message);
+      FakeWebSocket.onSend?.(this, message);
     }
 
     close(): void {
@@ -117,6 +119,33 @@ describe("RtermClient", () => {
 
     expect(target.reconnect()).toBe(true);
     expect(target.readRecent()).toEqual({ output: "", truncated: false });
+  });
+
+  test("registers the execution before a synchronous completion message", async () => {
+    const target = client();
+    const socket = connect(target);
+    socket.emit("message", "c");
+    const fakeWebSocket = WebSocket as unknown as {
+      onSend?: (socket: TestSocket, message: string) => void;
+    };
+    fakeWebSocket.onSend = (sentSocket, message) => {
+      const id = message.match(/pesk-done;([\da-f-]+);/)?.[1];
+      if (id)
+        sentSocket.emit(
+          "message",
+          `1${Buffer.from(`result\n\u001b]9;pesk-done;${id};0\u0007`).toString("base64")}`,
+        );
+    };
+    try {
+      const execution = target.execute("true");
+      await expect(target.wait(execution?.id ?? "missing", 100)).resolves.toMatchObject({
+        status: "completed",
+        exitCode: 0,
+        output: expect.stringContaining("result"),
+      });
+    } finally {
+      fakeWebSocket.onSend = undefined;
+    }
   });
 
   test("completes executions when the marker is split across output messages", async () => {

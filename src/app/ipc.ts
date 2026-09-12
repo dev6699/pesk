@@ -6,7 +6,7 @@ import { registerEvent, registerInvoke } from "./ipc-contract";
 
 /** Registers the main-process IPC surface, grouped by the feature it controls. */
 export function registerIpcHandlers(context: ApplicationContext): void {
-  const { codex, pet, chat, presets, menu, webServer, state, focus } = context;
+  const { codex, pet, chat, presets, menu, webServer, state, focus, remoteTerminal } = context;
 
   // General application and renderer state
   registerInvoke("open-external-url", (_event, url) => {
@@ -19,18 +19,18 @@ export function registerIpcHandlers(context: ApplicationContext): void {
     }
   });
   registerInvoke("get-settings", () => state.getState());
-  registerInvoke("toggle-rterm-connection", () => context.rterm.toggleConnection());
+  registerInvoke("toggle-rterm-connection", () => remoteTerminal.toggleConnection());
   registerInvoke("rterm-authenticate", (_event, code) =>
-    typeof code === "string" ? context.rterm.authenticate(code) : false,
+    typeof code === "string" ? remoteTerminal.authenticate(code) : false,
   );
   registerInvoke("rterm-write", (_event, input) =>
-    typeof input === "string" ? context.rterm.write(input) : false,
+    typeof input === "string" ? remoteTerminal.write(input) : false,
   );
-  registerInvoke("get-rterm", () => context.rterm.getSnapshot());
-  registerInvoke("get-rterm-embed-url", () => context.rterm.getEmbedUrl());
+  registerInvoke("get-rterm", () => remoteTerminal.getSnapshot());
+  registerInvoke("get-rterm-embed-url", () => remoteTerminal.getEmbedUrl());
   registerInvoke("rterm-resize", (_event, cols, rows) =>
     Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0
-      ? context.rterm.resize(cols, rows)
+      ? remoteTerminal.resize(cols, rows)
       : false,
   );
   registerInvoke("get-animations", () => pet.getAnimations());

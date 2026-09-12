@@ -4,11 +4,7 @@ import { ChatWindowController } from "../windows/chat";
 import { FocusController } from "./focus";
 import { ChatWebServer } from "../services/chat-web-server";
 import { CodexController, CodexWebSocketTransport } from "../codex";
-import {
-  REMOTE_TERMINAL_TOOLS,
-  RemoteTerminalManager,
-  RemoteTerminalToolHandler,
-} from "../features/remote-terminal";
+import { RemoteTerminalService } from "../features/remote-terminal";
 import { loadConfig, loadSettings, saveSettings, saveTheme } from "../config/config";
 import { themes, type RendererTheme } from "../config/themes";
 import type { PeskSettings } from "../config/config";
@@ -31,7 +27,7 @@ export interface ApplicationContext {
   state: RendererStatePublisher;
   focus: FocusController;
   userDataPath: string;
-  rterm: RemoteTerminalManager;
+  remoteTerminal: RemoteTerminalService;
   quit: () => void;
   setTheme: (themeName: string) => void;
 }
@@ -51,9 +47,8 @@ export class PeskApplication implements ApplicationContext {
   private _focus!: FocusController;
   private theme!: RendererTheme;
   private themeName!: string;
-  private _rterm!: RemoteTerminalManager;
+  private _remoteTerminal!: RemoteTerminalService;
   private currentThreadId: string | undefined;
-  private _remoteTerminalTools!: RemoteTerminalToolHandler;
 
   get codex() {
     return this._codex;
@@ -79,8 +74,8 @@ export class PeskApplication implements ApplicationContext {
   get focus() {
     return this._focus;
   }
-  get rterm() {
-    return this._rterm;
+  get remoteTerminal() {
+    return this._remoteTerminal;
   }
   get userDataPath() {
     return app.getPath("userData");
@@ -97,7 +92,7 @@ export class PeskApplication implements ApplicationContext {
   start(): void {
     this.settings = loadSettings();
     const config = loadConfig();
-    this._rterm = new RemoteTerminalManager({
+    this._remoteTerminal = new RemoteTerminalService({
       enabled: config.features.remoteTerminal.enabled,
       url: config.features.remoteTerminal.url,
       onChanged: (threadId, snapshot) => {
@@ -107,9 +102,6 @@ export class PeskApplication implements ApplicationContext {
         if (threadId === this.currentThreadId)
           this._state?.publishRtermOutput(Buffer.from(data).toString("base64"));
       },
-    });
-    this._remoteTerminalTools = new RemoteTerminalToolHandler({
-      getRterm: (threadId) => this._rterm.getClient(threadId),
       requestApproval: (threadId, callId, command, reason) =>
         this.codex.requestDynamicApproval(threadId, callId, command, reason),
     });
@@ -174,16 +166,18 @@ export class PeskApplication implements ApplicationContext {
       {
         onStateChanged: (state) => {
           this.currentThreadId = state.threads.selectedId;
-          this._rterm.setCurrentThread(this.currentThreadId);
+          this._remoteTerminal.setCurrentThread(state.threads.selectedId);
           this.state.publishCodex(state);
-          this.state.publishRterm(this._rterm.getSnapshot());
+          this.state.publishRterm(this._remoteTerminal.getSnapshot());
         },
         onStreamDelta: (delta) => this.state.publishStreamDelta(delta),
         onAttention: (event) => this.notifications.handle(event),
         onAttentionCleared: () => this.notifications.clear(),
         debug,
-        onDynamicToolCall: (params) => this._remoteTerminalTools.handle(params),
-        dynamicTools: config.features.remoteTerminal.enabled ? REMOTE_TERMINAL_TOOLS : [],
+        onDynamicToolCall: (params) => this._remoteTerminal.handleToolCall(params),
+        dynamicTools: config.features.remoteTerminal.enabled
+          ? this._remoteTerminal.dynamicTools
+          : [],
       },
       new CodexWebSocketTransport(config.codexAppServerUrl),
     );
@@ -218,7 +212,7 @@ export class PeskApplication implements ApplicationContext {
     this.stopped = true;
     globalShortcut.unregisterAll();
     this.codex.stop();
-    this.rterm.disconnectAll();
+    this.remoteTerminal.disconnectAll();
     void this.webServer.stop();
     this.chat.close();
     this.pet.close();
