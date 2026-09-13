@@ -1,6 +1,3 @@
-import WebSocket from "ws";
-import { randomUUID } from "node:crypto";
-
 export type RtermState = "disconnected" | "connecting" | "authenticating" | "connected";
 
 export interface RtermSnapshot {
@@ -11,245 +8,133 @@ export interface RtermSnapshot {
   authFailed: boolean;
 }
 
-export interface RtermExecution {
-  id: string;
-  status: "running" | "completed";
-  exitCode?: number;
-  output: string;
-  startOffset: number;
+export interface RtermProviderSession {
+  sessionId: string;
+  token: string;
+  provider: string;
+  target: string;
+  user: string;
 }
 
 export interface RtermClientOptions {
   enabled?: boolean;
   url?: string;
   onChanged: (snapshot: RtermSnapshot) => void;
-  onOutput?: (text: string) => void;
-  maxBytes?: number;
 }
 
-/** Connects to one forwarded rterm WebSocket and preserves its PTY bytes. */
+/** Tracks one Pesk thread's provider session and its HTTP tool endpoint. */
 export class RtermClient {
-  private socket: WebSocket | undefined;
   private state: RtermState = "disconnected";
-  private buffer = "";
-  private completionFragment = "";
-  private truncated = false;
   private hostLabel = "";
-  private authFailed = false;
-  private url: string;
-  private readonly maxBytes: number;
-  private readonly executions = new Map<string, RtermExecution>();
+  private readonly providerSessions = new Map<string, RtermProviderSession>();
+  private activeSessionId: string | undefined;
 
   constructor(private readonly options: RtermClientOptions) {
-    this.maxBytes = options.maxBytes ?? 256 * 1024;
-    this.url = options.url ?? "";
-    try {
-      this.hostLabel = this.url ? new URL(this.url).hostname || "remote shell" : "";
-    } catch {
-      this.hostLabel = "remote shell";
-    }
+    this.hostLabel = this.getUrlHost(options.url ?? "");
   }
 
   getSnapshot(): RtermSnapshot {
     return {
       enabled: this.options.enabled !== false,
       state: this.state,
-      output: this.buffer,
+      output: "",
       hostLabel: this.hostLabel,
-      authFailed: this.authFailed,
+      authFailed: false,
     };
   }
 
-  connect(url: string): boolean {
-    if (this.options.enabled === false) return false;
-    if (!/^wss?:\/\//.test(url)) return false;
-    this.disconnect();
-    this.buffer = "";
-    this.truncated = false;
-    this.authFailed = false;
-    this.url = url;
-    try {
-      this.hostLabel = new URL(url).hostname || "remote shell";
-    } catch {
-      this.hostLabel = "remote shell";
-    }
-    this.state = "connecting";
+  setProviderSession(session: RtermProviderSession): void {
+    this.providerSessions.set(session.sessionId, session);
+    this.activeSessionId = session.sessionId;
+    this.hostLabel = `${session.user}@${session.target}`;
+    this.state = "connected";
     this.publish();
-    const socket = new WebSocket(url);
-    this.socket = socket;
-    socket.on("open", () => this.publish());
-    socket.on("message", (value) => {
-      if (this.socket !== socket) return;
-      this.handleMessage(value.toString());
-    });
-    socket.on("close", () => {
-      if (this.socket !== socket) return;
-      this.socket = undefined;
-      this.clearTerminalBuffer();
-      this.state = "disconnected";
-      this.publish();
-    });
-    socket.on("error", () => {
-      if (this.socket !== socket) return;
-      this.state = "disconnected";
-      this.clearTerminalBuffer();
-      this.publish();
-    });
+  }
+
+  clearProviderSession(sessionId?: string): void {
+    if (sessionId) this.providerSessions.delete(sessionId);
+    else this.providerSessions.clear();
+    if (this.activeSessionId && !this.providerSessions.has(this.activeSessionId))
+      this.activeSessionId = [...this.providerSessions.keys()].at(-1);
+    const active = this.activeSessionId ? this.providerSessions.get(this.activeSessionId) : undefined;
+    if (active) this.hostLabel = `${active.user}@${active.target}`;
+    this.state = active ? "connected" : "disconnected";
+    this.publish();
+  }
+
+  getProviderSessions(): RtermProviderSession[] {
+    return [...this.providerSessions.values()];
+  }
+
+  selectProviderSession(sessionId: string): boolean {
+    const session = this.providerSessions.get(sessionId);
+    if (!session) return false;
+    this.activeSessionId = sessionId;
+    this.hostLabel = `${session.user}@${session.target}`;
+    this.state = "connected";
+    this.publish();
     return true;
   }
 
-  reconnect(): boolean {
-    if (!this.url) return false;
-    return this.connect(this.url);
+  async readProvider(
+    maxLines = 200,
+    sessionId?: string,
+  ): Promise<{ output: string; truncated: boolean } | undefined> {
+    const session = this.resolveProviderSession(sessionId);
+    if (!session) return undefined;
+    const response = await fetch(`${this.providerApiUrl(session)}/read?maxLines=${maxLines}`, {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return (await response.json()) as { output: string; truncated: boolean };
   }
 
-  toggleConnection(): boolean {
-    if (this.options.enabled === false) return false;
-    if (this.state === "disconnected") return this.reconnect();
-    this.disconnect();
-    return true;
+  async executeProvider(
+    command: string,
+    sessionId?: string,
+  ): Promise<{ output: string; exitCode: number } | undefined> {
+    const session = this.resolveProviderSession(sessionId);
+    if (!session) return undefined;
+    const response = await fetch(`${this.providerApiUrl(session)}/execute`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ command }),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return (await response.json()) as { output: string; exitCode: number };
   }
 
   getEmbedUrl(): string {
-    if (this.options.enabled === false) return "";
-    if (!this.url) return "";
+    if (this.options.enabled === false || !this.options.url) return "";
     try {
-      const pageUrl = new URL(this.url);
-      pageUrl.protocol = pageUrl.protocol === "wss:" ? "https:" : "http:";
-      pageUrl.pathname = pageUrl.pathname.replace(/\/ws\/?$/, "");
+      const pageUrl = new URL(this.options.url);
       pageUrl.searchParams.set("embed", "1");
-      pageUrl.searchParams.set("bridge", "parent");
       return pageUrl.toString();
     } catch {
-      const pageUrl = this.url.replace(/^ws/, "http").replace(/\/ws\/?$/, "");
-      return `${pageUrl}${pageUrl.includes("?") ? "&" : "?"}embed=1&bridge=parent`;
+      return "";
     }
   }
 
-  resize(cols: number, rows: number): boolean {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return false;
-    this.socket.send(`2${JSON.stringify({ cols, rows })}`);
-    return true;
+  private providerApiUrl(session: RtermProviderSession): string {
+    const base = (this.options.url ?? "").replace(/\/$/, "");
+    return base.replace(
+      /\/provider\/[^/]+$/,
+      `/api/sessions/${encodeURIComponent(session.sessionId)}`,
+    );
   }
 
-  disconnect(): void {
-    const socket = this.socket;
-    this.socket = undefined;
-    socket?.close();
-    const hadOutput = this.buffer.length > 0 || this.truncated;
-    this.clearTerminalBuffer();
-    if (this.state !== "disconnected") {
-      this.state = "disconnected";
-      this.publish();
-    } else if (hadOutput) {
-      this.publish();
+  private resolveProviderSession(sessionId?: string): RtermProviderSession | undefined {
+    if (sessionId) return this.providerSessions.get(sessionId);
+    if (this.activeSessionId) return this.providerSessions.get(this.activeSessionId);
+    return this.providerSessions.values().next().value as RtermProviderSession | undefined;
+  }
+
+  private getUrlHost(url: string): string {
+    try {
+      return url ? new URL(url).hostname || "remote shell" : "";
+    } catch {
+      return "remote shell";
     }
-    this.executions.clear();
-  }
-
-  authenticate(code: string): boolean {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return false;
-    this.socket.send(`b${code}`);
-    return true;
-  }
-
-  execute(command: string): RtermExecution | undefined {
-    if (this.state !== "connected") return undefined;
-    const id = randomUUID();
-    const execution: RtermExecution = {
-      id,
-      status: "running",
-      output: "",
-      startOffset: this.buffer.length,
-    };
-    this.executions.set(id, execution);
-    // Emit an internal OSC (Operating System Command) completion marker after
-    // the command. The client uses its execution ID and shell status to resolve waits.
-    const wrapped = `{ ${command}\n}; status=$?; printf '\\033]9;pesk-done;${id};%s\\007' "$status"\n`;
-    if (!this.write(wrapped)) {
-      this.executions.delete(id);
-      return undefined;
-    }
-    return execution;
-  }
-
-  async wait(executionId: string, timeoutMs = 5000): Promise<RtermExecution | undefined> {
-    const started = Date.now();
-    while (Date.now() - started < timeoutMs) {
-      const execution = this.executions.get(executionId);
-      if (!execution || execution.status === "completed") return execution;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    return this.executions.get(executionId);
-  }
-
-  write(input: string): boolean {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return false;
-    this.socket.send(`0${input}`);
-    return true;
-  }
-
-  clearBuffer(): void {
-    this.clearTerminalBuffer();
-    this.publish();
-  }
-
-  private clearTerminalBuffer(): void {
-    this.buffer = "";
-    this.completionFragment = "";
-    this.truncated = false;
-  }
-
-  readRecent(maxLines = 200): { output: string; truncated: boolean } {
-    const lines = this.buffer.split("\n");
-    const truncated = lines.length > maxLines || this.truncated;
-    return { output: lines.slice(-maxLines).join("\n"), truncated };
-  }
-
-  private handleMessage(message: string): void {
-    if (!message) return;
-    const kind = message[0];
-    if (kind === "a") {
-      this.state = "authenticating";
-      this.authFailed = false;
-      this.publish();
-      return;
-    }
-    if (kind === "c") {
-      this.state = "connected";
-      this.authFailed = false;
-      this.publish();
-      return;
-    }
-    if (kind === "d") {
-      this.state = "authenticating";
-      this.authFailed = true;
-      this.publish();
-      return;
-    }
-    if (kind !== "1") return;
-    const text = Buffer.from(message.slice(1), "base64").toString("utf8");
-    this.buffer += text;
-    const completionText = this.completionFragment + text;
-    for (const match of completionText.matchAll(/\u001b\]9;pesk-done;([\da-f-]+);(-?\d+)\u0007/g)) {
-      const execution = this.executions.get(match[1]);
-      if (!execution) continue;
-      execution.status = "completed";
-      execution.exitCode = Number(match[2]);
-      execution.output = this.buffer.slice(execution.startOffset);
-    }
-    const fragmentStart = completionText.lastIndexOf("\u001b]9;pesk-done;");
-    const trailingFragment = fragmentStart >= 0 ? completionText.slice(fragmentStart) : "";
-    this.completionFragment = /^\u001b\]9;pesk-done;[\da-f-]*(?:;-?\d*)?$/.test(trailingFragment)
-      ? trailingFragment
-      : "";
-    if (Buffer.byteLength(this.buffer) > this.maxBytes) {
-      const bytes = Buffer.from(this.buffer, "utf8");
-      this.buffer = bytes.subarray(bytes.length - this.maxBytes).toString("utf8");
-      this.truncated = true;
-    }
-    this.options.onOutput?.(text);
-    this.publish();
   }
 
   private publish(): void {

@@ -19,19 +19,23 @@ export function registerIpcHandlers(context: ApplicationContext): void {
     }
   });
   registerInvoke("get-settings", () => state.getState());
-  registerInvoke("toggle-rterm-connection", () => remoteTerminal.toggleConnection());
-  registerInvoke("rterm-authenticate", (_event, code) =>
-    typeof code === "string" ? remoteTerminal.authenticate(code) : false,
-  );
-  registerInvoke("rterm-write", (_event, input) =>
-    typeof input === "string" ? remoteTerminal.write(input) : false,
-  );
   registerInvoke("get-rterm", () => remoteTerminal.getSnapshot());
   registerInvoke("get-rterm-embed-url", () => remoteTerminal.getEmbedUrl());
-  registerInvoke("rterm-resize", (_event, cols, rows) =>
-    Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0
-      ? remoteTerminal.resize(cols, rows)
-      : false,
+  registerInvoke("rterm-provider-session", (_event, session, threadId) => {
+    if (
+      typeof session?.sessionId === "string" &&
+      typeof session?.provider === "string" &&
+      typeof session?.target === "string" &&
+      typeof session?.user === "string"
+    )
+      return remoteTerminal.setProviderSession(
+        session,
+        typeof threadId === "string" ? threadId : undefined,
+      );
+    return false;
+  });
+  registerInvoke("rterm-provider-disconnected", (_event, sessionId) =>
+    remoteTerminal.clearProviderSession(typeof sessionId === "string" ? sessionId : undefined),
   );
   registerInvoke("get-animations", () => pet.getAnimations());
   registerInvoke("get-chat-size", () => chat.getSize());

@@ -2,13 +2,13 @@ import type { DynamicToolCallParams, DynamicToolCallResponse } from "../../codex
 import { RemoteTerminalToolHandler } from "./handler";
 import { RemoteTerminalManager } from "./manager";
 import { REMOTE_TERMINAL_TOOLS } from "./tools";
-import type { RtermSnapshot } from "./rterm-client";
+import type { RtermProviderSession, RtermSnapshot } from "./rterm-client";
 
 export interface RemoteTerminalServiceOptions {
   enabled: boolean;
   url: string;
   onChanged: (threadId: string, snapshot: RtermSnapshot) => void;
-  onOutput?: (threadId: string, data: string) => void;
+  onSessionSelected?: (threadId: string, sessionId: string) => void;
   requestApproval: (
     threadId: string,
     callId: string,
@@ -26,6 +26,7 @@ export class RemoteTerminalService {
     this.manager = new RemoteTerminalManager(options);
     this.toolHandler = new RemoteTerminalToolHandler({
       getRterm: (threadId) => this.manager.getClient(threadId),
+      onSessionSelected: options.onSessionSelected,
       requestApproval: options.requestApproval,
     });
   }
@@ -46,20 +47,12 @@ export class RemoteTerminalService {
     return this.manager.getEmbedUrl();
   }
 
-  toggleConnection(): boolean {
-    return this.manager.toggleConnection();
+  setProviderSession(session: RtermProviderSession, threadId?: string): boolean {
+    return this.manager.setProviderSession(session, threadId);
   }
 
-  authenticate(code: string): boolean {
-    return this.manager.authenticate(code);
-  }
-
-  write(input: string): boolean {
-    return this.manager.write(input);
-  }
-
-  resize(cols: number, rows: number): boolean {
-    return this.manager.resize(cols, rows);
+  clearProviderSession(sessionId?: string): boolean {
+    return this.manager.clearProviderSession(sessionId);
   }
 
   handleToolCall(params: DynamicToolCallParams): Promise<DynamicToolCallResponse> {

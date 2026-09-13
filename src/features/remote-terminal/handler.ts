@@ -4,19 +4,23 @@ import {
   REMOTE_TERMINAL_EXECUTE_TOOL,
   REMOTE_TERMINAL_NAMESPACE,
   REMOTE_TERMINAL_READ_TOOL,
+  REMOTE_TERMINAL_SESSIONS_TOOL,
 } from "./tools";
 
 interface ReadArguments {
   maxLines?: unknown;
+  sessionId?: unknown;
 }
 
 interface ExecuteArguments {
   command?: unknown;
   reason?: unknown;
+  sessionId?: unknown;
 }
 
 export interface RemoteTerminalToolHandlerDependencies {
   getRterm: (threadId: string) => RtermClient;
+  onSessionSelected?: (threadId: string, sessionId: string) => void;
   requestApproval: (
     threadId: string,
     callId: string,
@@ -36,12 +40,33 @@ export class RemoteTerminalToolHandler {
     });
     if (params.namespace !== REMOTE_TERMINAL_NAMESPACE)
       return fail("Unsupported terminal namespace.");
+    if (params.tool === REMOTE_TERMINAL_SESSIONS_TOOL) {
+      const sessions = this.dependencies
+        .getRterm(params.threadId)
+        .getProviderSessions()
+        .map(({ sessionId, provider, target, user }) => ({ sessionId, provider, target, user }));
+      return {
+        contentItems: [{ type: "inputText", text: JSON.stringify(sessions) }],
+        success: true,
+      };
+    }
     if (params.tool === REMOTE_TERMINAL_READ_TOOL) {
       const args = this.objectArguments(params.arguments) as ReadArguments;
       const maxLines =
         typeof args?.maxLines === "number" ? Math.min(200, Math.max(1, args.maxLines)) : 200;
+      const sessionId = typeof args?.sessionId === "string" ? args.sessionId : undefined;
       const rterm = this.dependencies.getRterm(params.threadId);
-      const recent = rterm.readRecent(maxLines);
+      if (sessionId && !this.selectSession(rterm, params.threadId, sessionId))
+        return fail("The provider session does not exist.");
+      let recent;
+      try {
+        recent = await rterm.readProvider(maxLines, sessionId);
+      } catch (error) {
+        return fail(
+          `Unable to read the provider terminal: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (!recent) return fail(this.missingSessionMessage(rterm, sessionId));
       return {
         contentItems: [
           {
@@ -58,6 +83,9 @@ export class RemoteTerminalToolHandler {
     if (typeof args?.command !== "string" || !args.command.trim())
       return fail("A command is required.");
     const rterm = this.dependencies.getRterm(params.threadId);
+    const sessionId = typeof args?.sessionId === "string" ? args.sessionId : undefined;
+    if (sessionId && !this.selectSession(rterm, params.threadId, sessionId))
+      return fail("The provider session does not exist.");
     const host = rterm.getSnapshot().hostLabel || "remote shell";
     const approved = await this.dependencies.requestApproval(
       params.threadId,
@@ -66,27 +94,36 @@ export class RemoteTerminalToolHandler {
       typeof args.reason === "string" ? args.reason : `Run on ${host}.`,
     );
     if (!approved) return fail("The user rejected the terminal command.");
-    const execution = rterm.execute(args.command);
-    if (!execution) return fail("The terminal is not connected.");
-    const completed = await rterm.wait(execution.id, 120_000);
-    if (!completed || completed.status !== "completed")
+    try {
+      const result = await rterm.executeProvider(args.command, sessionId);
+      if (!result) return fail(this.missingSessionMessage(rterm, sessionId));
+      return {
+        contentItems: [
+          { type: "inputText", text: `completed; exitCode=${result.exitCode}\n${result.output}` },
+        ],
+        success: result.exitCode === 0,
+      };
+    } catch (error) {
       return fail(
-        "The command did not finish within 120 seconds. Its output remains available in the terminal.",
+        `Unable to execute through the provider: ${error instanceof Error ? error.message : String(error)}`,
       );
-    return {
-      contentItems: [
-        {
-          type: "inputText",
-          text: `completed; exitCode=${completed.exitCode}\n${completed.output}`,
-        },
-      ],
-      success: true,
-    };
+    }
   }
 
   private objectArguments(value: DynamicToolCallParams["arguments"]): Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
+  }
+
+  private missingSessionMessage(rterm: RtermClient, sessionId?: string): string {
+    if (sessionId) return "The provider session is not connected or does not exist.";
+    return "The provider session is not connected.";
+  }
+
+  private selectSession(rterm: RtermClient, threadId: string, sessionId: string): boolean {
+    if (!rterm.selectProviderSession(sessionId)) return false;
+    this.dependencies.onSessionSelected?.(threadId, sessionId);
+    return true;
   }
 }

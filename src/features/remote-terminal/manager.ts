@@ -1,10 +1,9 @@
-import { RtermClient, type RtermSnapshot } from "./rterm-client";
+import { RtermClient, type RtermProviderSession, type RtermSnapshot } from "./rterm-client";
 
 export interface RemoteTerminalManagerOptions {
   enabled: boolean;
   url: string;
   onChanged: (threadId: string, snapshot: RtermSnapshot) => void;
-  onOutput?: (threadId: string, data: string) => void;
 }
 
 /** Owns one independent remote-terminal client for each thread. */
@@ -25,7 +24,6 @@ export class RemoteTerminalManager {
         enabled: this.options.enabled,
         url: this.options.url,
         onChanged: (snapshot) => this.options.onChanged(threadId, snapshot),
-        onOutput: (data) => this.options.onOutput?.(threadId, data),
       });
       this.clients.set(threadId, client);
     }
@@ -41,25 +39,19 @@ export class RemoteTerminalManager {
     return threadId ? this.getClient(threadId).getEmbedUrl() : "";
   }
 
-  toggleConnection(threadId = this.currentThreadId): boolean {
+  setProviderSession(session: RtermProviderSession, threadId = this.currentThreadId): boolean {
     if (!threadId || !this.options.url) return false;
-    return this.getClient(threadId).toggleConnection();
+    this.getClient(threadId).setProviderSession(session);
+    return true;
   }
 
-  authenticate(code: string): boolean {
-    return this.currentThreadId ? this.getClient(this.currentThreadId).authenticate(code) : false;
-  }
-
-  write(input: string): boolean {
-    return this.currentThreadId ? this.getClient(this.currentThreadId).write(input) : false;
-  }
-
-  resize(cols: number, rows: number): boolean {
-    return this.currentThreadId ? this.getClient(this.currentThreadId).resize(cols, rows) : false;
+  clearProviderSession(sessionId?: string, threadId = this.currentThreadId): boolean {
+    if (!threadId) return false;
+    this.getClient(threadId).clearProviderSession(sessionId);
+    return true;
   }
 
   disconnectAll(): void {
-    for (const client of this.clients.values()) client.disconnect();
     this.clients.clear();
   }
 

@@ -77,10 +77,10 @@ export class RendererStatePublisher {
     }
   }
 
-  publishRtermOutput(data: string): void {
-    for (const window of [this.getPetWindow(), this.getChatWindow()]) {
-      if (window && !window.isDestroyed()) window.webContents.send("rterm-output", data);
-    }
+  publishRtermSessionSelection(threadId: string, sessionId: string): void {
+    const window = this.getChatWindow();
+    if (threadId === undefined || !window || window.isDestroyed()) return;
+    window.webContents.send("rterm-session-selected", { threadId, sessionId });
   }
 
   private publishNow(): void {

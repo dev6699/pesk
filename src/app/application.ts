@@ -98,10 +98,8 @@ export class PeskApplication implements ApplicationContext {
       onChanged: (threadId, snapshot) => {
         if (threadId === this.currentThreadId) this._state?.publishRterm(snapshot);
       },
-      onOutput: (threadId, data) => {
-        if (threadId === this.currentThreadId)
-          this._state?.publishRtermOutput(Buffer.from(data).toString("base64"));
-      },
+      onSessionSelected: (threadId, sessionId) =>
+        this._state?.publishRtermSessionSelection(threadId, sessionId),
       requestApproval: (threadId, callId, command, reason) =>
         this.codex.requestDynamicApproval(threadId, callId, command, reason),
     });

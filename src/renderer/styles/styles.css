@@ -1023,10 +1023,10 @@ body.chat-only #codex-chat {
 
 #rterm-panel {
   display: flex;
-  flex: 0 0 140px;
+  flex: 0 0 220px;
   min-height: 0;
   max-height: 420px;
-  height: 140px;
+  height: 220px;
   flex-direction: column;
   border: 1px solid var(--shell-border);
   background: var(--shell-surface);
@@ -1079,10 +1079,11 @@ body.chat-only #codex-chat {
 }
 
 #rterm-status {
+  display: none;
   flex: 1 1 0;
 }
 
-#rterm-connection,
+#rterm-refresh,
 #rterm-close {
   border: 1px solid var(--border-overlay);
   border-radius: 7px;
@@ -1095,8 +1096,8 @@ body.chat-only #codex-chat {
     sans-serif;
 }
 
-#rterm-connection:hover,
-#rterm-connection:focus-visible,
+#rterm-refresh:hover,
+#rterm-refresh:focus-visible,
 #rterm-close:hover,
 #rterm-close:focus-visible {
   border-color: var(--status-info-strong);
@@ -1105,23 +1106,8 @@ body.chat-only #codex-chat {
   outline-offset: 2px;
 }
 
-#rterm-connection:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-#rterm-output {
-  flex: 1;
-  min-height: 0;
-  margin: 0;
-  overflow: auto;
-  padding: 8px;
-  font:
-    12px/1.35 Consolas,
-    "Cascadia Mono",
-    monospace;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+#rterm-close {
+  margin-left: auto;
 }
 
 #rterm-frame {

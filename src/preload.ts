@@ -106,14 +106,12 @@ const api: PeskApi = {
   onChatLockChanged: listenChannel("chat-lock-changed"),
   onSettingsChanged: listenChannel("settings-changed"),
   onCodexStreamDelta: listenChannel("codex-stream-delta"),
-  toggleRtermConnection: invokeChannel("toggle-rterm-connection"),
-  authenticateRterm: invokeChannel("rterm-authenticate"),
-  writeRterm: invokeChannel("rterm-write"),
   getRterm: invokeChannel("get-rterm"),
   getRtermEmbedUrl: invokeChannel("get-rterm-embed-url"),
-  resizeRterm: invokeChannel("rterm-resize"),
+  setRtermProviderSession: invokeChannel("rterm-provider-session"),
+  clearRtermProviderSession: invokeChannel("rterm-provider-disconnected"),
   onRtermChanged: listenChannel("rterm-changed"),
-  onRtermOutput: listenChannel("rterm-output"),
+  onRtermSessionSelected: listenChannel("rterm-session-selected"),
 } satisfies Window["peskApi"];
 
 contextBridge.exposeInMainWorld("peskApi", api);

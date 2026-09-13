@@ -147,7 +147,7 @@ export function loadConfig(): AppConfig {
           enabled: config.features?.remoteTerminal?.enabled === true,
           url:
             typeof config.features?.remoteTerminal?.url === "string" &&
-            /^wss?:\/\//.test(config.features.remoteTerminal.url)
+            /^https?:\/\//.test(config.features.remoteTerminal.url)
               ? config.features.remoteTerminal.url
               : defaultConfig.features.remoteTerminal.url,
         },

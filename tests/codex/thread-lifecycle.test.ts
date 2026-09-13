@@ -119,6 +119,7 @@ test("passes configured dynamic tools to new threads", () => {
           type: "namespace",
           name: "remote_terminal",
           tools: [
+            { type: "function", name: "sessions" },
             { type: "function", name: "read" },
             { type: "function", name: "execute" },
           ],

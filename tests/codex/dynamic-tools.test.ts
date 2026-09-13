@@ -7,7 +7,11 @@ import { CodexThreadManager } from "../../src/codex/thread-manager";
 
 describe("dynamic tools", () => {
   test("advertises only the supported remote-terminal tools", () => {
-    expect(REMOTE_TERMINAL_TOOLS[0].tools.map((tool) => tool.name)).toEqual(["read", "execute"]);
+    expect(REMOTE_TERMINAL_TOOLS[0].tools.map((tool) => tool.name)).toEqual([
+      "sessions",
+      "read",
+      "execute",
+    ]);
   });
 
   test("publishes and resolves an approved local tool request", async () => {

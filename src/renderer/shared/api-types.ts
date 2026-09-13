@@ -93,12 +93,19 @@ export interface PeskApi {
   onChatLockChanged: (callback: (locked: boolean) => void) => void;
   onSettingsChanged: (callback: (state: RendererState) => void) => void;
   onCodexStreamDelta: (callback: (delta: CodexStreamDelta) => void) => void;
-  toggleRtermConnection: () => Promise<boolean>;
-  authenticateRterm: (code: string) => Promise<boolean>;
-  writeRterm: (input: string) => Promise<boolean>;
   getRterm: () => Promise<RtermSnapshot>;
   getRtermEmbedUrl: () => Promise<string>;
-  resizeRterm: (cols: number, rows: number) => Promise<boolean>;
+  setRtermProviderSession: (
+    session: {
+      sessionId: string;
+      token: string;
+      provider: string;
+      target: string;
+      user: string;
+    },
+    threadId?: string,
+  ) => Promise<boolean>;
+  clearRtermProviderSession: (sessionId?: string) => Promise<boolean>;
   onRtermChanged: (callback: (snapshot: RtermSnapshot) => void) => void;
-  onRtermOutput: (callback: (data: string) => void) => void;
+  onRtermSessionSelected: (callback: (selection: { threadId: string; sessionId: string }) => void) => void;
 }

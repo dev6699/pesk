@@ -8,29 +8,28 @@ export class RtermRenderer {
   };
   constructor(
     private readonly panel: HTMLElement,
-    private readonly status: HTMLElement,
-    private readonly frame: HTMLIFrameElement,
-    private readonly connection: HTMLButtonElement,
+    private frame: HTMLIFrameElement,
+    private readonly refreshButton: HTMLButtonElement | undefined,
     private readonly closeButton: HTMLButtonElement,
     private readonly resizeHandle: HTMLElement,
     private visible = false,
   ) {}
   private threadId = "standalone";
+  private readonly frames = new Map<string, HTMLIFrameElement>();
   private readonly visibility = new Map<string, boolean>();
 
   setup(): void {
+    this.frames.set(this.threadId, this.frame);
     window.peskApi.onRtermChanged((snapshot) => this.render(snapshot));
-    window.peskApi.onRtermOutput((data) => this.post({ type: "output", data }));
-    this.connection.addEventListener("click", () => window.peskApi.toggleRtermConnection());
+    window.peskApi.onRtermSessionSelected?.(({ threadId, sessionId }) => {
+      if (threadId !== this.threadId) return;
+      this.frame.contentWindow?.postMessage({ source: "pesk", type: "select-session", sessionId }, "*");
+    });
+    this.refreshButton?.addEventListener("click", () => this.refreshFrame());
     this.closeButton.addEventListener("click", () => this.hide());
     document.addEventListener("toggle-rterm", () => this.toggleVisibility());
     this.resizeHandle.addEventListener("pointerdown", (event) => this.startResize(event));
     window.addEventListener("message", (event) => this.handleFrameMessage(event));
-    this.frame.addEventListener("load", () => {
-      this.postCurrentState();
-      if (this.snapshot.output)
-        this.post({ type: "output", data: this.encode(this.snapshot.output) });
-    });
     window.peskApi.getRterm().then((snapshot) => this.render(snapshot));
   }
 
@@ -39,38 +38,14 @@ export class RtermRenderer {
     if (this.threadId === nextThreadId) return;
     this.threadId = nextThreadId;
     this.visible = this.visibility.get(this.threadId) ?? false;
+    this.switchProviderFrame(this.threadId);
     this.render(this.snapshot);
-    this.post({ type: "reset" });
-    if (this.snapshot.output)
-      this.post({ type: "output", data: this.encode(this.snapshot.output) });
   }
 
   private render(snapshot: RtermSnapshot): void {
-    const previousState = this.snapshot.state;
     this.snapshot = snapshot;
     this.panel.hidden = !snapshot.enabled || !this.visible;
-    this.status.textContent = `${snapshot.hostLabel || "Remote shell"} · ${snapshot.state}`;
-    this.connection.textContent = snapshot.state === "disconnected" ? "Reconnect" : "Disconnect";
-    this.connection.disabled = snapshot.state === "disconnected" && !this.snapshot.hostLabel;
-    if (this.visible) this.loadEmbedUrl(snapshot.state === "connecting");
-    if (snapshot.state === "connecting") this.post({ type: "reset" });
-    if (snapshot.state === "authenticating")
-      this.post({
-        type: snapshot.authFailed ? "authentication-failed" : "authentication-required",
-      });
-    if (snapshot.state === "connected") {
-      if (previousState !== "connected") {
-        this.post({ type: "reset" });
-        this.post({ type: "authenticated" });
-        this.postSnapshotOutput();
-      }
-    }
-    if (snapshot.state === "disconnected") {
-      if (previousState !== "disconnected") {
-        this.post({ type: "reset" });
-        this.post({ type: "disconnected" });
-      }
-    }
+    if (this.visible) this.loadEmbedUrl();
   }
 
   private toggleVisibility(): void {
@@ -79,7 +54,6 @@ export class RtermRenderer {
     this.panel.hidden = !this.snapshot.enabled || !this.visible;
     if (this.visible) {
       this.render(this.snapshot);
-      if (this.snapshot.state === "disconnected") window.peskApi.toggleRtermConnection();
     }
   }
 
@@ -89,31 +63,42 @@ export class RtermRenderer {
     this.panel.hidden = true;
   }
 
-  private loadEmbedUrl(force = false): void {
+  private refreshFrame(): void {
+    const source = this.frame.src;
+    if (!source) return;
+    this.frame.src = "";
+    this.frame.src = source;
+  }
+
+  private loadEmbedUrl(): void {
     window.peskApi.getRtermEmbedUrl().then((url) => {
-      if (url && (force || this.frame.src !== url)) this.frame.src = url;
+      if (!url) return;
+      const initialFrame = this.frames.get("standalone");
+      if (initialFrame && this.threadId !== "standalone" && !this.frames.has(this.threadId)) {
+        this.frames.delete("standalone");
+        this.frames.set(this.threadId, initialFrame);
+      }
+      if (this.frame.src !== url) this.frame.src = url;
     });
   }
 
-  private post(data: Record<string, unknown>): void {
-    this.frame.contentWindow?.postMessage({ source: "pesk", ...data }, "*");
-  }
-
-  private postCurrentState(): void {
-    const type =
-      this.snapshot.state === "disconnected"
-        ? "disconnected"
-        : this.snapshot.state === "authenticating"
-          ? this.snapshot.authFailed
-            ? "authentication-failed"
-            : "authentication-required"
-          : "authenticated";
-    this.post({ type });
-  }
-
-  private postSnapshotOutput(): void {
-    if (this.snapshot.output)
-      this.post({ type: "output", data: this.encode(this.snapshot.output) });
+  private switchProviderFrame(threadId: string): void {
+    let frame = this.frames.get(threadId);
+    if (!frame) {
+      const initialFrame = this.frames.get("standalone");
+      if (initialFrame && this.threadId !== "standalone") {
+        frame = initialFrame;
+        this.frames.delete("standalone");
+      } else {
+        frame = this.frame.cloneNode(false) as HTMLIFrameElement;
+        frame.removeAttribute("src");
+        frame.hidden = true;
+        this.frame.parentElement?.appendChild(frame);
+      }
+      this.frames.set(threadId, frame);
+    }
+    for (const candidate of this.frames.values()) candidate.hidden = candidate !== frame;
+    this.frame = frame;
   }
 
   private startResize(event: PointerEvent): void {
@@ -138,25 +123,39 @@ export class RtermRenderer {
     handle.addEventListener("pointercancel", stop);
   }
 
-  private encode(value: string): string {
-    return btoa(unescape(encodeURIComponent(value)));
-  }
-
   private handleFrameMessage(event: MessageEvent): void {
     if (event.data?.source !== "rterm") return;
+    const sourceThread =
+      [...this.frames.entries()].find(([, frame]) => frame.contentWindow === event.source)?.[0] ??
+      (event.source === null ? this.threadId : undefined);
+    if (!sourceThread) return;
+    const isCurrentFrame = sourceThread === this.threadId;
     switch (event.data.type) {
-      case "loaded":
-        this.postCurrentState();
+      case "disconnected":
+      case "error":
+        if (isCurrentFrame) {
+          void window.peskApi.clearRtermProviderSession(
+            typeof event.data.sessionId === "string" ? event.data.sessionId : undefined,
+          );
+        }
         break;
-      case "input":
-        if (typeof event.data.data === "string") window.peskApi.writeRterm(event.data.data);
-        break;
-      case "authenticate":
-        if (typeof event.data.code === "string") window.peskApi.authenticateRterm(event.data.code);
-        break;
-      case "terminal-resized":
-        if (Number.isInteger(event.data.cols) && Number.isInteger(event.data.rows))
-          window.peskApi.resizeRterm(event.data.cols, event.data.rows);
+      case "session-ready":
+        if (
+          typeof event.data.sessionId === "string" &&
+          typeof event.data.token === "string" &&
+          typeof event.data.provider === "string" &&
+          typeof event.data.target === "string" &&
+          typeof event.data.user === "string"
+        ) {
+          const session = {
+            sessionId: event.data.sessionId,
+            token: event.data.token,
+            provider: event.data.provider,
+            target: event.data.target,
+            user: event.data.user,
+          };
+          void window.peskApi.setRtermProviderSession(session, sourceThread);
+        }
         break;
     }
   }
@@ -164,21 +163,24 @@ export class RtermRenderer {
 
 export function setupRtermRenderer(): RtermRenderer | undefined {
   const panel = document.getElementById("rterm-panel");
-  const status = document.getElementById("rterm-status");
   const frame = document.getElementById("rterm-frame");
-  const connection = document.getElementById("rterm-connection");
+  const refreshButton = document.getElementById("rterm-refresh");
   const closeButton = document.getElementById("rterm-close");
   const resizeHandle = document.getElementById("rterm-resize-handle");
   if (
     !(panel instanceof HTMLElement) ||
-    !(status instanceof HTMLElement) ||
     !(frame instanceof HTMLIFrameElement) ||
-    !(connection instanceof HTMLButtonElement) ||
     !(closeButton instanceof HTMLButtonElement) ||
     !(resizeHandle instanceof HTMLElement)
   )
     return undefined;
-  const renderer = new RtermRenderer(panel, status, frame, connection, closeButton, resizeHandle);
+  const renderer = new RtermRenderer(
+    panel,
+    frame,
+    refreshButton instanceof HTMLButtonElement ? refreshButton : undefined,
+    closeButton,
+    resizeHandle,
+  );
   renderer.setup();
   return renderer;
 }

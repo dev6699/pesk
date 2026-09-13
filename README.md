@@ -14,7 +14,7 @@ Pesk is an Electron and TypeScript application for working with Codex through a 
 
 - Animated desktop companion with customizable visual themes
 - Integrated Codex workspace for interactive development assistance
-- Remote-machine investigation through an embedded terminal, with human approval
+- Remote-machine investigation through one or more embedded terminals, with human approval
 - Extensible configuration and external content support after installation
 - Productivity automation through configurable Windows application presets
 - Native Windows integration through the system tray, keyboard shortcuts, and login startup
@@ -84,17 +84,20 @@ sequenceDiagram
   actor User
   participant Pesk as Pesk main process
   participant Codex
-  participant Remote as Remote machine
+  participant HostA as Remote host A
+  participant HostB as Remote host B
 
-  User->>Pesk: Investigate high model latency on the remote host
+  User->>Pesk: Diagnose why one production host missed a release while peer hosts completed deployment successfully
   Pesk->>Codex: Forward investigation request
   loop Repeat until the issue is understood
     Codex->>Pesk: Request next diagnostic step
     Pesk->>User: Ask for human command approval
     alt Approved
       User->>Pesk: Approve command
-      Pesk->>Remote: Execute approved command
-      Remote-->>Pesk: Return terminal output
+      Pesk->>HostA: Execute approved command
+      Pesk->>HostB: Execute approved command
+      HostA-->>Pesk: Return state and command output
+      HostB-->>Pesk: Return state and command output
       Pesk->>Codex: Provide terminal output
     else Rejected
       User-->>Pesk: Reject command
@@ -113,7 +116,7 @@ sequenceDiagram
 | Secure IPC bridge    | The preload boundary that safely carries window requests and main-process state updates.                                      |
 | Application services | Main-process coordination for configuration, settings, animations, presets, window lifecycle, and cross-component behavior.   |
 | Codex client         | Main-process connection and state owner for JSON-RPC requests, threads, turns, streaming, approvals, and user-input requests. |
-| Remote Terminal      | Per-thread bridge to a remote machine, providing an embedded terminal and approval-gated Codex tools.                         |
+| Remote Terminal      | Per-thread bridge to one or more remote machines, with session-aware terminal access and approval-gated Codex tools.         |
 | Chat web server      | Main-process LAN server for pairing, authenticated browser chat, state broadcasts, and push notification requests.            |
 | User data            | Local persisted configuration, settings, device credentials, VAPID keys, subscriptions, and external content.                 |
 | Codex app-server     | External service that receives and streams Codex JSON-RPC traffic.                                                            |
@@ -172,7 +175,7 @@ Example application configuration:
   "features": {
     "remoteTerminal": {
       "enabled": true,
-      "url": "ws://127.0.0.1:5000/bash/ws"
+      "url": "http://127.0.0.1:5000/provider/ssh"
     }
   },
   "codexStatusSound": "audio.mp3",
@@ -189,8 +192,8 @@ Configuration fields:
 - `chatWidth` and `chatHeight` control the desktop chat window dimensions.
 - `animationsDir` selects the external animation directory. Relative paths are resolved beside the active configuration file.
 - `codexAppServerUrl` specifies the Codex app-server WebSocket endpoint.
-- `features.remoteTerminal.enabled` enables remote-machine investigation through the embedded terminal and approval-gated Codex terminal tools.
-- `features.remoteTerminal.url` points to the remote terminal WebSocket command endpoint, such as `ws://127.0.0.1:5000/bash/ws`. Pesk uses it for the terminal session and derives the embedded terminal page from the same endpoint, preserving any query parameters.
+- `features.remoteTerminal.enabled` enables remote-machine investigation through an embedded terminal and approval-gated Codex terminal tools.
+- `features.remoteTerminal.url` points to an rterm provider page such as `http://127.0.0.1:5000/provider/ssh`. rterm owns provider, target, user, and terminal-session creation; Pesk keeps the sessions associated with the active Codex thread.
 - `codexStatusSound` specifies an optional sound file. Relative paths are resolved beside the active configuration file.
 - `webAccessEnabled` enables the browser-based chat endpoint. It is disabled by default.
 - `webPort` specifies the HTTP/WebSocket listening port. The default is `4587`.
@@ -201,6 +204,33 @@ Configuration fields:
 ```text
 <active-config-directory>\animations\dance\001.png
 ```
+
+### Remote-machine troubleshooting
+
+When remote-terminal support is enabled, open the configured rterm provider
+page in the embedded terminal panel and create a session for the target you
+need to investigate. A single session is sufficient for routine investigation
+of one remote machine. Multiple provider sessions can also remain connected at
+the same time for comparing hosts, users, or provider targets. Sessions belong
+to the current Codex thread; switching threads shows that thread's own
+provider sessions.
+
+Codex uses the approval-gated `remote_terminal` tools to work with these
+sessions:
+
+- `remote_terminal.sessions` lists the provider sessions available in the
+  current Codex thread.
+- `remote_terminal.read` reads recent output. Pass `sessionId` to inspect a
+  specific machine; without it, the selected session is used.
+- `remote_terminal.execute` runs an exact command on a selected session after
+  the user approves it. Pass the same `sessionId` when comparing machines.
+
+For a single-machine investigation, Codex can use the selected session without
+specifying a `sessionId`. For cross-machine investigation, list the available
+sessions and pass a specific `sessionId` when comparing diagnostic output or
+approving targeted commands on different hosts. Session credentials remain in
+the main process and are not exposed to Codex; a session ID identifies a target
+but does not authenticate access.
 
 ### Connect to Codex app-server
 

@@ -37,14 +37,14 @@ describe("configuration directory", () => {
     readFileSync.mockImplementation((filePath: string) => {
       if (filePath === path.join("/app", "config.json"))
         return JSON.stringify({
-          features: { remoteTerminal: { enabled: true, url: "ws://remote:5000/bash/ws" } },
+          features: { remoteTerminal: { enabled: true, url: "http://remote:5000/provider/ssh" } },
         });
       throw new Error("missing user config");
     });
 
     expect(loadConfig().features.remoteTerminal).toEqual({
       enabled: true,
-      url: "ws://remote:5000/bash/ws",
+      url: "http://remote:5000/provider/ssh",
     });
   });
 
@@ -52,14 +52,14 @@ describe("configuration directory", () => {
     readFileSync.mockImplementation((filePath: string) => {
       if (filePath === path.join("/app", "config.json"))
         return JSON.stringify({
-          features: { remoteTerminal: { url: "ws://remote:5000/bash/ws" } },
+          features: { remoteTerminal: { url: "http://remote:5000/provider/ssh" } },
         });
       return JSON.stringify({ features: { remoteTerminal: { enabled: true } } });
     });
 
     expect(loadConfig().features.remoteTerminal).toEqual({
       enabled: true,
-      url: "ws://remote:5000/bash/ws",
+      url: "http://remote:5000/provider/ssh",
     });
   });
 
@@ -69,5 +69,17 @@ describe("configuration directory", () => {
     });
 
     expect(loadConfig().features.remoteTerminal).toEqual({ enabled: false, url: "" });
+  });
+
+  test("rejects legacy remote terminal WebSocket URLs", () => {
+    readFileSync.mockImplementation((filePath: string) => {
+      if (filePath === path.join("/app", "config.json"))
+        return JSON.stringify({
+          features: { remoteTerminal: { enabled: true, url: "ws://remote:5000/bash/ws" } },
+        });
+      throw new Error("missing user config");
+    });
+
+    expect(loadConfig().features.remoteTerminal).toEqual({ enabled: true, url: "" });
   });
 });
