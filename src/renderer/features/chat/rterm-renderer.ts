@@ -1,6 +1,7 @@
 export class RtermRenderer {
   private snapshot: RtermSnapshot = {
     enabled: false,
+    sessions: [],
     state: "disconnected",
     output: "",
     hostLabel: "",

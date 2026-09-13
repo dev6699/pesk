@@ -283,5 +283,13 @@ describe("rterm renderer", () => {
 });
 
 function snapshot(state: RtermSnapshot["state"], authFailed = false): RtermSnapshot {
-  return { enabled: true, state, output: "output", hostLabel: "remote", authFailed };
+  return {
+    enabled: true,
+    sessions: [],
+    activeSessionId: undefined,
+    state,
+    output: "output",
+    hostLabel: "remote",
+    authFailed,
+  };
 }

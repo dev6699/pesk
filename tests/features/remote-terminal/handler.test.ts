@@ -48,6 +48,7 @@ function makeHandler(overrides: Partial<RtermClient> = {}) {
   const rterm = {
     getSnapshot: jest.fn(() => ({
       enabled: true,
+      sessions: [],
       state: "connected" as const,
       output: "",
       hostLabel: "remote",
@@ -74,6 +75,7 @@ test("routes explicit session IDs and notifies the renderer", async () => {
   const rterm = {
     getSnapshot: jest.fn(() => ({
       enabled: true,
+      sessions: [],
       state: "connected" as const,
       output: "",
       hostLabel: "host-b",
@@ -121,6 +123,7 @@ test("normalizes read arguments and marks older output", async () => {
   const { handler, rterm } = makeHandler({
     getSnapshot: jest.fn(() => ({
       enabled: true,
+      sessions: [],
       state: "connected" as const,
       output: "",
       hostLabel: "",

@@ -72,6 +72,8 @@ export class RemoteTerminalManager {
   private emptySnapshot(): RtermSnapshot {
     return {
       enabled: this.options.enabled,
+      sessions: [],
+      activeSessionId: undefined,
       state: "disconnected",
       output: "",
       hostLabel: "",

@@ -68,8 +68,17 @@ interface CodexStreamDelta {
   completed?: boolean;
 }
 
+interface RtermSessionDescriptor {
+  sessionId: string;
+  provider: string;
+  target: string;
+  user: string;
+}
+
 interface RtermSnapshot {
   enabled: boolean;
+  sessions: RtermSessionDescriptor[];
+  activeSessionId?: string;
   state: "disconnected" | "connecting" | "authenticating" | "connected";
   output: string;
   hostLabel: string;

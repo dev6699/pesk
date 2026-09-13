@@ -33,6 +33,10 @@ describe("RtermClient provider mode", () => {
     expect(target.getSnapshot()).toMatchObject({
       state: "connected",
       hostLabel: "test-user@test-host",
+      activeSessionId: "session/1",
+      sessions: [
+        { sessionId: "session/1", provider: "ssh", target: "test-host", user: "test-user" },
+      ],
     });
 
     target.clearProviderSession();
@@ -52,6 +56,13 @@ describe("RtermClient provider mode", () => {
     const second = { ...session, sessionId: "session/2", target: "other-host", user: "other-user" };
     target.setProviderSession(session);
     target.setProviderSession(second);
+    expect(target.getSnapshot()).toMatchObject({
+      activeSessionId: "session/2",
+      sessions: [
+        { sessionId: "session/1", provider: "ssh", target: "test-host", user: "test-user" },
+        { sessionId: "session/2", provider: "ssh", target: "other-host", user: "other-user" },
+      ],
+    });
 
     expect(target.getProviderSessions()).toEqual([session, second]);
     await expect(target.readProvider(20, session.sessionId)).resolves.toEqual({

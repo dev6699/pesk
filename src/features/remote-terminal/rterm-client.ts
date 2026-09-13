@@ -2,6 +2,8 @@ export type RtermState = "disconnected" | "connecting" | "authenticating" | "con
 
 export interface RtermSnapshot {
   enabled: boolean;
+  sessions: ProviderSessionDescriptor[];
+  activeSessionId?: string;
   state: RtermState;
   output: string;
   hostLabel: string;
@@ -39,6 +41,15 @@ export class RtermClient {
   getSnapshot(): RtermSnapshot {
     return {
       enabled: this.options.enabled !== false,
+      sessions: [...this.providerSessions.values()].map(
+        ({ sessionId, provider, target, user }) => ({
+          sessionId,
+          provider,
+          target,
+          user,
+        }),
+      ),
+      activeSessionId: this.activeSessionId,
       state: this.state,
       output: "",
       hostLabel: this.hostLabel,
