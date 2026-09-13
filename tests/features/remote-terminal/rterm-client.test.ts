@@ -23,9 +23,7 @@ describe("RtermClient provider mode", () => {
   afterEach(() => jest.restoreAllMocks());
 
   test("embeds the configured provider page", () => {
-    expect(client().getEmbedUrl()).toBe(
-      "http://remote:5000/provider/ssh?embed=1",
-    );
+    expect(client().getEmbedUrl()).toBe("http://remote:5000/provider/ssh?embed=1");
   });
 
   test("tracks the selected provider session", () => {
@@ -45,9 +43,11 @@ describe("RtermClient provider mode", () => {
   });
 
   test("retains multiple sessions and routes by explicit session ID", async () => {
-    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ output: "session two", truncated: false }), { status: 200 }),
-    );
+    const fetchMock = jest
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ output: "session two", truncated: false }), { status: 200 }),
+      );
     const target = client();
     const second = { ...session, sessionId: "session/2", target: "other-host", user: "other-user" };
     target.setProviderSession(session);
@@ -69,9 +69,11 @@ describe("RtermClient provider mode", () => {
   });
 
   test("reads the attached provider terminal", async () => {
-    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ output: "shell output", truncated: false }), { status: 200 }),
-    );
+    const fetchMock = jest
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ output: "shell output", truncated: false }), { status: 200 }),
+      );
     const target = client();
     target.setProviderSession(session);
 
@@ -86,9 +88,11 @@ describe("RtermClient provider mode", () => {
   });
 
   test("executes through the attached provider terminal", async () => {
-    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ output: "done", exitCode: 0 }), { status: 200 }),
-    );
+    const fetchMock = jest
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ output: "done", exitCode: 0 }), { status: 200 }),
+      );
     const target = client();
     target.setProviderSession(session);
 
@@ -113,7 +117,11 @@ describe("RtermClient provider mode", () => {
   });
 
   test("stays disabled when configured disabled", () => {
-    const target = new RtermClient({ enabled: false, url: "http://remote/provider/ssh", onChanged: jest.fn() });
+    const target = new RtermClient({
+      enabled: false,
+      url: "http://remote/provider/ssh",
+      onChanged: jest.fn(),
+    });
     expect(target.getEmbedUrl()).toBe("");
     expect(target.getSnapshot().enabled).toBe(false);
   });

@@ -15,13 +15,15 @@ test("delegates provider sessions and dynamic tools per thread", async () => {
   expect(service.dynamicTools).toHaveLength(1);
   service.setCurrentThread("thread-1");
   expect(service.getEmbedUrl()).toContain("embed=1");
-  expect(service.setProviderSession({
-    sessionId: "session-1",
-    token: "token-1",
-    provider: "ssh",
-    target: "test-host",
-    user: "test-user",
-  })).toBe(true);
+  expect(
+    service.setProviderSession({
+      sessionId: "session-1",
+      token: "token-1",
+      provider: "ssh",
+      target: "test-host",
+      user: "test-user",
+    }),
+  ).toBe(true);
 
   const result = await service.handleToolCall({
     namespace: "remote_terminal",

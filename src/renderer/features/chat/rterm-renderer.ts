@@ -23,7 +23,10 @@ export class RtermRenderer {
     window.peskApi.onRtermChanged((snapshot) => this.render(snapshot));
     window.peskApi.onRtermSessionSelected?.(({ threadId, sessionId }) => {
       if (threadId !== this.threadId) return;
-      this.frame.contentWindow?.postMessage({ source: "pesk", type: "select-session", sessionId }, "*");
+      this.frame.contentWindow?.postMessage(
+        { source: "pesk", type: "select-session", sessionId },
+        "*",
+      );
     });
     this.refreshButton?.addEventListener("click", () => this.refreshFrame());
     this.closeButton.addEventListener("click", () => this.hide());

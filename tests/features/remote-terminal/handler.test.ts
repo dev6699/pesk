@@ -28,7 +28,9 @@ test("lists all provider sessions for the thread", async () => {
     ]),
   });
 
-  await expect(handler.handle(params(REMOTE_TERMINAL_SESSIONS_TOOL) as never)).resolves.toMatchObject({
+  await expect(
+    handler.handle(params(REMOTE_TERMINAL_SESSIONS_TOOL) as never),
+  ).resolves.toMatchObject({
     contentItems: [
       {
         type: "inputText",
@@ -51,7 +53,9 @@ function makeHandler(overrides: Partial<RtermClient> = {}) {
       hostLabel: "remote",
       authFailed: false,
     })),
-    getProviderSessions: jest.fn(() => [{ sessionId: "session-1", token: "token-1", provider: "ssh", target: "host", user: "user" }]),
+    getProviderSessions: jest.fn(() => [
+      { sessionId: "session-1", token: "token-1", provider: "ssh", target: "host", user: "user" },
+    ]),
     selectProviderSession: jest.fn(() => true),
     readProvider: jest.fn(async () => ({ output: "shell output", truncated: false })),
     executeProvider: jest.fn(async () => ({ output: "done", exitCode: 0 })),
@@ -75,7 +79,9 @@ test("routes explicit session IDs and notifies the renderer", async () => {
       hostLabel: "host-b",
       authFailed: false,
     })),
-    getProviderSessions: jest.fn(() => [{ sessionId: "session-2", token: "token-2", provider: "ssh", target: "host", user: "user" }]),
+    getProviderSessions: jest.fn(() => [
+      { sessionId: "session-2", token: "token-2", provider: "ssh", target: "host", user: "user" },
+    ]),
     selectProviderSession: jest.fn(() => true),
     readProvider: jest.fn(async () => ({ output: "selected", truncated: false })),
   } as unknown as RtermClient;

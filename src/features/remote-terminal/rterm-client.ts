@@ -56,7 +56,9 @@ export class RtermClient {
     else this.providerSessions.clear();
     if (this.activeSessionId && !this.providerSessions.has(this.activeSessionId))
       this.activeSessionId = [...this.providerSessions.keys()].at(-1);
-    const active = this.activeSessionId ? this.providerSessions.get(this.activeSessionId) : undefined;
+    const active = this.activeSessionId
+      ? this.providerSessions.get(this.activeSessionId)
+      : undefined;
     if (active) this.hostLabel = `${active.user}@${active.target}`;
     this.state = active ? "connected" : "disconnected";
     this.publish();

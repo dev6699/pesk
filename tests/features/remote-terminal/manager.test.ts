@@ -16,13 +16,16 @@ test("keeps independent provider clients per thread", () => {
   expect(manager.getEmbedUrl("thread-1")).toContain("embed=1");
 
   expect(
-    manager.setProviderSession({
-      sessionId: "first",
-      token: "token-1",
-      provider: "ssh",
-      target: "test-host",
-      user: "test-user",
-    }, "thread-1"),
+    manager.setProviderSession(
+      {
+        sessionId: "first",
+        token: "token-1",
+        provider: "ssh",
+        target: "test-host",
+        user: "test-user",
+      },
+      "thread-1",
+    ),
   ).toBe(true);
   expect(first.getSnapshot()).toMatchObject({
     state: "connected",
@@ -38,7 +41,13 @@ test("clears all thread clients without affecting the provider server", () => {
     onChanged: jest.fn(),
   });
   manager.setProviderSession(
-    { sessionId: "first", token: "token-1", provider: "ssh", target: "test-host", user: "test-user" },
+    {
+      sessionId: "first",
+      token: "token-1",
+      provider: "ssh",
+      target: "test-host",
+      user: "test-user",
+    },
     "thread-1",
   );
 
@@ -54,13 +63,15 @@ test("uses the selected thread for provider session operations", () => {
   });
   manager.setCurrentThread("thread-1");
 
-  expect(manager.setProviderSession({
-    sessionId: "first",
-    token: "token-1",
-    provider: "ssh",
-    target: "test-host",
-    user: "test-user",
-  })).toBe(true);
+  expect(
+    manager.setProviderSession({
+      sessionId: "first",
+      token: "token-1",
+      provider: "ssh",
+      target: "test-host",
+      user: "test-user",
+    }),
+  ).toBe(true);
   expect(manager.getSnapshot()).toMatchObject({ state: "connected" });
   expect(manager.clearProviderSession()).toBe(true);
   expect(manager.getSnapshot()).toMatchObject({ state: "disconnected" });
@@ -69,9 +80,15 @@ test("uses the selected thread for provider session operations", () => {
 test("returns an empty snapshot without a selected thread and rejects missing thread updates", () => {
   const manager = new RemoteTerminalManager({ enabled: false, url: "", onChanged: jest.fn() });
   expect(manager.getSnapshot()).toMatchObject({ enabled: false, state: "disconnected" });
-  expect(manager.setProviderSession({
-    sessionId: "session-1", token: "token-1", provider: "ssh", target: "host-a", user: "user-a",
-  })).toBe(false);
+  expect(
+    manager.setProviderSession({
+      sessionId: "session-1",
+      token: "token-1",
+      provider: "ssh",
+      target: "host-a",
+      user: "user-a",
+    }),
+  ).toBe(false);
   expect(manager.clearProviderSession()).toBe(false);
 });
 

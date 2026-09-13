@@ -22,11 +22,35 @@ describe("rterm renderer", () => {
     setupRtermRenderer();
     await Promise.resolve();
     window.dispatchEvent(new MessageEvent("message", { data: { source: "other" } }));
-    window.dispatchEvent(new MessageEvent("message", { data: { source: "rterm", type: "loaded" } }));
-    window.dispatchEvent(new MessageEvent("message", { data: { source: "rterm", type: "session-ready", sessionId: "session-1", token: "token-1", provider: "ssh", target: "host-a", user: "user-a" } }));
-    window.dispatchEvent(new MessageEvent("message", { data: { source: "rterm", type: "disconnected", sessionId: "session-1" } }));
+    window.dispatchEvent(
+      new MessageEvent("message", { data: { source: "rterm", type: "loaded" } }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          source: "rterm",
+          type: "session-ready",
+          sessionId: "session-1",
+          token: "token-1",
+          provider: "ssh",
+          target: "host-a",
+          user: "user-a",
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "rterm", type: "disconnected", sessionId: "session-1" },
+      }),
+    );
     expect(api.setRtermProviderSession).toHaveBeenCalledWith(
-      { sessionId: "session-1", token: "token-1", provider: "ssh", target: "host-a", user: "user-a" },
+      {
+        sessionId: "session-1",
+        token: "token-1",
+        provider: "ssh",
+        target: "host-a",
+        user: "user-a",
+      },
       "standalone",
     );
     expect(api.clearRtermProviderSession).toHaveBeenCalledWith("session-1");
@@ -86,9 +110,7 @@ describe("rterm renderer", () => {
     const api = {
       onRtermChanged: onChanged,
       getRterm: jest.fn().mockResolvedValue(snapshot("authenticating")),
-      getRtermEmbedUrl: jest
-        .fn()
-        .mockResolvedValue("http://remote.example/provider/ssh?embed=1"),
+      getRtermEmbedUrl: jest.fn().mockResolvedValue("http://remote.example/provider/ssh?embed=1"),
     };
     (window as unknown as { peskApi: typeof api }).peskApi = api;
 
@@ -236,9 +258,7 @@ describe("rterm renderer", () => {
     const api = {
       onRtermChanged: jest.fn(),
       getRterm: jest.fn().mockResolvedValue(snapshot("disconnected")),
-      getRtermEmbedUrl: jest
-        .fn()
-        .mockResolvedValue("http://remote.example/provider/ssh?embed=1"),
+      getRtermEmbedUrl: jest.fn().mockResolvedValue("http://remote.example/provider/ssh?embed=1"),
       setRtermProviderSession: jest.fn(),
       clearRtermProviderSession: jest.fn(),
     };

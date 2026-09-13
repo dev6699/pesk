@@ -116,7 +116,7 @@ sequenceDiagram
 | Secure IPC bridge    | The preload boundary that safely carries window requests and main-process state updates.                                      |
 | Application services | Main-process coordination for configuration, settings, animations, presets, window lifecycle, and cross-component behavior.   |
 | Codex client         | Main-process connection and state owner for JSON-RPC requests, threads, turns, streaming, approvals, and user-input requests. |
-| Remote Terminal      | Per-thread bridge to one or more remote machines, with session-aware terminal access and approval-gated Codex tools.         |
+| Remote Terminal      | Per-thread bridge to one or more remote machines, with session-aware terminal access and approval-gated Codex tools.          |
 | Chat web server      | Main-process LAN server for pairing, authenticated browser chat, state broadcasts, and push notification requests.            |
 | User data            | Local persisted configuration, settings, device credentials, VAPID keys, subscriptions, and external content.                 |
 | Codex app-server     | External service that receives and streams Codex JSON-RPC traffic.                                                            |
