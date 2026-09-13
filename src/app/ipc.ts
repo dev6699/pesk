@@ -21,17 +21,21 @@ export function registerIpcHandlers(context: ApplicationContext): void {
   registerInvoke("get-settings", () => state.getState());
   registerInvoke("get-rterm", () => remoteTerminal.getSnapshot());
   registerInvoke("get-rterm-embed-url", () => remoteTerminal.getEmbedUrl());
-  registerInvoke("rterm-provider-session", (_event, session, threadId) => {
+  registerInvoke("rterm-provider-session", (_event, session, handoff, threadId) => {
     if (
       typeof session?.sessionId === "string" &&
       typeof session?.provider === "string" &&
       typeof session?.target === "string" &&
-      typeof session?.user === "string"
-    )
-      return remoteTerminal.setProviderSession(
+      typeof session?.user === "string" &&
+      typeof handoff === "string" &&
+      handoff.length > 0
+    ) {
+      return remoteTerminal.adoptProviderSession(
         session,
+        handoff,
         typeof threadId === "string" ? threadId : undefined,
       );
+    }
     return false;
   });
   registerInvoke("rterm-provider-disconnected", (_event, sessionId) =>

@@ -228,8 +228,9 @@ sessions:
 For a single-machine investigation, Codex can use the selected session without
 specifying a `sessionId`. For cross-machine investigation, list the available
 sessions and pass a specific `sessionId` when comparing diagnostic output or
-approving targeted commands on different hosts. Session credentials remain in
-the main process and are not exposed to Codex; a session ID identifies a target
+approving targeted commands on different hosts. Session credentials are retained
+by the main process after a one-time handoff from the embedded provider page and
+are not exposed to the renderer or Codex; a session ID identifies a target
 but does not authenticate access.
 
 ### Connect to Codex app-server

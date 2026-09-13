@@ -2,7 +2,11 @@ import type { DynamicToolCallParams, DynamicToolCallResponse } from "../../codex
 import { RemoteTerminalToolHandler } from "./handler";
 import { RemoteTerminalManager } from "./manager";
 import { REMOTE_TERMINAL_TOOLS } from "./tools";
-import type { RtermProviderSession, RtermSnapshot } from "./rterm-client";
+import type {
+  ProviderSessionDescriptor,
+  RtermProviderSession,
+  RtermSnapshot,
+} from "./rterm-client";
 
 export interface RemoteTerminalServiceOptions {
   enabled: boolean;
@@ -49,6 +53,14 @@ export class RemoteTerminalService {
 
   setProviderSession(session: RtermProviderSession, threadId?: string): boolean {
     return this.manager.setProviderSession(session, threadId);
+  }
+
+  adoptProviderSession(
+    session: ProviderSessionDescriptor,
+    handoff: string,
+    threadId?: string,
+  ): Promise<boolean> {
+    return this.manager.adoptProviderSession(session, handoff, threadId);
   }
 
   clearProviderSession(sessionId?: string): boolean {

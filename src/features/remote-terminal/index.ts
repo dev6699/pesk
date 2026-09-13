@@ -10,6 +10,7 @@ export {
 } from "./tools";
 export {
   RtermClient,
+  type ProviderSessionDescriptor,
   type RtermClientOptions,
   type RtermProviderSession,
   type RtermSnapshot,

@@ -31,7 +31,7 @@ describe("rterm renderer", () => {
           source: "rterm",
           type: "session-ready",
           sessionId: "session-1",
-          token: "token-1",
+          handoff: "handoff-1",
           provider: "ssh",
           target: "host-a",
           user: "user-a",
@@ -46,11 +46,11 @@ describe("rterm renderer", () => {
     expect(api.setRtermProviderSession).toHaveBeenCalledWith(
       {
         sessionId: "session-1",
-        token: "token-1",
         provider: "ssh",
         target: "host-a",
         user: "user-a",
       },
+      "handoff-1",
       "standalone",
     );
     expect(api.clearRtermProviderSession).toHaveBeenCalledWith("session-1");

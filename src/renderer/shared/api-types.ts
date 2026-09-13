@@ -98,11 +98,11 @@ export interface PeskApi {
   setRtermProviderSession: (
     session: {
       sessionId: string;
-      token: string;
       provider: string;
       target: string;
       user: string;
     },
+    handoff: string,
     threadId?: string,
   ) => Promise<boolean>;
   clearRtermProviderSession: (sessionId?: string) => Promise<boolean>;

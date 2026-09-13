@@ -7,7 +7,7 @@ import type { FuzzyFileSearchResult } from "../codex-schema/FuzzyFileSearchResul
 import type { ImageInput, RequestId } from "./validation";
 import type { CodexStreamDelta } from "../codex/types";
 import type { RendererState } from "./renderer-state";
-import type { RtermSnapshot } from "../features/remote-terminal";
+import type { ProviderSessionDescriptor, RtermSnapshot } from "../features/remote-terminal";
 
 export interface RendererEventContract {
   "menu-updated": [];
@@ -80,10 +80,7 @@ export interface IpcInvokeContract {
   "get-rterm": { args: []; result: RtermSnapshot };
   "get-rterm-embed-url": { args: []; result: string };
   "rterm-provider-session": {
-    args: [
-      session: { sessionId: string; token: string; provider: string; target: string; user: string },
-      threadId?: string,
-    ];
+    args: [session: ProviderSessionDescriptor, handoff: string, threadId?: string];
     result: boolean;
   };
   "rterm-provider-disconnected": { args: [sessionId?: string]; result: boolean };

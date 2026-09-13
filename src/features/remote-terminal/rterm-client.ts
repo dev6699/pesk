@@ -8,12 +8,15 @@ export interface RtermSnapshot {
   authFailed: boolean;
 }
 
-export interface RtermProviderSession {
+export interface ProviderSessionDescriptor {
   sessionId: string;
-  token: string;
   provider: string;
   target: string;
   user: string;
+}
+
+export interface RtermProviderSession extends ProviderSessionDescriptor {
+  token: string;
 }
 
 export interface RtermClientOptions {
@@ -49,6 +52,27 @@ export class RtermClient {
     this.hostLabel = `${session.user}@${session.target}`;
     this.state = "connected";
     this.publish();
+  }
+
+  async adoptProviderSession(
+    session: ProviderSessionDescriptor,
+    handoff: string,
+  ): Promise<boolean> {
+    const base = (this.options.url ?? "").replace(/\/provider\/[^/]+\/?$/, "");
+    if (!base) return false;
+    const response = await fetch(
+      `${base}/api/sessions/${encodeURIComponent(session.sessionId)}/handoff`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handoff }),
+      },
+    );
+    if (!response.ok) return false;
+    const result = (await response.json()) as { token?: unknown };
+    if (typeof result.token !== "string" || !result.token) return false;
+    this.setProviderSession({ ...session, token: result.token });
+    return true;
   }
 
   clearProviderSession(sessionId?: string): void {

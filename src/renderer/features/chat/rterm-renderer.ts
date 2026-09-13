@@ -128,9 +128,18 @@ export class RtermRenderer {
 
   private handleFrameMessage(event: MessageEvent): void {
     if (event.data?.source !== "rterm") return;
-    const sourceThread =
-      [...this.frames.entries()].find(([, frame]) => frame.contentWindow === event.source)?.[0] ??
-      (event.source === null ? this.threadId : undefined);
+    const sourceEntry = [...this.frames.entries()].find(
+      ([, frame]) => frame.contentWindow === event.source,
+    );
+    if (event.source !== null && !sourceEntry) return;
+    if (sourceEntry && sourceEntry[1].src && event.origin) {
+      try {
+        if (new URL(sourceEntry[1].src).origin !== event.origin) return;
+      } catch {
+        return;
+      }
+    }
+    const sourceThread = sourceEntry?.[0] ?? (event.source === null ? this.threadId : undefined);
     if (!sourceThread) return;
     const isCurrentFrame = sourceThread === this.threadId;
     switch (event.data.type) {
@@ -145,19 +154,18 @@ export class RtermRenderer {
       case "session-ready":
         if (
           typeof event.data.sessionId === "string" &&
-          typeof event.data.token === "string" &&
+          typeof event.data.handoff === "string" &&
           typeof event.data.provider === "string" &&
           typeof event.data.target === "string" &&
           typeof event.data.user === "string"
         ) {
           const session = {
             sessionId: event.data.sessionId,
-            token: event.data.token,
             provider: event.data.provider,
             target: event.data.target,
             user: event.data.user,
           };
-          void window.peskApi.setRtermProviderSession(session, sourceThread);
+          void window.peskApi.setRtermProviderSession(session, event.data.handoff, sourceThread);
         }
         break;
     }

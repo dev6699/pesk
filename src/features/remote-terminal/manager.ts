@@ -1,4 +1,9 @@
-import { RtermClient, type RtermProviderSession, type RtermSnapshot } from "./rterm-client";
+import {
+  RtermClient,
+  type ProviderSessionDescriptor,
+  type RtermProviderSession,
+  type RtermSnapshot,
+} from "./rterm-client";
 
 export interface RemoteTerminalManagerOptions {
   enabled: boolean;
@@ -43,6 +48,15 @@ export class RemoteTerminalManager {
     if (!threadId || !this.options.url) return false;
     this.getClient(threadId).setProviderSession(session);
     return true;
+  }
+
+  adoptProviderSession(
+    session: ProviderSessionDescriptor,
+    handoff: string,
+    threadId = this.currentThreadId,
+  ): Promise<boolean> {
+    if (!threadId || !this.options.url) return Promise.resolve(false);
+    return this.getClient(threadId).adoptProviderSession(session, handoff);
   }
 
   clearProviderSession(sessionId?: string, threadId = this.currentThreadId): boolean {
