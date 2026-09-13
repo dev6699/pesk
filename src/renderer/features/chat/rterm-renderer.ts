@@ -18,14 +18,25 @@ export class RtermRenderer {
   private readonly frames = new Map<string, HTMLIFrameElement>();
   private readonly visibility = new Map<string, boolean>();
 
+  private frameOrigin(frame: HTMLIFrameElement): string | undefined {
+    if (!frame.src) return undefined;
+    try {
+      return new URL(frame.src).origin;
+    } catch {
+      return undefined;
+    }
+  }
+
   setup(): void {
     this.frames.set(this.threadId, this.frame);
     window.peskApi.onRtermChanged((snapshot) => this.render(snapshot));
     window.peskApi.onRtermSessionSelected?.(({ threadId, sessionId }) => {
       if (threadId !== this.threadId) return;
+      const origin = this.frameOrigin(this.frame);
+      if (!origin) return;
       this.frame.contentWindow?.postMessage(
         { source: "pesk", type: "select-session", sessionId },
-        "*",
+        origin,
       );
     });
     this.refreshButton?.addEventListener("click", () => this.refreshFrame());
@@ -132,13 +143,8 @@ export class RtermRenderer {
       ([, frame]) => frame.contentWindow === event.source,
     );
     if (event.source !== null && !sourceEntry) return;
-    if (sourceEntry && sourceEntry[1].src && event.origin) {
-      try {
-        if (new URL(sourceEntry[1].src).origin !== event.origin) return;
-      } catch {
-        return;
-      }
-    }
+    const expectedOrigin = sourceEntry ? this.frameOrigin(sourceEntry[1]) : undefined;
+    if (!sourceEntry || !expectedOrigin || event.origin !== expectedOrigin) return;
     const sourceThread = sourceEntry?.[0] ?? (event.source === null ? this.threadId : undefined);
     if (!sourceThread) return;
     const isCurrentFrame = sourceThread === this.threadId;
