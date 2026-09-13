@@ -152,6 +152,35 @@ describe("rterm renderer", () => {
     expect(postMessage.mock.calls.filter(([message]) => message.type === "reset")).toHaveLength(1);
   });
 
+  test("does not replay the snapshot when the selected thread is unchanged", () => {
+    document.body.innerHTML = `
+      <section id="rterm-panel">
+        <div id="rterm-resize-handle"></div>
+        <div id="rterm-toolbar"><span id="rterm-status"></span><button id="rterm-connection"></button><button id="rterm-close"></button></div>
+        <iframe id="rterm-frame"></iframe>
+      </section>`;
+    const api = {
+      onRtermChanged: jest.fn(),
+      onRtermOutput: jest.fn(),
+      getRterm: jest.fn().mockResolvedValue(snapshot("connected")),
+      getRtermEmbedUrl: jest.fn().mockResolvedValue(""),
+      toggleRtermConnection: jest.fn(),
+      writeRterm: jest.fn(),
+      authenticateRterm: jest.fn(),
+      resizeRterm: jest.fn(),
+    };
+    (window as unknown as { peskApi: typeof api }).peskApi = api;
+    const frame = document.getElementById("rterm-frame") as HTMLIFrameElement;
+    const postMessage = jest.spyOn(frame.contentWindow!, "postMessage");
+    const renderer = setupRtermRenderer();
+
+    renderer?.setThread("thread-1");
+    const callsAfterThreadChange = postMessage.mock.calls.length;
+    renderer?.setThread("thread-1");
+
+    expect(postMessage.mock.calls).toHaveLength(callsAfterThreadChange);
+  });
+
   test("reloads the embed URL when reconnecting after a failed load", async () => {
     document.body.innerHTML = `
       <section id="rterm-panel" hidden>

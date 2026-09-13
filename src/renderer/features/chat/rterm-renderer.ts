@@ -35,7 +35,9 @@ export class RtermRenderer {
   }
 
   setThread(threadId: string | undefined): void {
-    this.threadId = threadId ?? "standalone";
+    const nextThreadId = threadId ?? "standalone";
+    if (this.threadId === nextThreadId) return;
+    this.threadId = nextThreadId;
     this.visible = this.visibility.get(this.threadId) ?? false;
     this.render(this.snapshot);
     this.post({ type: "reset" });
