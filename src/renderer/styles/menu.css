@@ -257,6 +257,15 @@ h2 {
   background: var(--menu-foreground);
 }
 
+#pairing-url {
+  margin: 0 auto 8px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--menu-foreground);
+  font-size: 12px;
+  text-align: center;
+}
+
 #pairing-device-name {
   width: 100%;
   box-sizing: border-box;

@@ -13,6 +13,7 @@ interface AnimationFrames {
 
 interface PairingInfo {
   expiresAt: number;
+  urls: string[];
   qrDataUrl: string;
   deviceName: string;
 }
@@ -243,6 +244,7 @@ async function generatePairing(): Promise<void> {
   pairingActive = true;
   (document.getElementById("pairing-device-name") as HTMLInputElement).value = info.deviceName;
   (document.getElementById("pairing-qr") as HTMLImageElement).src = info.qrDataUrl;
+  (document.getElementById("pairing-url") as HTMLElement).textContent = info.urls[0] ?? "";
 }
 
 document.getElementById("pairing-device-name")?.addEventListener("keydown", (event) => {

@@ -36,13 +36,14 @@ test("generates and displays a pairing QR when Enter is pressed in the device na
       <section id="presets"><input id="preset-search"><div id="preset-list"></div></section>
       <section id="animations"></section><section id="controls"></section>
       <section id="pairing"><input id="pairing-device-name"><p id="pairing-status" hidden></p>
-        <div id="pairing-details" hidden><img id="pairing-qr"><p id="pairing-expiry"></p></div>
+        <div id="pairing-details" hidden><img id="pairing-qr"><p id="pairing-url"></p><p id="pairing-expiry"></p></div>
         <div id="pairing-devices"></div>
       </section>
     </main>`;
   const createPairing = jest.fn(() =>
     Promise.resolve({
       expiresAt: Date.now() + 300000,
+      urls: ["http://192.168.1.10:4310/pair?code=abc"],
       qrDataUrl: "data:image/png;base64,qr",
       deviceName: "Phone",
     }),
@@ -68,6 +69,9 @@ test("generates and displays a pairing QR when Enter is pressed in the device na
   expect(createPairing).toHaveBeenCalledWith("Phone");
   expect((document.getElementById("pairing-qr") as HTMLImageElement).src).toBe(
     "data:image/png;base64,qr",
+  );
+  expect(document.getElementById("pairing-url")?.textContent).toBe(
+    "http://192.168.1.10:4310/pair?code=abc",
   );
   jest.useRealTimers();
 });

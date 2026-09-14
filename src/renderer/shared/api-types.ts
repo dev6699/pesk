@@ -20,7 +20,9 @@ export interface PeskApi {
   togglePetVisibility: () => void;
   createPairing: (
     name: string,
-  ) => Promise<{ expiresAt: number; qrDataUrl: string; deviceName: string } | undefined>;
+  ) => Promise<
+    { expiresAt: number; urls: string[]; qrDataUrl: string; deviceName: string } | undefined
+  >;
   getPairingStatus: () => Promise<{ active: boolean; pairedDeviceName?: string }>;
   getPairingDevices: () => Promise<
     Array<{
