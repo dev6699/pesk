@@ -4,6 +4,12 @@ const listeners = new Set<(state: RendererState) => void>();
 const streamDeltaListeners = new Set<(delta: CodexStreamDelta) => void>();
 const pendingFileSearches = new Map<number, (results: FuzzyFileSearchResult[]) => void>();
 const pendingCommands = new Map<number, (result: { ok: boolean; state?: RendererState }) => void>();
+const rtermListeners = new Set<(snapshot: RtermSnapshot) => void>();
+const rtermSessionListeners = new Set<
+  (selection: { threadId: string; sessionId: string }) => void
+>();
+const pendingRterm = new Map<number, (snapshot: RtermSnapshot) => void>();
+const pendingRtermUrls = new Map<number, (url: string) => void>();
 let nextFileSearchId = 0;
 let nextCommandId = 0;
 let state: RendererState | undefined;
@@ -279,6 +285,38 @@ function connect(): void {
       for (const listener of streamDeltaListeners) listener(delta as CodexStreamDelta);
       return;
     }
+    if (type === "rterm") {
+      const result = message as { requestId?: unknown; snapshot?: unknown };
+      if (typeof result.requestId === "number") {
+        const resolve = pendingRterm.get(result.requestId);
+        if (resolve && result.snapshot) {
+          pendingRterm.delete(result.requestId);
+          resolve(result.snapshot as RtermSnapshot);
+        }
+      }
+      if (result.snapshot)
+        for (const listener of rtermListeners) listener(result.snapshot as RtermSnapshot);
+      return;
+    }
+    if (type === "rtermEmbedUrl") {
+      const result = message as { requestId?: unknown; url?: unknown };
+      if (typeof result.requestId === "number") {
+        const resolve = pendingRtermUrls.get(result.requestId);
+        if (resolve) {
+          pendingRtermUrls.delete(result.requestId);
+          resolve(typeof result.url === "string" ? result.url : "");
+        }
+      }
+      return;
+    }
+    if (type === "rtermSessionSelected") {
+      const selection = message as { threadId?: unknown; sessionId?: unknown };
+      if (typeof selection.threadId === "string" && typeof selection.sessionId === "string") {
+        for (const listener of rtermSessionListeners)
+          listener({ threadId: selection.threadId, sessionId: selection.sessionId });
+      }
+      return;
+    }
     if (type !== "state") return;
     authenticated = true;
     setConnectionStatus("connected");
@@ -448,6 +486,40 @@ const webApi = {
   deleteCodexProject: async (projectId: string) =>
     (await sendCommand("deleteProject", { projectId })).state ?? state!,
   chooseCodexProjectRoot: async () => undefined,
+  getRterm: async () => {
+    const requestId = ++nextCommandId;
+    await initialState;
+    if (socket.readyState !== WebSocket.OPEN)
+      return {
+        enabled: false,
+        sessions: [],
+        state: "disconnected",
+        output: "",
+        hostLabel: "",
+        authFailed: false,
+      } as RtermSnapshot;
+    return new Promise<RtermSnapshot>((resolve) => {
+      pendingRterm.set(requestId, resolve);
+      send("getRterm", { requestId });
+    });
+  },
+  getRtermEmbedUrl: async () => {
+    const requestId = ++nextCommandId;
+    await initialState;
+    if (socket.readyState !== WebSocket.OPEN) return "";
+    return new Promise<string>((resolve) => {
+      pendingRtermUrls.set(requestId, resolve);
+      send("getRtermEmbedUrl", { requestId });
+    });
+  },
+  setRtermProviderSession: (session: RtermSessionDescriptor, handoff: string, threadId?: string) =>
+    sendCommand("rtermProviderSession", { session, handoff, threadId }).then((result) => result.ok),
+  clearRtermProviderSession: (sessionId?: string) =>
+    sendCommand("rtermProviderDisconnected", { sessionId }).then((result) => result.ok),
+  onRtermChanged: (callback: (snapshot: RtermSnapshot) => void) => rtermListeners.add(callback),
+  onRtermSessionSelected: (
+    callback: (selection: { threadId: string; sessionId: string }) => void,
+  ) => rtermSessionListeners.add(callback),
 } as unknown as Window["peskApi"];
 
 window.peskApi = webApi;

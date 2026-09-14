@@ -225,7 +225,15 @@ export class PeskApplication implements ApplicationContext {
   }
 
   private handleWebCommand(message: unknown, reply: (message: unknown) => void): void {
-    handleWebCommand({ codex: this.codex, getState: () => this.state.getState() }, message, reply);
+    handleWebCommand(
+      {
+        codex: this.codex,
+        getState: () => this.state.getState(),
+        remoteTerminal: this.remoteTerminal,
+      },
+      message,
+      reply,
+    );
   }
 
   private normalizeAnimation(): void {

@@ -123,9 +123,7 @@ export class CodexRenderer {
         scrollHistoryToLatest: (force) => this.scrollHistoryToLatest(force),
         isHistoryNearBottom: () => this.historyRenderer.isNearBottom(),
         handleLocalCommand: (prompt) =>
-          !this.webChat && this.state.features.remoteTerminal.enabled
-            ? handleRemoteTerminalCommand(prompt)
-            : false,
+          this.state.features.remoteTerminal.enabled ? handleRemoteTerminalCommand(prompt) : false,
       },
     );
     this.promptRenderer = new CodexPromptRenderer(
@@ -517,7 +515,7 @@ export class CodexRenderer {
 
   private updateRemoteTerminalCommands(): void {
     this.suggestionRenderer.setAdditionalCommands(
-      this.webChat || !this.state.features.remoteTerminal.enabled ? [] : REMOTE_TERMINAL_COMMANDS,
+      this.state.features.remoteTerminal.enabled ? REMOTE_TERMINAL_COMMANDS : [],
     );
   }
 

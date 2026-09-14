@@ -1,4 +1,7 @@
 /** @jest-environment node */
+/** @jest-environment jsdom */
+/// <reference types="jest" />
+
 import { handleWebCommand } from "../../src/app/web-commands";
 
 test.each([
@@ -33,8 +36,10 @@ test.each([
   if (type === "updateProject") Object.assign(command, { projectId: args[0], changes: args[1] });
   if (type === "moveProject")
     Object.assign(command, { projectId: args[0], beforeProjectId: args[1] });
-  handleWebCommand({ codex, getState: () => ({ state: true }) as never }, command, (reply) =>
-    replies.push(reply),
+  handleWebCommand(
+    { codex, getState: () => ({ state: true }) as never, remoteTerminal: {} as never },
+    command,
+    (reply) => replies.push(reply),
   );
   await new Promise((resolve) => setImmediate(resolve));
   expect(calls[0]?.method).toBe(

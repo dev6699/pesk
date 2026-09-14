@@ -50,6 +50,8 @@ function fixture() {
   const webServer = {
     broadcast: jest.fn(),
     broadcastStreamDelta: jest.fn(),
+    broadcastRterm: jest.fn(),
+    broadcastRtermSessionSelected: jest.fn(),
   };
   const publisher = new RendererStatePublisher(
     codex as never,

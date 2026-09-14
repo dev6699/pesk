@@ -75,9 +75,11 @@ export class RendererStatePublisher {
     for (const window of [this.getPetWindow(), this.getChatWindow()]) {
       if (window && !window.isDestroyed()) window.webContents.send("rterm-changed", snapshot);
     }
+    this.webServer.broadcastRterm(snapshot);
   }
 
   publishRtermSessionSelection(threadId: string, sessionId: string): void {
+    this.webServer.broadcastRtermSessionSelected(threadId, sessionId);
     const window = this.getChatWindow();
     if (threadId === undefined || !window || window.isDestroyed()) return;
     window.webContents.send("rterm-session-selected", { threadId, sessionId });

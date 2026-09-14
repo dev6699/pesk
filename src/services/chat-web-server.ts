@@ -9,6 +9,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import webpush from "web-push";
 import QRCode from "qrcode";
 import type { CodexStreamDelta } from "../codex/types";
+import type { RtermSnapshot } from "../features/remote-terminal";
 
 interface PushSubscription {
   endpoint: string;
@@ -157,6 +158,22 @@ export class ChatWebServer {
   broadcastStreamDelta(delta: CodexStreamDelta): void {
     if (!this.options.enabled) return;
     const message = JSON.stringify({ type: "codexStreamDelta", delta });
+    for (const client of this.clients.keys()) {
+      if (client.readyState === WebSocket.OPEN) client.send(message);
+    }
+  }
+
+  broadcastRterm(snapshot: RtermSnapshot): void {
+    if (!this.options.enabled) return;
+    const message = JSON.stringify({ type: "rterm", snapshot });
+    for (const client of this.clients.keys()) {
+      if (client.readyState === WebSocket.OPEN) client.send(message);
+    }
+  }
+
+  broadcastRtermSessionSelected(threadId: string, sessionId: string): void {
+    if (!this.options.enabled) return;
+    const message = JSON.stringify({ type: "rtermSessionSelected", threadId, sessionId });
     for (const client of this.clients.keys()) {
       if (client.readyState === WebSocket.OPEN) client.send(message);
     }

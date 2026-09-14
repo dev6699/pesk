@@ -1,10 +1,12 @@
 import type { CodexController } from "../codex";
 import { isRequestId, validAnswers, validImageInputs, validRoots } from "./validation";
 import type { RendererState } from "./renderer-state";
+import type { RemoteTerminalService } from "../features/remote-terminal";
 
 export interface WebCommandContext {
   codex: CodexController;
   getState: () => RendererState;
+  remoteTerminal: RemoteTerminalService;
 }
 
 export function handleWebCommand(
@@ -26,6 +28,38 @@ export function handleWebCommand(
     );
   };
   switch (command.type) {
+    case "getRterm":
+      if (typeof requestId === "number")
+        reply({ type: "rterm", requestId, snapshot: context.remoteTerminal.getSnapshot() });
+      break;
+    case "getRtermEmbedUrl":
+      if (typeof requestId === "number")
+        reply({ type: "rtermEmbedUrl", requestId, url: context.remoteTerminal.getEmbedUrl() });
+      break;
+    case "rtermProviderSession":
+      if (
+        command.session &&
+        typeof command.session === "object" &&
+        typeof command.handoff === "string"
+      ) {
+        void context.remoteTerminal
+          .adoptProviderSession(
+            command.session as never,
+            command.handoff,
+            typeof command.threadId === "string" ? command.threadId : undefined,
+          )
+          .then(replyCommand);
+      } else {
+        replyCommand(false);
+      }
+      break;
+    case "rtermProviderDisconnected":
+      replyCommand(
+        context.remoteTerminal.clearProviderSession(
+          typeof command.sessionId === "string" ? command.sessionId : undefined,
+        ),
+      );
+      break;
     case "submitPrompt":
       replyCommand(
         typeof command.prompt === "string" &&

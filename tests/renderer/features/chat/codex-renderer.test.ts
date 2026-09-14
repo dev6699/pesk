@@ -3113,6 +3113,18 @@ test("shows and selects slash commands", () => {
   expect(elements.suggestions.hidden).toBe(true);
 });
 
+test("shows the remote terminal slash command in web chat", () => {
+  const settings = defaultRendererState();
+  settings.features.remoteTerminal.enabled = true;
+  const { elements } = makeRenderer(settings, true);
+  elements.input.value = "/rterm";
+  elements.input.dispatchEvent(new Event("input", { bubbles: true }));
+
+  expect(
+    [...elements.suggestions.querySelectorAll("button")].map((button) => button.textContent),
+  ).toContain("/rtermShow or hide the Remote Terminal");
+});
+
 test("shows the exec indicator immediately after slash suggestion selection", () => {
   const { elements } = makeRenderer();
   elements.input.value = "/exec";
