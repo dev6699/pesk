@@ -167,6 +167,8 @@ interface CodexPendingApproval {
   requestId: string | number;
   command: string;
   reason: string;
+  kind?: "command" | "remote";
+  toolName?: string;
   options: Array<{ id: string; label: string; description: string }>;
 }
 

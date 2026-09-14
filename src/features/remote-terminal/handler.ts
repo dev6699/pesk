@@ -1,10 +1,13 @@
 import type { DynamicToolCallParams, DynamicToolCallResponse } from "../../codex-schema/v2";
 import type { RtermClient } from "./rterm-client";
+import type { DynamicApprovalKind } from "../../codex/dynamic-tools";
 import {
   REMOTE_TERMINAL_EXECUTE_TOOL,
   REMOTE_TERMINAL_NAMESPACE,
   REMOTE_TERMINAL_READ_TOOL,
   REMOTE_TERMINAL_SESSIONS_TOOL,
+  REMOTE_TERMINAL_UPLOAD_TOOL,
+  REMOTE_TERMINAL_DOWNLOAD_TOOL,
 } from "./tools";
 
 interface ReadArguments {
@@ -18,14 +21,30 @@ interface ExecuteArguments {
   sessionId?: unknown;
 }
 
+interface TransferArguments {
+  workspacePath?: unknown;
+  remotePath?: unknown;
+  filename?: unknown;
+  sessionId?: unknown;
+}
+
+function workspaceFilename(workspacePath: string): string {
+  const normalized = workspacePath.replaceAll("\\", "/").replace(/\/+$/, "");
+  return normalized.slice(normalized.lastIndexOf("/") + 1) || "upload";
+}
+
 export interface RemoteTerminalToolHandlerDependencies {
   getRterm: (threadId: string) => RtermClient;
+  readWorkspaceFile: (path: string) => Promise<string>;
+  writeWorkspaceFile: (path: string, dataBase64: string) => Promise<void>;
   onSessionSelected?: (threadId: string, sessionId: string) => void;
   requestApproval: (
     threadId: string,
     callId: string,
     command: string,
     reason: string,
+    kind?: DynamicApprovalKind,
+    toolName?: string,
   ) => Promise<boolean>;
 }
 
@@ -77,6 +96,70 @@ export class RemoteTerminalToolHandler {
         success: true,
       };
     }
+    if (
+      params.tool === REMOTE_TERMINAL_UPLOAD_TOOL ||
+      params.tool === REMOTE_TERMINAL_DOWNLOAD_TOOL
+    ) {
+      const args = this.objectArguments(params.arguments) as TransferArguments;
+      if (typeof args.workspacePath !== "string" || !args.workspacePath.trim())
+        return fail("A workspace path is required.");
+      if (typeof args.remotePath !== "string" || !args.remotePath.trim())
+        return fail("A remote path is required.");
+      if (
+        args.filename !== undefined &&
+        (typeof args.filename !== "string" || !args.filename.trim())
+      )
+        return fail("Filename must be a non-empty string.");
+      const rterm = this.dependencies.getRterm(params.threadId);
+      const sessionId = typeof args.sessionId === "string" ? args.sessionId : undefined;
+      if (sessionId && !this.selectSession(rterm, params.threadId, sessionId))
+        return fail("The provider session does not exist.");
+      const host = rterm.getSnapshot().hostLabel || "remote shell";
+      const upload = params.tool === REMOTE_TERMINAL_UPLOAD_TOOL;
+      const source = upload ? args.workspacePath : args.remotePath;
+      const destination = upload ? args.remotePath : args.workspacePath;
+      const approved = await this.dependencies.requestApproval(
+        params.threadId,
+        params.callId,
+        `${upload ? "Upload" : "Download"} ${source} -> ${destination}`,
+        `Transfer files on ${host}.`,
+        "remote",
+        `${REMOTE_TERMINAL_NAMESPACE}.${params.tool}`,
+      );
+      if (!approved) return fail("The user rejected the file transfer.");
+      try {
+        if (upload) {
+          const dataBase64 = await this.dependencies.readWorkspaceFile(args.workspacePath);
+          const bytes = await rterm.uploadProviderBytes(
+            Uint8Array.from(Buffer.from(dataBase64, "base64")),
+            args.remotePath,
+            typeof args.filename === "string"
+              ? args.filename
+              : workspaceFilename(args.workspacePath),
+            sessionId,
+          );
+          if (bytes === undefined) return fail(this.missingSessionMessage(rterm, sessionId));
+          return {
+            contentItems: [{ type: "inputText", text: `Uploaded ${bytes} bytes.` }],
+            success: true,
+          };
+        }
+        const data = await rterm.downloadProviderBytes(args.remotePath, sessionId);
+        if (!data) return fail(this.missingSessionMessage(rterm, sessionId));
+        await this.dependencies.writeWorkspaceFile(
+          args.workspacePath,
+          Buffer.from(data).toString("base64"),
+        );
+        return {
+          contentItems: [{ type: "inputText", text: `Downloaded ${data.byteLength} bytes.` }],
+          success: true,
+        };
+      } catch (error) {
+        return fail(
+          `Unable to ${upload ? "upload" : "download"} through the provider: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
     if (params.tool !== REMOTE_TERMINAL_EXECUTE_TOOL)
       return fail("Unsupported remote terminal tool.");
     const args = this.objectArguments(params.arguments) as ExecuteArguments;
@@ -92,6 +175,8 @@ export class RemoteTerminalToolHandler {
       params.callId,
       args.command,
       typeof args.reason === "string" ? args.reason : `Run on ${host}.`,
+      "remote",
+      `${REMOTE_TERMINAL_NAMESPACE}.${params.tool}`,
     );
     if (!approved) return fail("The user rejected the terminal command.");
     try {

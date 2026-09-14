@@ -2,6 +2,8 @@ import type { RequestId } from "../codex-schema";
 import { requestIdKey } from "./protocol";
 import { CodexThreadManager } from "./thread-manager";
 
+export type DynamicApprovalKind = "command" | "remote";
+
 interface PendingDynamicApproval {
   threadId: string;
   resolve: (approved: boolean) => void;
@@ -36,7 +38,14 @@ export class DynamicToolApprovalManager {
   }
 
   /** Blocks a dynamic tool call behind Pesk's normal approval renderer. */
-  request(threadId: string, callId: string, command: string, reason: string): Promise<boolean> {
+  request(
+    threadId: string,
+    callId: string,
+    command: string,
+    reason: string,
+    kind: DynamicApprovalKind = "remote",
+    toolName?: string,
+  ): Promise<boolean> {
     const requestId = `dynamic:${callId}`;
     return new Promise((resolve) => {
       this.pending.set(requestIdKey(requestId), { threadId, resolve });
@@ -45,9 +54,23 @@ export class DynamicToolApprovalManager {
           requestId,
           command,
           reason,
+          kind,
+          toolName,
           options: [
-            { id: "approve", label: "Approve", description: "Run this command remotely." },
-            { id: "reject", label: "Reject", description: "Do not run this command." },
+            {
+              id: "approve",
+              label: kind === "remote" ? "Allow remote operation" : "Approve",
+              description:
+                kind === "remote"
+                  ? "Run this operation through the remote session."
+                  : "Run this command remotely.",
+            },
+            {
+              id: "reject",
+              label: "Reject",
+              description:
+                kind === "remote" ? "Do not run the remote operation." : "Do not run this command.",
+            },
           ],
         });
         this.dependencies.threadManager.noteAttention(threadId, "approval");

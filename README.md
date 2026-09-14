@@ -224,6 +224,14 @@ sessions:
   specific machine; without it, the selected session is used.
 - `remote_terminal.execute` runs an exact command on a selected session after
   the user approves it. Pass the same `sessionId` when comparing machines.
+- `remote_terminal.upload` uploads a workspace `workspacePath` to a remote
+  `remotePath` after approval. The workspace reads the file through its existing
+  app-server command environment; Pesk does not read the file. It accepts an
+  optional `filename` and `sessionId`.
+- `remote_terminal.download` downloads a remote `remotePath` to a new workspace
+  `workspacePath` after approval. The workspace writes the file through its
+  existing app-server command environment; Pesk does not write the file. It
+  accepts an optional `sessionId`.
 
 For a single-machine investigation, Codex can use the selected session without
 specifying a `sessionId`. For cross-machine investigation, list the available

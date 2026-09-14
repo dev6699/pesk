@@ -1,5 +1,6 @@
 import type { DynamicToolCallParams, DynamicToolCallResponse } from "../../codex-schema/v2";
 import { RemoteTerminalToolHandler } from "./handler";
+import type { DynamicApprovalKind } from "../../codex/dynamic-tools";
 import { RemoteTerminalManager } from "./manager";
 import { REMOTE_TERMINAL_TOOLS } from "./tools";
 import type {
@@ -12,12 +13,16 @@ export interface RemoteTerminalServiceOptions {
   enabled: boolean;
   url: string;
   onChanged: (threadId: string, snapshot: RtermSnapshot) => void;
+  readWorkspaceFile: (path: string) => Promise<string>;
+  writeWorkspaceFile: (path: string, dataBase64: string) => Promise<void>;
   onSessionSelected?: (threadId: string, sessionId: string) => void;
   requestApproval: (
     threadId: string,
     callId: string,
     command: string,
     reason: string,
+    kind?: DynamicApprovalKind,
+    toolName?: string,
   ) => Promise<boolean>;
 }
 
@@ -30,6 +35,8 @@ export class RemoteTerminalService {
     this.manager = new RemoteTerminalManager(options);
     this.toolHandler = new RemoteTerminalToolHandler({
       getRterm: (threadId) => this.manager.getClient(threadId),
+      readWorkspaceFile: options.readWorkspaceFile,
+      writeWorkspaceFile: options.writeWorkspaceFile,
       onSessionSelected: options.onSessionSelected,
       requestApproval: options.requestApproval,
     });

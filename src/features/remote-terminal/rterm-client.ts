@@ -141,6 +141,42 @@ export class RtermClient {
     return (await response.json()) as { output: string; exitCode: number };
   }
 
+  async uploadProviderBytes(
+    data: Uint8Array,
+    remotePath: string,
+    filename?: string,
+    sessionId?: string,
+  ): Promise<number | undefined> {
+    const session = this.resolveProviderSession(sessionId);
+    if (!session) return undefined;
+    const query = new URLSearchParams({ path: remotePath });
+    if (filename) query.set("filename", filename);
+    const response = await fetch(`${this.providerApiUrl(session)}/upload?${query}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.token}` },
+      body: data as unknown as BodyInit,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const result = (await response.json()) as { bytes?: unknown };
+    return typeof result.bytes === "number" ? result.bytes : data.byteLength;
+  }
+
+  async downloadProviderBytes(
+    remotePath: string,
+    sessionId?: string,
+  ): Promise<Uint8Array | undefined> {
+    const session = this.resolveProviderSession(sessionId);
+    if (!session) return undefined;
+    const response = await fetch(
+      `${this.providerApiUrl(session)}/download?path=${encodeURIComponent(remotePath)}`,
+      {
+        headers: { Authorization: `Bearer ${session.token}` },
+      },
+    );
+    if (!response.ok) throw new Error(await response.text());
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
   getEmbedUrl(): string {
     if (this.options.enabled === false || !this.options.url) return "";
     try {

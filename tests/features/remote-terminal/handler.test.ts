@@ -4,11 +4,14 @@
 
 import { RemoteTerminalToolHandler } from "../../../src/features/remote-terminal/handler";
 import type { RtermClient } from "../../../src/features/remote-terminal/rterm-client";
+import { resolve } from "node:path";
 import {
   REMOTE_TERMINAL_EXECUTE_TOOL,
   REMOTE_TERMINAL_NAMESPACE,
   REMOTE_TERMINAL_READ_TOOL,
   REMOTE_TERMINAL_SESSIONS_TOOL,
+  REMOTE_TERMINAL_UPLOAD_TOOL,
+  REMOTE_TERMINAL_DOWNLOAD_TOOL,
   REMOTE_TERMINAL_TOOLS,
 } from "../../../src/features/remote-terminal/tools";
 
@@ -17,7 +20,7 @@ test("publishes the remote terminal namespace schema", () => {
   expect(REMOTE_TERMINAL_READ_TOOL).toBe("read");
   expect(REMOTE_TERMINAL_EXECUTE_TOOL).toBe("execute");
   expect(REMOTE_TERMINAL_SESSIONS_TOOL).toBe("sessions");
-  expect(REMOTE_TERMINAL_TOOLS[0]?.tools).toHaveLength(3);
+  expect(REMOTE_TERMINAL_TOOLS[0]?.tools).toHaveLength(5);
 });
 
 test("lists all provider sessions for the thread", async () => {
@@ -60,13 +63,25 @@ function makeHandler(overrides: Partial<RtermClient> = {}) {
     selectProviderSession: jest.fn(() => true),
     readProvider: jest.fn(async () => ({ output: "shell output", truncated: false })),
     executeProvider: jest.fn(async () => ({ output: "done", exitCode: 0 })),
+    uploadProviderBytes: jest.fn(async (data: Uint8Array) => data.byteLength),
+    downloadProviderBytes: jest.fn(async () => new Uint8Array([1, 2])),
+    readWorkspaceFile: jest.fn(async () => Buffer.from("test").toString("base64")),
+    writeWorkspaceFile: jest.fn(async () => undefined),
     ...overrides,
   } as unknown as RtermClient;
   const requestApproval = jest.fn(async () => true);
   return {
-    handler: new RemoteTerminalToolHandler({ getRterm: () => rterm, requestApproval }),
+    handler: new RemoteTerminalToolHandler({
+      getRterm: () => rterm,
+      requestApproval,
+      readWorkspaceFile: (path) =>
+        (rterm as unknown as { readWorkspaceFile: jest.Mock }).readWorkspaceFile(path),
+      writeWorkspaceFile: (path, data) =>
+        (rterm as unknown as { writeWorkspaceFile: jest.Mock }).writeWorkspaceFile(path, data),
+    }),
     rterm,
     requestApproval,
+    readWorkspaceFile: (rterm as unknown as { readWorkspaceFile: jest.Mock }).readWorkspaceFile,
   };
 }
 
@@ -90,6 +105,8 @@ test("routes explicit session IDs and notifies the renderer", async () => {
   const handler = new RemoteTerminalToolHandler({
     getRterm: () => rterm,
     onSessionSelected,
+    readWorkspaceFile: jest.fn(async () => ""),
+    writeWorkspaceFile: jest.fn(async () => undefined),
     requestApproval: jest.fn(async () => true),
   });
 
@@ -147,14 +164,81 @@ test("requires approval and returns completed execution output", async () => {
     contentItems: [{ type: "inputText", text: "completed; exitCode=0\ndone" }],
     success: true,
   });
-  expect(requestApproval).toHaveBeenCalledWith("thread-1", "call-1", "npm test", "verify");
+  expect(requestApproval).toHaveBeenCalledWith(
+    "thread-1",
+    "call-1",
+    "npm test",
+    "verify",
+    "remote",
+    "remote_terminal.execute",
+  );
   expect(rterm.executeProvider).toHaveBeenCalledWith("npm test", undefined);
 });
 
 test("uses the default approval reason", async () => {
   const { handler, requestApproval } = makeHandler();
   await handler.handle(params("execute", { command: "pwd" }) as never);
-  expect(requestApproval).toHaveBeenCalledWith("thread-1", "call-1", "pwd", "Run on remote.");
+  expect(requestApproval).toHaveBeenCalledWith(
+    "thread-1",
+    "call-1",
+    "pwd",
+    "Run on remote.",
+    "remote",
+    "remote_terminal.execute",
+  );
+});
+
+test("approves and performs upload and download transfers", async () => {
+  const { handler, requestApproval, rterm } = makeHandler();
+  await expect(
+    handler.handle(
+      params(REMOTE_TERMINAL_UPLOAD_TOOL, {
+        workspacePath: "C:\\a.txt",
+        remotePath: "/tmp/a.txt",
+      }) as never,
+    ),
+  ).resolves.toEqual({
+    contentItems: [{ type: "inputText", text: "Uploaded 4 bytes." }],
+    success: true,
+  });
+  await expect(
+    handler.handle(
+      params(REMOTE_TERMINAL_DOWNLOAD_TOOL, {
+        remotePath: "/tmp/b.txt",
+        workspacePath: "C:\\b.txt",
+      }) as never,
+    ),
+  ).resolves.toEqual({
+    contentItems: [{ type: "inputText", text: "Downloaded 2 bytes." }],
+    success: true,
+  });
+  expect(requestApproval).toHaveBeenCalledTimes(2);
+  expect(requestApproval).toHaveBeenNthCalledWith(
+    1,
+    "thread-1",
+    "call-1",
+    "Upload C:\\a.txt -> /tmp/a.txt",
+    "Transfer files on remote.",
+    "remote",
+    "remote_terminal.upload",
+  );
+  expect(requestApproval).toHaveBeenNthCalledWith(
+    2,
+    "thread-1",
+    "call-1",
+    "Download /tmp/b.txt -> C:\\b.txt",
+    "Transfer files on remote.",
+    "remote",
+    "remote_terminal.download",
+  );
+  expect(rterm.uploadProviderBytes).toHaveBeenCalled();
+  expect(rterm.uploadProviderBytes).toHaveBeenCalledWith(
+    expect.any(Uint8Array),
+    "/tmp/a.txt",
+    "a.txt",
+    undefined,
+  );
+  expect(rterm.downloadProviderBytes).toHaveBeenCalled();
 });
 
 test("rejects invalid and unapproved commands", async () => {

@@ -383,26 +383,42 @@ export class CodexPromptRenderer {
     if (!force && existing?.dataset.approvalRequestId === String(pending.requestId)) return;
     container.replaceChildren();
     container.hidden = false;
+    const isRemote = pending.kind === "remote";
+    container.classList.toggle("codex-dynamic-tool-approval", isRemote);
     const title = document.createElement("strong");
-    title.textContent = "Codex needs approval";
+    title.textContent = isRemote
+      ? "Codex wants to use the remote terminal"
+      : "Codex needs approval";
     container.append(title);
+    if (pending.toolName) {
+      const tool = document.createElement("div");
+      tool.className = "codex-dynamic-tool-name";
+      tool.textContent = `Tool: ${pending.toolName}`;
+      container.append(tool);
+    }
     const form = document.createElement("form");
     form.className = "codex-user-input-form";
     form.dataset.approvalRequestId = String(pending.requestId);
     const fieldset = document.createElement("fieldset");
     const legend = document.createElement("legend");
-    legend.textContent = "Command requiring approval";
+    legend.textContent = isRemote
+      ? "Remote operation requiring approval"
+      : "Command requiring approval";
     fieldset.append(legend);
     const command = document.createElement("div");
     command.className = "codex-approval-command";
     command.tabIndex = 0;
     command.setAttribute("role", "region");
-    command.setAttribute("aria-label", "Command requiring approval");
+    command.setAttribute(
+      "aria-label",
+      isRemote ? "Remote operation requiring approval" : "Command requiring approval",
+    );
     command.textContent = pending.command || "Approval request";
     fieldset.append(command);
     if (pending.reason) {
       const reason = document.createElement("div");
       reason.className = "codex-user-input-question";
+      if (isRemote) reason.classList.add("codex-dynamic-tool-host");
       reason.textContent = pending.reason;
       fieldset.append(reason);
     }

@@ -11,6 +11,8 @@ describe("dynamic tools", () => {
       "sessions",
       "read",
       "execute",
+      "upload",
+      "download",
     ]);
   });
 

@@ -95,13 +95,15 @@ export class PeskApplication implements ApplicationContext {
     this._remoteTerminal = new RemoteTerminalService({
       enabled: config.features.remoteTerminal.enabled,
       url: config.features.remoteTerminal.url,
+      readWorkspaceFile: (path) => this.codex.readWorkspaceFile(path),
+      writeWorkspaceFile: (path, dataBase64) => this.codex.writeWorkspaceFile(path, dataBase64),
       onChanged: (threadId, snapshot) => {
         if (threadId === this.currentThreadId) this._state?.publishRterm(snapshot);
       },
       onSessionSelected: (threadId, sessionId) =>
         this._state?.publishRtermSessionSelection(threadId, sessionId),
-      requestApproval: (threadId, callId, command, reason) =>
-        this.codex.requestDynamicApproval(threadId, callId, command, reason),
+      requestApproval: (threadId, callId, command, reason, kind, toolName) =>
+        this.codex.requestDynamicApproval(threadId, callId, command, reason, kind, toolName),
     });
 
     this.theme = config.theme;

@@ -130,9 +130,10 @@ describe("rterm renderer", () => {
     await Promise.resolve();
     const frame = document.getElementById("rterm-frame") as HTMLIFrameElement;
     const source = "http://remote.example/provider/ssh?embed=1";
-    expect(frame.src).toBe(source);
+    const embeddedSource = `${source}&parentOrigin=${encodeURIComponent(window.location.origin)}`;
+    expect(frame.src).toBe(embeddedSource);
     document.getElementById("rterm-refresh")?.dispatchEvent(new Event("click"));
-    expect(frame.src).toBe(source);
+    expect(frame.src).toBe(embeddedSource);
   });
 
   test("resizes the panel through the drag handle", () => {

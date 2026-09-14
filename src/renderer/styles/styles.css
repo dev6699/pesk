@@ -744,6 +744,43 @@ body.chat-only #codex-chat {
   outline-offset: 1px;
 }
 
+.codex-dynamic-tool-approval {
+  border: 1px solid var(--status-info-strong);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--status-info) 7%, transparent);
+}
+
+.codex-dynamic-tool-approval > strong {
+  display: block;
+  padding: 7px 8px 2px;
+  color: var(--status-info-strong);
+}
+
+.codex-dynamic-tool-name {
+  padding: 0 8px 2px;
+  color: var(--text-secondary-strong);
+  font:
+    10px/1.3 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  overflow-wrap: anywhere;
+}
+
+.codex-dynamic-tool-host {
+  color: var(--status-info-strong);
+  font-weight: 700;
+}
+
+.codex-dynamic-tool-approval .codex-user-input-form {
+  padding: 0 2px 5px;
+}
+
+.codex-dynamic-tool-approval .codex-approval-command {
+  border-color: color-mix(in srgb, var(--status-info-strong) 45%, var(--border-very-faint));
+  background: color-mix(in srgb, var(--status-info) 10%, var(--surface-muted));
+}
+
 .codex-user-input-form label {
   display: block;
   margin: 3px 0;

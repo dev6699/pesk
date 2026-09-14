@@ -127,6 +127,22 @@ describe("RtermClient provider mode", () => {
     await expect(target.readProvider()).rejects.toThrow("not found");
   });
 
+  test("transfers raw bytes through the provider", async () => {
+    const fetchMock = jest
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ bytes: 2 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    const target = client();
+    target.setProviderSession(session);
+    await expect(
+      target.uploadProviderBytes(new Uint8Array([1, 2]), "/tmp/remote.txt"),
+    ).resolves.toBe(2);
+    await expect(target.downloadProviderBytes("/tmp/remote.txt")).resolves.toEqual(
+      new Uint8Array([111, 107]),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   test("stays disabled when configured disabled", () => {
     const target = new RtermClient({
       enabled: false,

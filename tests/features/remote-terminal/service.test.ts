@@ -9,6 +9,8 @@ test("delegates provider sessions and dynamic tools per thread", async () => {
     enabled: true,
     url: "http://remote:5000/provider/ssh",
     onChanged: jest.fn(),
+    readWorkspaceFile: jest.fn(async () => ""),
+    writeWorkspaceFile: jest.fn(async () => undefined),
     onSessionSelected: selected,
     requestApproval: jest.fn(async () => true),
   });

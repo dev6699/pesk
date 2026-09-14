@@ -88,6 +88,13 @@ export class RtermRenderer {
   private loadEmbedUrl(): void {
     window.peskApi.getRtermEmbedUrl().then((url) => {
       if (!url) return;
+      try {
+        const embedUrl = new URL(url);
+        embedUrl.searchParams.set("parentOrigin", window.location.origin);
+        url = embedUrl.toString();
+      } catch {
+        return;
+      }
       const initialFrame = this.frames.get("standalone");
       if (initialFrame && this.threadId !== "standalone" && !this.frames.has(this.threadId)) {
         this.frames.delete("standalone");

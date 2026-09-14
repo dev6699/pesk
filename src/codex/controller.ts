@@ -16,6 +16,8 @@ import type {
   DynamicToolCallParams,
   DynamicToolCallResponse,
   DynamicToolSpec,
+  FsReadFileResponse,
+  FsWriteFileResponse,
 } from "../codex-schema/v2";
 import { CodexGoalManager } from "./goal";
 import { CodexInteraction } from "./interaction";
@@ -30,7 +32,7 @@ import { CodexTurnManager } from "./turn";
 import type { CodexState, CodexStreamDelta } from "./types";
 import { parsePrompt, type PromptImages } from "./prompt";
 import { CodexWebSocketTransport, type CodexSocketTransport } from "./websocket";
-import { DynamicToolApprovalManager } from "./dynamic-tools";
+import { DynamicToolApprovalManager, type DynamicApprovalKind } from "./dynamic-tools";
 
 export interface CodexControllerOptions {
   onStateChanged: (state: CodexState) => void;
@@ -418,8 +420,41 @@ export class CodexController {
     callId: string,
     command: string,
     reason: string,
+    kind?: DynamicApprovalKind,
+    toolName?: string,
   ): Promise<boolean> {
-    return this.dynamicApprovals.request(threadId, callId, command, reason);
+    return this.dynamicApprovals.request(threadId, callId, command, reason, kind, toolName);
+  }
+
+  /** Runs a non-interactive command in the workspace through the app-server. */
+  readWorkspaceFile(path: string): Promise<string> {
+    return this.requestResult<FsReadFileResponse>({
+      method: "fs/readFile",
+      params: { path },
+    }).then((result) => result.dataBase64);
+  }
+
+  /** Writes base64-encoded bytes to an absolute workspace path through app-server. */
+  writeWorkspaceFile(path: string, dataBase64: string): Promise<void> {
+    return this.requestResult<FsWriteFileResponse>({
+      method: "fs/writeFile",
+      params: { path, dataBase64 },
+    }).then(() => undefined);
+  }
+
+  private requestResult<TResult>(
+    request: import("./protocol").OutgoingRequestInput,
+  ): Promise<TResult> {
+    return new Promise((resolve, reject) => {
+      if (
+        !this.request(request, (message) =>
+          message.error
+            ? reject(new Error(String(message.error)))
+            : resolve(message.result as TResult),
+        )
+      )
+        reject(new Error("App-server request is unavailable."));
+    });
   }
 
   /** Initializes the app-server session after the transport opens. */

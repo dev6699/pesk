@@ -122,6 +122,8 @@ test("passes configured dynamic tools to new threads", () => {
             { type: "function", name: "sessions" },
             { type: "function", name: "read" },
             { type: "function", name: "execute" },
+            { type: "function", name: "upload" },
+            { type: "function", name: "download" },
           ],
         },
       ],
