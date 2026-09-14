@@ -21,7 +21,6 @@ export interface RendererEventContract {
   "settings-changed": [state: RendererState];
   "codex-stream-delta": [delta: CodexStreamDelta];
   "rterm-changed": [snapshot: RtermSnapshot];
-  "rterm-session-selected": [selection: { threadId: string; sessionId: string }];
 }
 
 export interface PresetInfo {
@@ -83,6 +82,7 @@ export interface IpcInvokeContract {
     args: [session: ProviderSessionDescriptor, handoff: string, threadId?: string];
     result: boolean;
   };
+  "rterm-provider-select": { args: [sessionId: string, threadId?: string]; result: boolean };
   "rterm-provider-disconnected": { args: [sessionId?: string]; result: boolean };
 }
 

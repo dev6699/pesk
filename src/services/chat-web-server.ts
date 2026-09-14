@@ -171,14 +171,6 @@ export class ChatWebServer {
     }
   }
 
-  broadcastRtermSessionSelected(threadId: string, sessionId: string): void {
-    if (!this.options.enabled) return;
-    const message = JSON.stringify({ type: "rtermSessionSelected", threadId, sessionId });
-    for (const client of this.clients.keys()) {
-      if (client.readyState === WebSocket.OPEN) client.send(message);
-    }
-  }
-
   /** Sends a push notification for the same background attention event used by desktop. */
   notifyCodexAttention(kind: "finished" | "approval" | "input"): void {
     this.sendPush(notificationForKind(kind));

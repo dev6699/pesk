@@ -12,10 +12,10 @@ describe("rterm renderer", () => {
         <iframe id="rterm-frame"></iframe></section>`;
     const api = {
       onRtermChanged: jest.fn(),
-      onRtermSessionSelected: jest.fn(),
       getRterm: jest.fn().mockResolvedValue(snapshot("disconnected")),
       getRtermEmbedUrl: jest.fn().mockResolvedValue("http://remote.example/provider/ssh?embed=1"),
       setRtermProviderSession: jest.fn().mockResolvedValue(true),
+      selectRtermProviderSession: jest.fn().mockResolvedValue(true),
       clearRtermProviderSession: jest.fn().mockResolvedValue(true),
     };
     (window as unknown as { peskApi: typeof api }).peskApi = api;
@@ -62,39 +62,36 @@ describe("rterm renderer", () => {
     expect(panel.hidden).toBe(true);
   });
 
+  test("forwards selection of an existing provider session", async () => {
+    document.body.innerHTML = `
+      <section id="rterm-panel"><div id="rterm-resize-handle"></div>
+        <button id="rterm-close"></button><iframe id="rterm-frame"></iframe></section>`;
+    const api = {
+      onRtermChanged: jest.fn(),
+      getRterm: jest.fn().mockResolvedValue(snapshot("connected")),
+      getRtermEmbedUrl: jest.fn().mockResolvedValue(""),
+      setRtermProviderSession: jest.fn(),
+      selectRtermProviderSession: jest.fn().mockResolvedValue(true),
+      clearRtermProviderSession: jest.fn(),
+    };
+    (window as unknown as { peskApi: typeof api }).peskApi = api;
+    setupRtermRenderer();
+    const frame = document.getElementById("rterm-frame") as HTMLIFrameElement;
+    frame.src = "http://remote.example/provider/ssh?embed=1";
+    await Promise.resolve();
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { source: "rterm", type: "session-selected", sessionId: "session-2" },
+        source: frame.contentWindow,
+        origin: "http://remote.example",
+      }),
+    );
+    expect(api.selectRtermProviderSession).toHaveBeenCalledWith("session-2", "standalone");
+  });
+
   test("returns no renderer when required markup is missing", () => {
     document.body.innerHTML = "<section id='rterm-panel'></section>";
     expect(setupRtermRenderer()).toBeUndefined();
-  });
-  test("activates the requested provider session for the current thread", () => {
-    document.body.innerHTML = `
-      <section id="rterm-panel"><div id="rterm-resize-handle"></div>
-        <div id="rterm-toolbar"><button id="rterm-close"></button></div>
-        <iframe id="rterm-frame"></iframe></section>`;
-    let select: ((selection: { threadId: string; sessionId: string }) => void) | undefined;
-    const api = {
-      onRtermChanged: jest.fn(),
-      onRtermSessionSelected: jest.fn((callback) => {
-        select = callback;
-      }),
-      getRterm: jest.fn().mockResolvedValue(snapshot("disconnected")),
-      getRtermEmbedUrl: jest.fn().mockResolvedValue(""),
-    };
-    (window as unknown as { peskApi: typeof api }).peskApi = api;
-    const frame = document.getElementById("rterm-frame") as HTMLIFrameElement;
-    frame.src = "http://remote.example/provider/ssh?embed=1";
-    const postMessage = jest.spyOn(frame.contentWindow!, "postMessage");
-    const renderer = setupRtermRenderer();
-
-    select?.({ threadId: "other-thread", sessionId: "ignored" });
-    select?.({ threadId: "standalone", sessionId: "session-1" });
-    renderer?.setThread("thread-1");
-    select?.({ threadId: "thread-1", sessionId: "session-2" });
-
-    expect(postMessage).toHaveBeenCalledWith(
-      { source: "pesk", type: "select-session", sessionId: "session-2" },
-      "http://remote.example",
-    );
   });
   test("loads and refreshes the provider iframe", async () => {
     document.body.innerHTML = `
@@ -131,8 +128,6 @@ describe("rterm renderer", () => {
     const frame = document.getElementById("rterm-frame") as HTMLIFrameElement;
     const source = "http://remote.example/provider/ssh?embed=1";
     const embeddedSource = `${source}&parentOrigin=${encodeURIComponent(window.location.origin)}`;
-    expect(frame.src).toBe(embeddedSource);
-    document.getElementById("rterm-refresh")?.dispatchEvent(new Event("click"));
     expect(frame.src).toBe(embeddedSource);
   });
 
@@ -280,6 +275,46 @@ describe("rterm renderer", () => {
     expect(firstFrame.hidden).toBe(false);
     expect(secondFrame.hidden).toBe(true);
     expect(firstFrame.src).toContain("/provider/ssh");
+  });
+
+  test("loads the selected thread snapshot before loading its provider page", async () => {
+    document.body.innerHTML = `
+      <section id="rterm-panel">
+        <div id="rterm-resize-handle"></div>
+        <div id="rterm-toolbar"><span id="rterm-status"></span><button id="rterm-connection"></button><button id="rterm-close"></button></div>
+        <iframe id="rterm-frame"></iframe>
+      </section>`;
+    const api = {
+      onRtermChanged: jest.fn(),
+      getRterm: jest
+        .fn()
+        .mockResolvedValueOnce(snapshot("connected"))
+        .mockResolvedValueOnce({
+          ...snapshot("connected"),
+          sessions: [
+            { sessionId: "thread-2-session", provider: "ssh", target: "host-b", user: "user-b" },
+          ],
+          activeSessionId: "thread-2-session",
+        }),
+      getRtermEmbedUrl: jest.fn().mockResolvedValue("http://remote.example/provider/ssh?embed=1"),
+    };
+    (window as unknown as { peskApi: typeof api }).peskApi = api;
+    const renderer = setupRtermRenderer();
+    await Promise.resolve();
+    renderer?.setThread("thread-2");
+
+    expect((document.getElementById("rterm-frame") as HTMLIFrameElement).src).toBe("");
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    document.dispatchEvent(new Event("toggle-rterm"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(api.getRterm).toHaveBeenCalledTimes(2);
+    expect(api.getRtermEmbedUrl).toHaveBeenCalled();
   });
 });
 

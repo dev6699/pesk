@@ -109,9 +109,9 @@ const api: PeskApi = {
   getRterm: invokeChannel("get-rterm"),
   getRtermEmbedUrl: invokeChannel("get-rterm-embed-url"),
   setRtermProviderSession: invokeChannel("rterm-provider-session"),
+  selectRtermProviderSession: invokeChannel("rterm-provider-select"),
   clearRtermProviderSession: invokeChannel("rterm-provider-disconnected"),
   onRtermChanged: listenChannel("rterm-changed"),
-  onRtermSessionSelected: listenChannel("rterm-session-selected"),
 } satisfies Window["peskApi"];
 
 contextBridge.exposeInMainWorld("peskApi", api);

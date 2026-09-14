@@ -177,11 +177,26 @@ export class RtermClient {
     return new Uint8Array(await response.arrayBuffer());
   }
 
-  getEmbedUrl(): string {
+  async getEmbedUrlForSession(): Promise<string> {
     if (this.options.enabled === false || !this.options.url) return "";
     try {
       const pageUrl = new URL(this.options.url);
       pageUrl.searchParams.set("embed", "1");
+      const sessions = this.getProviderSessions();
+      for (const session of sessions) {
+        const response = await fetch(`${this.providerApiUrl(session)}/share`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.token}` },
+        });
+        if (!response.ok) continue;
+        const result = (await response.json()) as { handoff?: unknown };
+        if (typeof result.handoff !== "string" || !result.handoff) continue;
+        pageUrl.searchParams.append("attachSession", session.sessionId);
+        pageUrl.searchParams.append("handoff", result.handoff);
+        pageUrl.searchParams.append("target", session.target);
+        pageUrl.searchParams.append("user", session.user);
+      }
+      if (this.activeSessionId) pageUrl.searchParams.set("activeSession", this.activeSessionId);
       return pageUrl.toString();
     } catch {
       return "";

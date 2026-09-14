@@ -1120,7 +1120,6 @@ body.chat-only #codex-chat {
   flex: 1 1 0;
 }
 
-#rterm-refresh,
 #rterm-close {
   border: 1px solid var(--border-overlay);
   border-radius: 7px;
@@ -1133,8 +1132,6 @@ body.chat-only #codex-chat {
     sans-serif;
 }
 
-#rterm-refresh:hover,
-#rterm-refresh:focus-visible,
 #rterm-close:hover,
 #rterm-close:focus-visible {
   border-color: var(--status-info-strong);

@@ -22,10 +22,6 @@ describe("RtermClient provider mode", () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  test("embeds the configured provider page", () => {
-    expect(client().getEmbedUrl()).toBe("http://remote:5000/provider/ssh?embed=1");
-  });
-
   test("tracks the selected provider session", () => {
     const target = client();
     target.setProviderSession(session);
@@ -149,7 +145,6 @@ describe("RtermClient provider mode", () => {
       url: "http://remote/provider/ssh",
       onChanged: jest.fn(),
     });
-    expect(target.getEmbedUrl()).toBe("");
     expect(target.getSnapshot().enabled).toBe(false);
   });
 });

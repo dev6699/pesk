@@ -40,8 +40,13 @@ export class RemoteTerminalManager {
     return this.getClient(threadId).getSnapshot();
   }
 
-  getEmbedUrl(threadId = this.currentThreadId): string {
-    return threadId ? this.getClient(threadId).getEmbedUrl() : "";
+  getEmbedUrlForSession(threadId = this.currentThreadId): Promise<string> {
+    return threadId ? this.getClient(threadId).getEmbedUrlForSession() : Promise.resolve("");
+  }
+
+  selectProviderSession(sessionId: string, threadId = this.currentThreadId): boolean {
+    if (!threadId) return false;
+    return this.getClient(threadId).selectProviderSession(sessionId);
   }
 
   setProviderSession(session: RtermProviderSession, threadId = this.currentThreadId): boolean {

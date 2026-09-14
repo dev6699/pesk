@@ -107,9 +107,7 @@ export interface PeskApi {
     handoff: string,
     threadId?: string,
   ) => Promise<boolean>;
+  selectRtermProviderSession: (sessionId: string, threadId?: string) => Promise<boolean>;
   clearRtermProviderSession: (sessionId?: string) => Promise<boolean>;
   onRtermChanged: (callback: (snapshot: RtermSnapshot) => void) => void;
-  onRtermSessionSelected: (
-    callback: (selection: { threadId: string; sessionId: string }) => void,
-  ) => void;
 }

@@ -33,11 +33,14 @@ function workspaceFilename(workspacePath: string): string {
   return normalized.slice(normalized.lastIndexOf("/") + 1) || "upload";
 }
 
+function remoteApprovalReason(host: string, reason: string): string {
+  return `Remote host: ${host}\n${reason}`;
+}
+
 export interface RemoteTerminalToolHandlerDependencies {
   getRterm: (threadId: string) => RtermClient;
   readWorkspaceFile: (path: string) => Promise<string>;
   writeWorkspaceFile: (path: string, dataBase64: string) => Promise<void>;
-  onSessionSelected?: (threadId: string, sessionId: string) => void;
   requestApproval: (
     threadId: string,
     callId: string,
@@ -122,7 +125,7 @@ export class RemoteTerminalToolHandler {
         params.threadId,
         params.callId,
         `${upload ? "Upload" : "Download"} ${source} -> ${destination}`,
-        `Transfer files on ${host}.`,
+        remoteApprovalReason(host, "Transfer files."),
         "remote",
         `${REMOTE_TERMINAL_NAMESPACE}.${params.tool}`,
       );
@@ -174,7 +177,9 @@ export class RemoteTerminalToolHandler {
       params.threadId,
       params.callId,
       args.command,
-      typeof args.reason === "string" ? args.reason : `Run on ${host}.`,
+      typeof args.reason === "string"
+        ? remoteApprovalReason(host, args.reason)
+        : remoteApprovalReason(host, "Run command."),
       "remote",
       `${REMOTE_TERMINAL_NAMESPACE}.${params.tool}`,
     );
@@ -208,7 +213,6 @@ export class RemoteTerminalToolHandler {
 
   private selectSession(rterm: RtermClient, threadId: string, sessionId: string): boolean {
     if (!rterm.selectProviderSession(sessionId)) return false;
-    this.dependencies.onSessionSelected?.(threadId, sessionId);
     return true;
   }
 }

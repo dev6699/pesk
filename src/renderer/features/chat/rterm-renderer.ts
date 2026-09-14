@@ -10,7 +10,6 @@ export class RtermRenderer {
   constructor(
     private readonly panel: HTMLElement,
     private frame: HTMLIFrameElement,
-    private readonly refreshButton: HTMLButtonElement | undefined,
     private readonly closeButton: HTMLButtonElement,
     private readonly resizeHandle: HTMLElement,
     private visible = false,
@@ -31,16 +30,6 @@ export class RtermRenderer {
   setup(): void {
     this.frames.set(this.threadId, this.frame);
     window.peskApi.onRtermChanged((snapshot) => this.render(snapshot));
-    window.peskApi.onRtermSessionSelected?.(({ threadId, sessionId }) => {
-      if (threadId !== this.threadId) return;
-      const origin = this.frameOrigin(this.frame);
-      if (!origin) return;
-      this.frame.contentWindow?.postMessage(
-        { source: "pesk", type: "select-session", sessionId },
-        origin,
-      );
-    });
-    this.refreshButton?.addEventListener("click", () => this.refreshFrame());
     this.closeButton.addEventListener("click", () => this.hide());
     document.addEventListener("toggle-rterm", () => this.toggleVisibility());
     this.resizeHandle.addEventListener("pointerdown", (event) => this.startResize(event));
@@ -54,13 +43,23 @@ export class RtermRenderer {
     this.threadId = nextThreadId;
     this.visible = this.visibility.get(this.threadId) ?? false;
     this.switchProviderFrame(this.threadId);
-    this.render(this.snapshot);
+    const selectedThreadId = this.threadId;
+    const selectedFrame = this.frame;
+    window.peskApi.getRterm().then((snapshot) => {
+      if (this.threadId !== selectedThreadId || this.frame !== selectedFrame) return;
+      this.render(snapshot);
+    });
   }
 
   private render(snapshot: RtermSnapshot): void {
+    const stateChanged = this.snapshot.state !== snapshot.state;
+    const activeSessionChanged = this.snapshot.activeSessionId !== snapshot.activeSessionId;
     this.snapshot = snapshot;
     this.panel.hidden = !snapshot.enabled || !this.visible;
-    if (this.visible) this.loadEmbedUrl();
+    this.syncFrameSessions();
+    if (this.visible && (!this.frame.src || (stateChanged && snapshot.state !== "connected")))
+      this.loadEmbedUrl();
+    if (this.visible && activeSessionChanged) this.attachFrameSessions();
   }
 
   private toggleVisibility(): void {
@@ -78,15 +77,62 @@ export class RtermRenderer {
     this.panel.hidden = true;
   }
 
-  private refreshFrame(): void {
-    const source = this.frame.src;
-    if (!source) return;
-    this.frame.src = "";
-    this.frame.src = source;
+  private attachFrameSessions(): void {
+    const threadId = this.threadId;
+    const frame = this.frame;
+    const origin = this.frameOrigin(frame);
+    if (!origin || !frame.contentWindow) return;
+    window.peskApi.getRtermEmbedUrl().then((url) => {
+      if (this.threadId !== threadId || this.frame !== frame) return;
+      try {
+        const embed = new URL(url);
+        const sessions = embed.searchParams.getAll("attachSession");
+        const handoffs = embed.searchParams.getAll("handoff");
+        const targets = embed.searchParams.getAll("target");
+        const users = embed.searchParams.getAll("user");
+        for (let index = 0; index < sessions.length && index < handoffs.length; index++) {
+          frame.contentWindow?.postMessage(
+            {
+              source: "pesk",
+              type: "attach-session",
+              sessionId: sessions[index],
+              handoff: handoffs[index],
+              target: targets[index] ?? sessions[index],
+              user: users[index] ?? "",
+              active: sessions[index] === this.snapshot.activeSessionId,
+            },
+            origin,
+          );
+        }
+      } catch {
+        // Ignore an unavailable or malformed embed URL.
+      }
+    });
+  }
+
+  private syncFrameSessions(): void {
+    const origin = this.frameOrigin(this.frame);
+    if (!origin || !this.frame.contentWindow) return;
+    try {
+      this.frame.contentWindow.postMessage(
+        {
+          source: "pesk",
+          type: "sync-sessions",
+          sessions: this.snapshot.sessions,
+          activeSessionId: this.snapshot.activeSessionId,
+        },
+        origin,
+      );
+    } catch {
+      // The iframe may not have a live browsing context while it is reloading.
+    }
   }
 
   private loadEmbedUrl(): void {
+    const threadId = this.threadId;
+    const frame = this.frame;
     window.peskApi.getRtermEmbedUrl().then((url) => {
+      if (this.threadId !== threadId || this.frame !== frame) return;
       if (!url) return;
       try {
         const embedUrl = new URL(url);
@@ -100,7 +146,7 @@ export class RtermRenderer {
         this.frames.delete("standalone");
         this.frames.set(this.threadId, initialFrame);
       }
-      if (this.frame.src !== url) this.frame.src = url;
+      if (frame.src !== url) frame.src = url;
     });
   }
 
@@ -157,10 +203,13 @@ export class RtermRenderer {
     if (!sourceThread) return;
     const isCurrentFrame = sourceThread === this.threadId;
     switch (event.data.type) {
+      case "loaded":
+        if (isCurrentFrame) this.syncFrameSessions();
+        break;
       case "disconnected":
       case "error":
         if (isCurrentFrame) {
-          void window.peskApi.clearRtermProviderSession(
+          window.peskApi.clearRtermProviderSession(
             typeof event.data.sessionId === "string" ? event.data.sessionId : undefined,
           );
         }
@@ -179,8 +228,12 @@ export class RtermRenderer {
             target: event.data.target,
             user: event.data.user,
           };
-          void window.peskApi.setRtermProviderSession(session, event.data.handoff, sourceThread);
+          window.peskApi.setRtermProviderSession(session, event.data.handoff, sourceThread);
         }
+        break;
+      case "session-selected":
+        if (typeof event.data.sessionId === "string" && isCurrentFrame)
+          window.peskApi.selectRtermProviderSession(event.data.sessionId, sourceThread);
         break;
     }
   }
@@ -189,7 +242,6 @@ export class RtermRenderer {
 export function setupRtermRenderer(): RtermRenderer | undefined {
   const panel = document.getElementById("rterm-panel");
   const frame = document.getElementById("rterm-frame");
-  const refreshButton = document.getElementById("rterm-refresh");
   const closeButton = document.getElementById("rterm-close");
   const resizeHandle = document.getElementById("rterm-resize-handle");
   if (
@@ -199,13 +251,7 @@ export function setupRtermRenderer(): RtermRenderer | undefined {
     !(resizeHandle instanceof HTMLElement)
   )
     return undefined;
-  const renderer = new RtermRenderer(
-    panel,
-    frame,
-    refreshButton instanceof HTMLButtonElement ? refreshButton : undefined,
-    closeButton,
-    resizeHandle,
-  );
+  const renderer = new RtermRenderer(panel, frame, closeButton, resizeHandle);
   renderer.setup();
   return renderer;
 }

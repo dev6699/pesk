@@ -15,7 +15,6 @@ export interface RemoteTerminalServiceOptions {
   onChanged: (threadId: string, snapshot: RtermSnapshot) => void;
   readWorkspaceFile: (path: string) => Promise<string>;
   writeWorkspaceFile: (path: string, dataBase64: string) => Promise<void>;
-  onSessionSelected?: (threadId: string, sessionId: string) => void;
   requestApproval: (
     threadId: string,
     callId: string,
@@ -37,7 +36,6 @@ export class RemoteTerminalService {
       getRterm: (threadId) => this.manager.getClient(threadId),
       readWorkspaceFile: options.readWorkspaceFile,
       writeWorkspaceFile: options.writeWorkspaceFile,
-      onSessionSelected: options.onSessionSelected,
       requestApproval: options.requestApproval,
     });
   }
@@ -54,8 +52,12 @@ export class RemoteTerminalService {
     return this.manager.getSnapshot();
   }
 
-  getEmbedUrl(): string {
-    return this.manager.getEmbedUrl();
+  getEmbedUrlForSession(): Promise<string> {
+    return this.manager.getEmbedUrlForSession();
+  }
+
+  selectProviderSession(sessionId: string, threadId?: string): boolean {
+    return this.manager.selectProviderSession(sessionId, threadId);
   }
 
   setProviderSession(session: RtermProviderSession, threadId?: string): boolean {

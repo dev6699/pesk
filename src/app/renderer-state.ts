@@ -78,13 +78,6 @@ export class RendererStatePublisher {
     this.webServer.broadcastRterm(snapshot);
   }
 
-  publishRtermSessionSelection(threadId: string, sessionId: string): void {
-    this.webServer.broadcastRtermSessionSelected(threadId, sessionId);
-    const window = this.getChatWindow();
-    if (threadId === undefined || !window || window.isDestroyed()) return;
-    window.webContents.send("rterm-session-selected", { threadId, sessionId });
-  }
-
   private publishNow(): void {
     const state = this.getState();
     for (const window of [this.getPetWindow(), this.getChatWindow()]) {

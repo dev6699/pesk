@@ -20,7 +20,7 @@ export function registerIpcHandlers(context: ApplicationContext): void {
   });
   registerInvoke("get-settings", () => state.getState());
   registerInvoke("get-rterm", () => remoteTerminal.getSnapshot());
-  registerInvoke("get-rterm-embed-url", () => remoteTerminal.getEmbedUrl());
+  registerInvoke("get-rterm-embed-url", () => remoteTerminal.getEmbedUrlForSession());
   registerInvoke("rterm-provider-session", (_event, session, handoff, threadId) => {
     if (
       typeof session?.sessionId === "string" &&
@@ -38,6 +38,12 @@ export function registerIpcHandlers(context: ApplicationContext): void {
     }
     return false;
   });
+  registerInvoke("rterm-provider-select", (_event, sessionId, threadId) =>
+    remoteTerminal.selectProviderSession(
+      sessionId,
+      typeof threadId === "string" ? threadId : undefined,
+    ),
+  );
   registerInvoke("rterm-provider-disconnected", (_event, sessionId) =>
     remoteTerminal.clearProviderSession(typeof sessionId === "string" ? sessionId : undefined),
   );

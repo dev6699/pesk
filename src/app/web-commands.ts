@@ -23,7 +23,7 @@ export function handleWebCommand(
   };
   const replyProject = (operation: Promise<boolean>): void => {
     if (typeof requestId !== "number") return;
-    void operation.then((ok) =>
+    operation.then((ok) =>
       reply({ type: "commandResult", requestId, ok, state: context.getState() }),
     );
   };
@@ -34,7 +34,9 @@ export function handleWebCommand(
       break;
     case "getRtermEmbedUrl":
       if (typeof requestId === "number")
-        reply({ type: "rtermEmbedUrl", requestId, url: context.remoteTerminal.getEmbedUrl() });
+        context.remoteTerminal
+          .getEmbedUrlForSession()
+          .then((url) => reply({ type: "rtermEmbedUrl", requestId, url }));
       break;
     case "rtermProviderSession":
       if (
@@ -42,7 +44,7 @@ export function handleWebCommand(
         typeof command.session === "object" &&
         typeof command.handoff === "string"
       ) {
-        void context.remoteTerminal
+        context.remoteTerminal
           .adoptProviderSession(
             command.session as never,
             command.handoff,
@@ -58,6 +60,15 @@ export function handleWebCommand(
         context.remoteTerminal.clearProviderSession(
           typeof command.sessionId === "string" ? command.sessionId : undefined,
         ),
+      );
+      break;
+    case "rtermProviderSelect":
+      replyCommand(
+        typeof command.sessionId === "string" &&
+          context.remoteTerminal.selectProviderSession(
+            command.sessionId,
+            typeof command.threadId === "string" ? command.threadId : undefined,
+          ),
       );
       break;
     case "submitPrompt":
@@ -96,7 +107,7 @@ export function handleWebCommand(
       if (typeof command.threadId === "string") context.codex.selectThread(command.threadId);
       break;
     case "loadOlderHistory":
-      void context.codex.loadOlderHistory().then(replyCommand);
+      context.codex.loadOlderHistory().then(replyCommand);
       break;
     case "setCollaborationMode":
       if (command.mode === "default" || command.mode === "plan") {
@@ -126,7 +137,7 @@ export function handleWebCommand(
     case "fuzzyFileSearch": {
       const roots = validRoots(command.roots);
       if (isRequestId(command.requestId) && typeof command.query === "string" && roots) {
-        void context.codex
+        context.codex
           .fuzzyFileSearch(command.query, roots)
           .then((files) =>
             reply({ type: "fuzzyFileSearchResult", requestId: command.requestId, files }),

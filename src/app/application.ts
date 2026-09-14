@@ -100,8 +100,6 @@ export class PeskApplication implements ApplicationContext {
       onChanged: (threadId, snapshot) => {
         if (threadId === this.currentThreadId) this._state?.publishRterm(snapshot);
       },
-      onSessionSelected: (threadId, sessionId) =>
-        this._state?.publishRtermSessionSelection(threadId, sessionId),
       requestApproval: (threadId, callId, command, reason, kind, toolName) =>
         this.codex.requestDynamicApproval(threadId, callId, command, reason, kind, toolName),
     });
@@ -168,7 +166,6 @@ export class PeskApplication implements ApplicationContext {
           this.currentThreadId = state.threads.selectedId;
           this._remoteTerminal.setCurrentThread(state.threads.selectedId);
           this.state.publishCodex(state);
-          this.state.publishRterm(this._remoteTerminal.getSnapshot());
         },
         onStreamDelta: (delta) => this.state.publishStreamDelta(delta),
         onAttention: (event) => this.notifications.handle(event),

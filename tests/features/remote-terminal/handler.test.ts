@@ -86,7 +86,6 @@ function makeHandler(overrides: Partial<RtermClient> = {}) {
 }
 
 test("routes explicit session IDs and notifies the renderer", async () => {
-  const onSessionSelected = jest.fn();
   const rterm = {
     getSnapshot: jest.fn(() => ({
       enabled: true,
@@ -104,7 +103,6 @@ test("routes explicit session IDs and notifies the renderer", async () => {
   } as unknown as RtermClient;
   const handler = new RemoteTerminalToolHandler({
     getRterm: () => rterm,
-    onSessionSelected,
     readWorkspaceFile: jest.fn(async () => ""),
     writeWorkspaceFile: jest.fn(async () => undefined),
     requestApproval: jest.fn(async () => true),
@@ -114,7 +112,6 @@ test("routes explicit session IDs and notifies the renderer", async () => {
     handler.handle(params("read", { sessionId: "session-2" }) as never),
   ).resolves.toMatchObject({ success: true });
   expect(rterm.selectProviderSession).toHaveBeenCalledWith("session-2");
-  expect(onSessionSelected).toHaveBeenCalledWith("thread-1", "session-2");
   expect(rterm.readProvider).toHaveBeenCalledWith(200, "session-2");
 });
 
@@ -168,7 +165,7 @@ test("requires approval and returns completed execution output", async () => {
     "thread-1",
     "call-1",
     "npm test",
-    "verify",
+    "Remote host: remote\nverify",
     "remote",
     "remote_terminal.execute",
   );
@@ -182,7 +179,7 @@ test("uses the default approval reason", async () => {
     "thread-1",
     "call-1",
     "pwd",
-    "Run on remote.",
+    "Remote host: remote\nRun command.",
     "remote",
     "remote_terminal.execute",
   );
@@ -218,7 +215,7 @@ test("approves and performs upload and download transfers", async () => {
     "thread-1",
     "call-1",
     "Upload C:\\a.txt -> /tmp/a.txt",
-    "Transfer files on remote.",
+    "Remote host: remote\nTransfer files.",
     "remote",
     "remote_terminal.upload",
   );
@@ -227,7 +224,7 @@ test("approves and performs upload and download transfers", async () => {
     "thread-1",
     "call-1",
     "Download /tmp/b.txt -> C:\\b.txt",
-    "Transfer files on remote.",
+    "Remote host: remote\nTransfer files.",
     "remote",
     "remote_terminal.download",
   );

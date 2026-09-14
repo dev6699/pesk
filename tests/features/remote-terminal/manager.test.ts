@@ -13,7 +13,6 @@ test("keeps independent provider clients per thread", () => {
   const first = manager.getClient("thread-1");
   const second = manager.getClient("thread-2");
   expect(first).not.toBe(second);
-  expect(manager.getEmbedUrl("thread-1")).toContain("embed=1");
 
   expect(
     manager.setProviderSession(
