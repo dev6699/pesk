@@ -176,6 +176,7 @@ export class RtermRenderer {
         const bridgeToken = crypto.randomUUID();
         this.bridgeTokens.set(frame, bridgeToken);
         embedUrl.searchParams.set("bridgeToken", bridgeToken);
+        embedUrl.searchParams.set("parentOrigin", window.location.origin);
         url = embedUrl.toString();
       } catch {
         return;

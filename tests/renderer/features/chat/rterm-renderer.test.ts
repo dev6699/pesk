@@ -156,7 +156,7 @@ describe("rterm renderer", () => {
     const source = "http://remote.example/provider/ssh?embed=1";
     const embeddedUrl = new URL(frame.src);
     expect(embeddedUrl.origin + embeddedUrl.pathname + "?embed=1").toBe(source);
-    expect(embeddedUrl.searchParams.has("parentOrigin")).toBe(false);
+    expect(embeddedUrl.searchParams.get("parentOrigin")).toBe(window.location.origin);
     expect(embeddedUrl.searchParams.get("bridgeToken")).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );

@@ -1,5 +1,14 @@
-import { app, Menu } from "electron";
+import { app, Menu, net, protocol } from "electron";
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { PeskApplication } from "./app/application";
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "pesk",
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  },
+]);
 
 const application = new PeskApplication();
 
@@ -42,6 +51,21 @@ function isEmbeddedRemoteTerminal(frameUrl: string): boolean {
 }
 
 app.whenReady().then(() => {
+  protocol.handle("pesk", (request) => {
+    const requestUrl = new URL(request.url);
+    if (requestUrl.hostname !== "renderer") return new Response("Not found", { status: 404 });
+    const rendererRoot = path.resolve(__dirname, "renderer");
+    let relativePath: string;
+    try {
+      relativePath = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, "");
+    } catch {
+      return new Response("Bad request", { status: 400 });
+    }
+    const filePath = path.resolve(rendererRoot, relativePath);
+    if (filePath !== rendererRoot && !filePath.startsWith(`${rendererRoot}${path.sep}`))
+      return new Response("Not found", { status: 404 });
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
   if (process.platform === "win32" && app.isPackaged) {
     app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
   }

@@ -104,7 +104,7 @@ export class ChatWindowController {
 
     this.chatWindow.setMenu(null);
     this.chatWindow.setSkipTaskbar(true);
-    this.chatWindow.loadFile(path.join(__dirname, "..", "renderer", "chat.html"));
+    this.chatWindow.loadURL("pesk://renderer/chat.html");
     this.chatWindow.once("ready-to-show", () => {
       this.chatWindow?.setSize(this.size.width, this.size.height, false);
       if (process.env.DESKTOP_PET_DEVTOOLS === "1") {
