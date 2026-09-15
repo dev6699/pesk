@@ -108,10 +108,9 @@ const api: PeskApi = {
   onCodexStreamDelta: listenChannel("codex-stream-delta"),
   getRterm: invokeChannel("get-rterm"),
   getRtermEmbedUrl: invokeChannel("get-rterm-embed-url"),
-  setRtermProviderSession: invokeChannel("rterm-provider-session"),
-  selectRtermProviderSession: invokeChannel("rterm-provider-select"),
-  clearRtermProviderSession: invokeChannel("rterm-provider-disconnected"),
-  onRtermChanged: listenChannel("rterm-changed"),
+  sendRtermSessionsResponse: sendChannel("rterm-sessions-response"),
+  onRtermSessionsRequest: listenChannel("rterm-sessions-request"),
+  onRtermSessionSelection: listenChannel("rterm-session-selection"),
 } satisfies Window["peskApi"];
 
 contextBridge.exposeInMainWorld("peskApi", api);

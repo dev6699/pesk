@@ -1,5 +1,5 @@
 import type { DynamicToolCallParams, DynamicToolCallResponse } from "../../codex-schema/v2";
-import type { RtermClient } from "./rterm-client";
+import type { RtermClient, RtermSessionsResponse } from "./rterm-client";
 import type { DynamicApprovalKind } from "../../codex/dynamic-tools";
 import {
   REMOTE_TERMINAL_EXECUTE_TOOL,
@@ -33,8 +33,8 @@ function workspaceFilename(workspacePath: string): string {
   return normalized.slice(normalized.lastIndexOf("/") + 1) || "upload";
 }
 
-function remoteApprovalReason(host: string, reason: string): string {
-  return `Remote host: ${host}\n${reason}`;
+function remoteApprovalReason(reason: string, sessionLabel?: string): string {
+  return `${sessionLabel ? `[${sessionLabel}]\n` : ""}${reason}`;
 }
 
 export interface RemoteTerminalToolHandlerDependencies {
@@ -63,13 +63,14 @@ export class RemoteTerminalToolHandler {
     if (params.namespace !== REMOTE_TERMINAL_NAMESPACE)
       return fail("Unsupported terminal namespace.");
     if (params.tool === REMOTE_TERMINAL_SESSIONS_TOOL) {
-      const sessions = this.dependencies
-        .getRterm(params.threadId)
-        .getProviderSessions()
-        .map(({ sessionId, provider, target, user }) => ({ sessionId, provider, target, user }));
+      const response = await this.dependencies.getRterm(params.threadId).requestSessions({
+        requestId: params.callId,
+      });
       return {
-        contentItems: [{ type: "inputText", text: JSON.stringify(sessions) }],
-        success: true,
+        contentItems: [
+          { type: "inputText", text: this.responseText(this.stripSessionTokens(response)) },
+        ],
+        success: response.ok,
       };
     }
     if (params.tool === REMOTE_TERMINAL_READ_TOOL) {
@@ -78,26 +79,25 @@ export class RemoteTerminalToolHandler {
         typeof args?.maxLines === "number" ? Math.min(200, Math.max(1, args.maxLines)) : 200;
       const sessionId = typeof args?.sessionId === "string" ? args.sessionId : undefined;
       const rterm = this.dependencies.getRterm(params.threadId);
-      if (sessionId && !this.selectSession(rterm, params.threadId, sessionId))
-        return fail("The provider session does not exist.");
-      let recent;
+      if (sessionId && !rterm.selectProviderSession(sessionId))
+        return fail(this.missingSessionMessage(sessionId));
       try {
-        recent = await rterm.readProvider(maxLines, sessionId);
+        const recent = await rterm.readProvider(maxLines, sessionId);
+        if (!recent) return fail(this.missingSessionMessage(sessionId));
+        return {
+          contentItems: [
+            {
+              type: "inputText",
+              text: `${rterm.getSnapshot().hostLabel || "remote shell"}\n${recent.output}${recent.truncated ? "\n[older output omitted]" : ""}`,
+            },
+          ],
+          success: true,
+        };
       } catch (error) {
         return fail(
           `Unable to read the provider terminal: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      if (!recent) return fail(this.missingSessionMessage(rterm, sessionId));
-      return {
-        contentItems: [
-          {
-            type: "inputText",
-            text: `${rterm.getSnapshot().hostLabel || "remote shell"}\n${recent.output}${recent.truncated ? "\n[older output omitted]" : ""}`,
-          },
-        ],
-        success: true,
-      };
     }
     if (
       params.tool === REMOTE_TERMINAL_UPLOAD_TOOL ||
@@ -115,9 +115,8 @@ export class RemoteTerminalToolHandler {
         return fail("Filename must be a non-empty string.");
       const rterm = this.dependencies.getRterm(params.threadId);
       const sessionId = typeof args.sessionId === "string" ? args.sessionId : undefined;
-      if (sessionId && !this.selectSession(rterm, params.threadId, sessionId))
-        return fail("The provider session does not exist.");
-      const host = rterm.getSnapshot().hostLabel || "remote shell";
+      if (sessionId && !rterm.selectProviderSession(sessionId))
+        return fail(this.missingSessionMessage(sessionId));
       const upload = params.tool === REMOTE_TERMINAL_UPLOAD_TOOL;
       const source = upload ? args.workspacePath : args.remotePath;
       const destination = upload ? args.remotePath : args.workspacePath;
@@ -125,7 +124,7 @@ export class RemoteTerminalToolHandler {
         params.threadId,
         params.callId,
         `${upload ? "Upload" : "Download"} ${source} -> ${destination}`,
-        remoteApprovalReason(host, "Transfer files."),
+        remoteApprovalReason("Transfer files.", rterm.getProviderSessionTabLabel(sessionId)),
         "remote",
         `${REMOTE_TERMINAL_NAMESPACE}.${params.tool}`,
       );
@@ -141,14 +140,14 @@ export class RemoteTerminalToolHandler {
               : workspaceFilename(args.workspacePath),
             sessionId,
           );
-          if (bytes === undefined) return fail(this.missingSessionMessage(rterm, sessionId));
+          if (bytes === undefined) return fail(this.missingSessionMessage(sessionId));
           return {
             contentItems: [{ type: "inputText", text: `Uploaded ${bytes} bytes.` }],
             success: true,
           };
         }
         const data = await rterm.downloadProviderBytes(args.remotePath, sessionId);
-        if (!data) return fail(this.missingSessionMessage(rterm, sessionId));
+        if (!data) return fail(this.missingSessionMessage(sessionId));
         await this.dependencies.writeWorkspaceFile(
           args.workspacePath,
           Buffer.from(data).toString("base64"),
@@ -170,23 +169,22 @@ export class RemoteTerminalToolHandler {
       return fail("A command is required.");
     const rterm = this.dependencies.getRterm(params.threadId);
     const sessionId = typeof args?.sessionId === "string" ? args.sessionId : undefined;
-    if (sessionId && !this.selectSession(rterm, params.threadId, sessionId))
-      return fail("The provider session does not exist.");
-    const host = rterm.getSnapshot().hostLabel || "remote shell";
+    if (sessionId && !rterm.selectProviderSession(sessionId))
+      return fail(this.missingSessionMessage(sessionId));
     const approved = await this.dependencies.requestApproval(
       params.threadId,
       params.callId,
       args.command,
       typeof args.reason === "string"
-        ? remoteApprovalReason(host, args.reason)
-        : remoteApprovalReason(host, "Run command."),
+        ? remoteApprovalReason(args.reason, rterm.getProviderSessionTabLabel(sessionId))
+        : remoteApprovalReason("Run command.", rterm.getProviderSessionTabLabel(sessionId)),
       "remote",
       `${REMOTE_TERMINAL_NAMESPACE}.${params.tool}`,
     );
     if (!approved) return fail("The user rejected the terminal command.");
     try {
       const result = await rterm.executeProvider(args.command, sessionId);
-      if (!result) return fail(this.missingSessionMessage(rterm, sessionId));
+      if (!result) return fail(this.missingSessionMessage(sessionId));
       return {
         contentItems: [
           { type: "inputText", text: `completed; exitCode=${result.exitCode}\n${result.output}` },
@@ -206,13 +204,28 @@ export class RemoteTerminalToolHandler {
       : {};
   }
 
-  private missingSessionMessage(rterm: RtermClient, sessionId?: string): string {
-    if (sessionId) return "The provider session is not connected or does not exist.";
-    return "The provider session is not connected.";
+  private responseText(response: RtermSessionsResponse): string {
+    if (!response.ok) return response.error || "The rterm request failed.";
+    return typeof response.result === "string"
+      ? response.result
+      : JSON.stringify(response.result ?? {});
   }
 
-  private selectSession(rterm: RtermClient, threadId: string, sessionId: string): boolean {
-    if (!rterm.selectProviderSession(sessionId)) return false;
-    return true;
+  private stripSessionTokens(response: RtermSessionsResponse): RtermSessionsResponse {
+    if (!response.ok || !Array.isArray(response.result)) return response;
+    return {
+      ...response,
+      result: response.result.map((session) => {
+        if (!session || typeof session !== "object") return session;
+        const { token: _token, ...metadata } = session as Record<string, unknown>;
+        return metadata;
+      }),
+    };
+  }
+
+  private missingSessionMessage(sessionId?: string): string {
+    return sessionId
+      ? "The provider session is not connected or does not exist."
+      : "The provider session is not connected.";
   }
 }

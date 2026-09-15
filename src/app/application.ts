@@ -95,11 +95,34 @@ export class PeskApplication implements ApplicationContext {
     this._remoteTerminal = new RemoteTerminalService({
       enabled: config.features.remoteTerminal.enabled,
       url: config.features.remoteTerminal.url,
+      sendSessionsRequest: (threadId, request) => {
+        const window = this._chat?.window;
+        let sent = false;
+        if (window && !window.isDestroyed() && !window.webContents.isLoading()) {
+          window.webContents.send("rterm-sessions-request", threadId, request);
+          sent = true;
+        }
+        if (this._webServer) {
+          this._webServer.broadcastRtermSessionsRequest(threadId, request);
+          sent = true;
+        }
+        return sent;
+      },
+      sendSessionSelection: (threadId, sessionId) => {
+        const window = this._chat?.window;
+        let sent = false;
+        if (window && !window.isDestroyed() && !window.webContents.isLoading()) {
+          window.webContents.send("rterm-session-selection", threadId, sessionId);
+          sent = true;
+        }
+        if (this._webServer) {
+          this._webServer.broadcastRtermSessionSelection(threadId, sessionId);
+          sent = true;
+        }
+        return sent;
+      },
       readWorkspaceFile: (path) => this.codex.readWorkspaceFile(path),
       writeWorkspaceFile: (path, dataBase64) => this.codex.writeWorkspaceFile(path, dataBase64),
-      onChanged: (threadId, snapshot) => {
-        if (threadId === this.currentThreadId) this._state?.publishRterm(snapshot);
-      },
       requestApproval: (threadId, callId, command, reason, kind, toolName) =>
         this.codex.requestDynamicApproval(threadId, callId, command, reason, kind, toolName),
     });

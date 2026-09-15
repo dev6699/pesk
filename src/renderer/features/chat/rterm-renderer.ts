@@ -1,7 +1,6 @@
 export class RtermRenderer {
   private snapshot: RtermSnapshot = {
     enabled: false,
-    sessions: [],
     state: "disconnected",
     output: "",
     hostLabel: "",
@@ -16,24 +15,92 @@ export class RtermRenderer {
   ) {}
   private threadId = "standalone";
   private readonly frames = new Map<string, HTMLIFrameElement>();
+  private readonly bridgeTokens = new WeakMap<HTMLIFrameElement, string>();
   private readonly visibility = new Map<string, boolean>();
-
-  private frameOrigin(frame: HTMLIFrameElement): string | undefined {
-    if (!frame.src) return undefined;
-    try {
-      return new URL(frame.src).origin;
-    } catch {
-      return undefined;
-    }
-  }
 
   setup(): void {
     this.frames.set(this.threadId, this.frame);
-    window.peskApi.onRtermChanged((snapshot) => this.render(snapshot));
+    window.peskApi.onRtermSessionsRequest?.((threadId, request) => {
+      const frame = this.frames.get(threadId);
+      if (!frame?.contentWindow || !frame.src) {
+        window.peskApi.sendRtermSessionsResponse?.(threadId, {
+          requestId: request.requestId,
+          ok: false,
+          connected: false,
+          unavailable: true,
+          error: "The rterm iframe is not loaded.",
+        });
+        return;
+      }
+      try {
+        const bridgeToken = this.bridgeTokens.get(frame);
+        frame.contentWindow.postMessage(
+          {
+            source: "pesk",
+            type: "sessions-request",
+            ...request,
+            ...(bridgeToken ? { bridgeToken } : {}),
+          },
+          new URL(frame.src).origin,
+        );
+      } catch {
+        window.peskApi.sendRtermSessionsResponse?.(threadId, {
+          requestId: request.requestId,
+          ok: false,
+          connected: false,
+          unavailable: true,
+          error: "The rterm iframe could not receive the request.",
+        });
+      }
+    });
+    window.peskApi.onRtermSessionSelection?.((threadId, sessionId) => {
+      const frame = this.frames.get(threadId);
+      if (!frame?.contentWindow || !frame.src) return;
+      try {
+        const bridgeToken = this.bridgeTokens.get(frame);
+        frame.contentWindow.postMessage(
+          {
+            source: "pesk",
+            type: "select-session",
+            sessionId,
+            ...(bridgeToken ? { bridgeToken } : {}),
+          },
+          new URL(frame.src).origin,
+        );
+      } catch {
+        // Ignore selection requests for an unloaded frame.
+      }
+    });
+    window.addEventListener("message", (event) => {
+      if (event.data?.source !== "rterm" || event.data.type !== "sessions-response") return;
+      const match = [...this.frames.entries()].find(
+        ([, frame]) => event.source === frame.contentWindow,
+      );
+      if (!match) return;
+      const [threadId, frame] = match;
+      let responseOrigin: string;
+      try {
+        responseOrigin = new URL(frame.src).origin;
+      } catch {
+        return;
+      }
+      if (
+        event.origin !== responseOrigin ||
+        (this.bridgeTokens.has(frame) && event.data.bridgeToken !== this.bridgeTokens.get(frame)) ||
+        typeof event.data.requestId !== "string"
+      )
+        return;
+      window.peskApi.sendRtermSessionsResponse?.(threadId, {
+        requestId: event.data.requestId,
+        ok: event.data.ok === true,
+        connected: event.data.connected === true,
+        result: event.data.result,
+        error: typeof event.data.error === "string" ? event.data.error : undefined,
+      });
+    });
     this.closeButton.addEventListener("click", () => this.hide());
     document.addEventListener("toggle-rterm", () => this.toggleVisibility());
     this.resizeHandle.addEventListener("pointerdown", (event) => this.startResize(event));
-    window.addEventListener("message", (event) => this.handleFrameMessage(event));
     window.peskApi.getRterm().then((snapshot) => this.render(snapshot));
   }
 
@@ -53,13 +120,10 @@ export class RtermRenderer {
 
   private render(snapshot: RtermSnapshot): void {
     const stateChanged = this.snapshot.state !== snapshot.state;
-    const activeSessionChanged = this.snapshot.activeSessionId !== snapshot.activeSessionId;
     this.snapshot = snapshot;
     this.panel.hidden = !snapshot.enabled || !this.visible;
-    this.syncFrameSessions();
     if (this.visible && (!this.frame.src || (stateChanged && snapshot.state !== "connected")))
       this.loadEmbedUrl();
-    if (this.visible && activeSessionChanged) this.attachFrameSessions();
   }
 
   private toggleVisibility(): void {
@@ -77,57 +141,6 @@ export class RtermRenderer {
     this.panel.hidden = true;
   }
 
-  private attachFrameSessions(): void {
-    const threadId = this.threadId;
-    const frame = this.frame;
-    const origin = this.frameOrigin(frame);
-    if (!origin || !frame.contentWindow) return;
-    window.peskApi.getRtermEmbedUrl().then((url) => {
-      if (this.threadId !== threadId || this.frame !== frame) return;
-      try {
-        const embed = new URL(url);
-        const sessions = embed.searchParams.getAll("attachSession");
-        const handoffs = embed.searchParams.getAll("handoff");
-        const targets = embed.searchParams.getAll("target");
-        const users = embed.searchParams.getAll("user");
-        for (let index = 0; index < sessions.length && index < handoffs.length; index++) {
-          frame.contentWindow?.postMessage(
-            {
-              source: "pesk",
-              type: "attach-session",
-              sessionId: sessions[index],
-              handoff: handoffs[index],
-              target: targets[index] ?? sessions[index],
-              user: users[index] ?? "",
-              active: sessions[index] === this.snapshot.activeSessionId,
-            },
-            origin,
-          );
-        }
-      } catch {
-        // Ignore an unavailable or malformed embed URL.
-      }
-    });
-  }
-
-  private syncFrameSessions(): void {
-    const origin = this.frameOrigin(this.frame);
-    if (!origin || !this.frame.contentWindow) return;
-    try {
-      this.frame.contentWindow.postMessage(
-        {
-          source: "pesk",
-          type: "sync-sessions",
-          sessions: this.snapshot.sessions,
-          activeSessionId: this.snapshot.activeSessionId,
-        },
-        origin,
-      );
-    } catch {
-      // The iframe may not have a live browsing context while it is reloading.
-    }
-  }
-
   private loadEmbedUrl(): void {
     const threadId = this.threadId;
     const frame = this.frame;
@@ -136,7 +149,9 @@ export class RtermRenderer {
       if (!url) return;
       try {
         const embedUrl = new URL(url);
-        embedUrl.searchParams.set("parentOrigin", window.location.origin);
+        const bridgeToken = crypto.randomUUID();
+        this.bridgeTokens.set(frame, bridgeToken);
+        embedUrl.searchParams.set("bridgeToken", bridgeToken);
         url = embedUrl.toString();
       } catch {
         return;
@@ -189,53 +204,6 @@ export class RtermRenderer {
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", stop);
     handle.addEventListener("pointercancel", stop);
-  }
-
-  private handleFrameMessage(event: MessageEvent): void {
-    if (event.data?.source !== "rterm") return;
-    const sourceEntry = [...this.frames.entries()].find(
-      ([, frame]) => frame.contentWindow === event.source,
-    );
-    if (event.source !== null && !sourceEntry) return;
-    const expectedOrigin = sourceEntry ? this.frameOrigin(sourceEntry[1]) : undefined;
-    if (!sourceEntry || !expectedOrigin || event.origin !== expectedOrigin) return;
-    const sourceThread = sourceEntry?.[0] ?? (event.source === null ? this.threadId : undefined);
-    if (!sourceThread) return;
-    const isCurrentFrame = sourceThread === this.threadId;
-    switch (event.data.type) {
-      case "loaded":
-        if (isCurrentFrame) this.syncFrameSessions();
-        break;
-      case "disconnected":
-      case "error":
-        if (isCurrentFrame) {
-          window.peskApi.clearRtermProviderSession(
-            typeof event.data.sessionId === "string" ? event.data.sessionId : undefined,
-          );
-        }
-        break;
-      case "session-ready":
-        if (
-          typeof event.data.sessionId === "string" &&
-          typeof event.data.handoff === "string" &&
-          typeof event.data.provider === "string" &&
-          typeof event.data.target === "string" &&
-          typeof event.data.user === "string"
-        ) {
-          const session = {
-            sessionId: event.data.sessionId,
-            provider: event.data.provider,
-            target: event.data.target,
-            user: event.data.user,
-          };
-          window.peskApi.setRtermProviderSession(session, event.data.handoff, sourceThread);
-        }
-        break;
-      case "session-selected":
-        if (typeof event.data.sessionId === "string" && isCurrentFrame)
-          window.peskApi.selectRtermProviderSession(event.data.sessionId, sourceThread);
-        break;
-    }
   }
 }
 

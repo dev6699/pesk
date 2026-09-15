@@ -5,7 +5,6 @@ import type { ChatWebServer } from "../services/chat-web-server";
 import type { CodexController } from "../codex";
 import type { PeskSettings as AppSettings } from "../config/config";
 import type { CodexState, CodexStreamDelta } from "../codex/types";
-import type { RtermSnapshot } from "../features/remote-terminal";
 import { themeNames, type RendererTheme } from "../config/themes";
 
 /** The renderer payload is defined once in renderer/shared/types.d.ts. */
@@ -69,13 +68,6 @@ export class RendererStatePublisher {
       if (window && !window.isDestroyed()) window.webContents.send("codex-stream-delta", delta);
     }
     this.webServer.broadcastStreamDelta(delta);
-  }
-
-  publishRterm(snapshot: RtermSnapshot): void {
-    for (const window of [this.getPetWindow(), this.getChatWindow()]) {
-      if (window && !window.isDestroyed()) window.webContents.send("rterm-changed", snapshot);
-    }
-    this.webServer.broadcastRterm(snapshot);
   }
 
   private publishNow(): void {

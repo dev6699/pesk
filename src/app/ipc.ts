@@ -21,31 +21,8 @@ export function registerIpcHandlers(context: ApplicationContext): void {
   registerInvoke("get-settings", () => state.getState());
   registerInvoke("get-rterm", () => remoteTerminal.getSnapshot());
   registerInvoke("get-rterm-embed-url", () => remoteTerminal.getEmbedUrlForSession());
-  registerInvoke("rterm-provider-session", (_event, session, handoff, threadId) => {
-    if (
-      typeof session?.sessionId === "string" &&
-      typeof session?.provider === "string" &&
-      typeof session?.target === "string" &&
-      typeof session?.user === "string" &&
-      typeof handoff === "string" &&
-      handoff.length > 0
-    ) {
-      return remoteTerminal.adoptProviderSession(
-        session,
-        handoff,
-        typeof threadId === "string" ? threadId : undefined,
-      );
-    }
-    return false;
-  });
-  registerInvoke("rterm-provider-select", (_event, sessionId, threadId) =>
-    remoteTerminal.selectProviderSession(
-      sessionId,
-      typeof threadId === "string" ? threadId : undefined,
-    ),
-  );
-  registerInvoke("rterm-provider-disconnected", (_event, sessionId) =>
-    remoteTerminal.clearProviderSession(typeof sessionId === "string" ? sessionId : undefined),
+  registerEvent("rterm-sessions-response", (_event, threadId, response) =>
+    remoteTerminal.handleSessionsResponse(threadId, response),
   );
   registerInvoke("get-animations", () => pet.getAnimations());
   registerInvoke("get-chat-size", () => chat.getSize());

@@ -48,3 +48,44 @@ test.each([
   expect(replies).toHaveLength(1);
   expect(replies[0]).toMatchObject({ type: "commandResult", requestId: 1, ok: true });
 });
+
+test("forwards a valid rterm sessions response and rejects malformed responses", () => {
+  const handleSessionsResponse = jest.fn();
+  const context = {
+    codex: {} as never,
+    getState: () => ({ state: true }) as never,
+    remoteTerminal: { handleSessionsResponse } as never,
+  };
+  const replies: unknown[] = [];
+
+  handleWebCommand(
+    context,
+    {
+      type: "rtermSessionsResponse",
+      requestId: 4,
+      threadId: "thread-1",
+      response: { requestId: "call-1", ok: true, result: [] },
+    },
+    (reply) => replies.push(reply),
+  );
+  handleWebCommand(
+    context,
+    {
+      type: "rtermSessionsResponse",
+      requestId: 5,
+      threadId: "thread-1",
+      response: { requestId: 7, ok: "yes" },
+    },
+    (reply) => replies.push(reply),
+  );
+
+  expect(handleSessionsResponse).toHaveBeenCalledWith("thread-1", {
+    requestId: "call-1",
+    ok: true,
+    result: [],
+  });
+  expect(replies).toEqual([
+    expect.objectContaining({ type: "commandResult", requestId: 4, ok: true }),
+    expect.objectContaining({ type: "commandResult", requestId: 5, ok: false }),
+  ]);
+});

@@ -193,7 +193,7 @@ Configuration fields:
 - `animationsDir` selects the external animation directory. Relative paths are resolved beside the active configuration file.
 - `codexAppServerUrl` specifies the Codex app-server WebSocket endpoint.
 - `features.remoteTerminal.enabled` enables remote-machine investigation through an embedded terminal and approval-gated Codex terminal tools.
-- `features.remoteTerminal.url` points to an rterm provider page such as `http://127.0.0.1:5000/provider/ssh`. rterm owns provider, target, user, and terminal-session creation; Pesk keeps the sessions associated with the active Codex thread.
+- `features.remoteTerminal.url` points to an rterm provider page such as `http://127.0.0.1:5000/provider/ssh`. rterm owns provider, target, user, terminal-session creation, credentials, and provider operations.
 - `codexStatusSound` specifies an optional sound file. Relative paths are resolved beside the active configuration file.
 - `webAccessEnabled` enables the browser-based chat endpoint. It is disabled by default.
 - `webPort` specifies the HTTP/WebSocket listening port. The default is `4587`.
@@ -207,39 +207,14 @@ Configuration fields:
 
 ### Remote-machine troubleshooting
 
-When remote-terminal support is enabled, open the configured rterm provider
-page in the embedded terminal panel and create a session for the target you
-need to investigate. A single session is sufficient for routine investigation
-of one remote machine. Multiple provider sessions can also remain connected at
-the same time for comparing hosts, users, or provider targets. Sessions belong
-to the current Codex thread; switching threads shows that thread's own
-provider sessions.
+When remote-terminal support is enabled, Codex can use these approval-gated
+tools:
 
-Codex uses the approval-gated `remote_terminal` tools to work with these
-sessions:
-
-- `remote_terminal.sessions` lists the provider sessions available in the
-  current Codex thread.
-- `remote_terminal.read` reads recent output. Pass `sessionId` to inspect a
-  specific machine; without it, the selected session is used.
-- `remote_terminal.execute` runs an exact command on a selected session after
-  the user approves it. Pass the same `sessionId` when comparing machines.
-- `remote_terminal.upload` uploads a workspace `workspacePath` to a remote
-  `remotePath` after approval. The workspace reads the file through its existing
-  app-server command environment; Pesk does not read the file. It accepts an
-  optional `filename` and `sessionId`.
-- `remote_terminal.download` downloads a remote `remotePath` to a new workspace
-  `workspacePath` after approval. The workspace writes the file through its
-  existing app-server command environment; Pesk does not write the file. It
-  accepts an optional `sessionId`.
-
-For a single-machine investigation, Codex can use the selected session without
-specifying a `sessionId`. For cross-machine investigation, list the available
-sessions and pass a specific `sessionId` when comparing diagnostic output or
-approving targeted commands on different hosts. Session credentials are retained
-by the main process after a one-time handoff from the embedded provider page and
-are not exposed to the renderer or Codex; a session ID identifies a target
-but does not authenticate access.
+- `remote_terminal.sessions` — list available terminal sessions.
+- `remote_terminal.read` — read recent terminal output.
+- `remote_terminal.execute` — run an approved command.
+- `remote_terminal.upload` — upload a workspace file after approval.
+- `remote_terminal.download` — download a remote file after approval.
 
 ### Connect to Codex app-server
 

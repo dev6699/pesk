@@ -343,6 +343,25 @@ describe("ChatWebServer", () => {
     client.send(JSON.stringify({ type: "authenticate", credential: paired.credential }));
     await waitFor(() => messages.some((message) => message.includes('"type":"state"')));
     expect(JSON.parse(messages[0])).toEqual({ type: "state", state });
+    server.broadcastRtermSessionsRequest("thread-1", { requestId: "call-1" });
+    server.broadcastRtermSessionSelection("thread-1", "session-2");
+    await waitFor(() =>
+      messages.some((message) => message.includes('"type":"rtermSessionSelection"')),
+    );
+    expect(messages.map((message) => JSON.parse(message))).toEqual(
+      expect.arrayContaining([
+        {
+          type: "rtermSessionsRequest",
+          threadId: "thread-1",
+          request: { requestId: "call-1" },
+        },
+        {
+          type: "rtermSessionSelection",
+          threadId: "thread-1",
+          sessionId: "session-2",
+        },
+      ]),
+    );
     client.send(JSON.stringify({ type: "command", value: 1 }));
     await waitFor(() => handleCommand.mock.calls.length > 0);
     expect(handleCommand).toHaveBeenCalled();

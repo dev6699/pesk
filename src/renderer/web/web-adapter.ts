@@ -4,7 +4,10 @@ const listeners = new Set<(state: RendererState) => void>();
 const streamDeltaListeners = new Set<(delta: CodexStreamDelta) => void>();
 const pendingFileSearches = new Map<number, (results: FuzzyFileSearchResult[]) => void>();
 const pendingCommands = new Map<number, (result: { ok: boolean; state?: RendererState }) => void>();
-const rtermListeners = new Set<(snapshot: RtermSnapshot) => void>();
+const rtermSessionRequestListeners = new Set<
+  (threadId: string, request: RtermSessionsRequest) => void
+>();
+const rtermSessionSelectionListeners = new Set<(threadId: string, sessionId: string) => void>();
 const pendingRterm = new Map<number, (snapshot: RtermSnapshot) => void>();
 const pendingRtermUrls = new Map<number, (url: string) => void>();
 let nextFileSearchId = 0;
@@ -291,8 +294,22 @@ function connect(): void {
           resolve(result.snapshot as RtermSnapshot);
         }
       }
-      if (result.snapshot)
-        for (const listener of rtermListeners) listener(result.snapshot as RtermSnapshot);
+      return;
+    }
+    if (type === "rtermSessionsRequest") {
+      const result = message as { threadId?: unknown; request?: unknown };
+      if (typeof result.threadId === "string" && result.request) {
+        for (const listener of rtermSessionRequestListeners)
+          listener(result.threadId, result.request as RtermSessionsRequest);
+      }
+      return;
+    }
+    if (type === "rtermSessionSelection") {
+      const result = message as { threadId?: unknown; sessionId?: unknown };
+      if (typeof result.threadId === "string" && typeof result.sessionId === "string") {
+        for (const listener of rtermSessionSelectionListeners)
+          listener(result.threadId, result.sessionId);
+      }
       return;
     }
     if (type === "rtermEmbedUrl") {
@@ -481,7 +498,6 @@ const webApi = {
     if (socket.readyState !== WebSocket.OPEN)
       return {
         enabled: false,
-        sessions: [],
         state: "disconnected",
         output: "",
         hostLabel: "",
@@ -501,13 +517,12 @@ const webApi = {
       send("getRtermEmbedUrl", { requestId });
     });
   },
-  setRtermProviderSession: (session: RtermSessionDescriptor, handoff: string, threadId?: string) =>
-    sendCommand("rtermProviderSession", { session, handoff, threadId }).then((result) => result.ok),
-  selectRtermProviderSession: (sessionId: string, threadId?: string) =>
-    sendCommand("rtermProviderSelect", { sessionId, threadId }).then((result) => result.ok),
-  clearRtermProviderSession: (sessionId?: string) =>
-    sendCommand("rtermProviderDisconnected", { sessionId }).then((result) => result.ok),
-  onRtermChanged: (callback: (snapshot: RtermSnapshot) => void) => rtermListeners.add(callback),
+  sendRtermSessionsResponse: (threadId: string, response: RtermSessionsResponse) =>
+    void sendCommand("rtermSessionsResponse", { threadId, response }),
+  onRtermSessionsRequest: (callback: (threadId: string, request: RtermSessionsRequest) => void) =>
+    rtermSessionRequestListeners.add(callback),
+  onRtermSessionSelection: (callback: (threadId: string, sessionId: string) => void) =>
+    rtermSessionSelectionListeners.add(callback),
 } as unknown as Window["peskApi"];
 
 window.peskApi = webApi;

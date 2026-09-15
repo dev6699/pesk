@@ -2,8 +2,6 @@ export type RtermState = "disconnected" | "connecting" | "authenticating" | "con
 
 export interface RtermSnapshot {
   enabled: boolean;
-  sessions: ProviderSessionDescriptor[];
-  activeSessionId?: string;
   state: RtermState;
   output: string;
   hostLabel: string;
@@ -17,6 +15,17 @@ export interface ProviderSessionDescriptor {
   user: string;
 }
 
+export type RtermSessionsRequest = { requestId: string };
+
+export interface RtermSessionsResponse {
+  requestId: string;
+  ok: boolean;
+  connected?: boolean;
+  result?: unknown;
+  error?: string;
+  unavailable?: boolean;
+}
+
 export interface RtermProviderSession extends ProviderSessionDescriptor {
   token: string;
 }
@@ -24,16 +33,16 @@ export interface RtermProviderSession extends ProviderSessionDescriptor {
 export interface RtermClientOptions {
   enabled?: boolean;
   url?: string;
-  onChanged: (snapshot: RtermSnapshot) => void;
+  requestSessions: (request: RtermSessionsRequest) => Promise<RtermSessionsResponse>;
+  selectSession: (sessionId: string) => boolean;
 }
 
-/** Tracks one Pesk thread's provider session and its HTTP tool endpoint. */
+/** Represents the rterm embed and delegates provider operations to it. */
 export class RtermClient {
   private state: RtermState = "disconnected";
   private hostLabel = "";
   private readonly providerSessions = new Map<string, RtermProviderSession>();
   private activeSessionId: string | undefined;
-
   constructor(private readonly options: RtermClientOptions) {
     this.hostLabel = this.getUrlHost(options.url ?? "");
   }
@@ -41,15 +50,6 @@ export class RtermClient {
   getSnapshot(): RtermSnapshot {
     return {
       enabled: this.options.enabled !== false,
-      sessions: [...this.providerSessions.values()].map(
-        ({ sessionId, provider, target, user }) => ({
-          sessionId,
-          provider,
-          target,
-          user,
-        }),
-      ),
-      activeSessionId: this.activeSessionId,
       state: this.state,
       output: "",
       hostLabel: this.hostLabel,
@@ -57,66 +57,30 @@ export class RtermClient {
     };
   }
 
-  setProviderSession(session: RtermProviderSession): void {
-    this.providerSessions.set(session.sessionId, session);
-    this.activeSessionId = session.sessionId;
-    this.hostLabel = `${session.user}@${session.target}`;
-    this.state = "connected";
-    this.publish();
-  }
-
-  async adoptProviderSession(
-    session: ProviderSessionDescriptor,
-    handoff: string,
-  ): Promise<boolean> {
-    const base = (this.options.url ?? "").replace(/\/provider\/[^/]+\/?$/, "");
-    if (!base) return false;
-    const response = await fetch(
-      `${base}/api/sessions/${encodeURIComponent(session.sessionId)}/handoff`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ handoff }),
-      },
-    );
-    if (!response.ok) return false;
-    const result = (await response.json()) as { token?: unknown };
-    if (typeof result.token !== "string" || !result.token) return false;
-    this.setProviderSession({ ...session, token: result.token });
-    return true;
-  }
-
-  clearProviderSession(sessionId?: string): void {
-    if (sessionId) this.providerSessions.delete(sessionId);
-    else this.providerSessions.clear();
-    if (this.activeSessionId && !this.providerSessions.has(this.activeSessionId))
-      this.activeSessionId = [...this.providerSessions.keys()].at(-1);
-    const active = this.activeSessionId
-      ? this.providerSessions.get(this.activeSessionId)
-      : undefined;
-    if (active) this.hostLabel = `${active.user}@${active.target}`;
-    this.state = active ? "connected" : "disconnected";
-    this.publish();
-  }
-
-  getProviderSessions(): RtermProviderSession[] {
-    return [...this.providerSessions.values()];
+  async requestSessions(request: RtermSessionsRequest): Promise<RtermSessionsResponse> {
+    const response = await this.options.requestSessions(request);
+    if (response.ok) this.adoptSessions(response.result);
+    return response;
   }
 
   selectProviderSession(sessionId: string): boolean {
-    const session = this.providerSessions.get(sessionId);
-    if (!session) return false;
-    this.activeSessionId = sessionId;
-    this.hostLabel = `${session.user}@${session.target}`;
-    this.state = "connected";
-    this.publish();
-    return true;
+    const selected = this.options.selectSession(sessionId);
+    if (selected) {
+      this.activeSessionId = sessionId;
+      this.updateHostLabel();
+    }
+    return selected;
   }
 
-  async readProvider(
-    maxLines = 200,
-    sessionId?: string,
-  ): Promise<{ output: string; truncated: boolean } | undefined> {
+  getProviderSessionTabLabel(sessionId?: string): string | undefined {
+    const selectedSessionId = sessionId ?? this.activeSessionId;
+    const session = selectedSessionId ? this.providerSessions.get(selectedSessionId) : undefined;
+    return session
+      ? `${session.user}@${session.target} · ${session.sessionId.slice(0, 8)}`
+      : undefined;
+  }
+
+  async readProvider(maxLines = 200, sessionId?: string) {
     const session = this.resolveProviderSession(sessionId);
     if (!session) return undefined;
     const response = await fetch(`${this.providerApiUrl(session)}/read?maxLines=${maxLines}`, {
@@ -126,10 +90,7 @@ export class RtermClient {
     return (await response.json()) as { output: string; truncated: boolean };
   }
 
-  async executeProvider(
-    command: string,
-    sessionId?: string,
-  ): Promise<{ output: string; exitCode: number } | undefined> {
+  async executeProvider(command: string, sessionId?: string) {
     const session = this.resolveProviderSession(sessionId);
     if (!session) return undefined;
     const response = await fetch(`${this.providerApiUrl(session)}/execute`, {
@@ -146,7 +107,7 @@ export class RtermClient {
     remotePath: string,
     filename?: string,
     sessionId?: string,
-  ): Promise<number | undefined> {
+  ) {
     const session = this.resolveProviderSession(sessionId);
     if (!session) return undefined;
     const query = new URLSearchParams({ path: remotePath });
@@ -161,10 +122,7 @@ export class RtermClient {
     return typeof result.bytes === "number" ? result.bytes : data.byteLength;
   }
 
-  async downloadProviderBytes(
-    remotePath: string,
-    sessionId?: string,
-  ): Promise<Uint8Array | undefined> {
+  async downloadProviderBytes(remotePath: string, sessionId?: string) {
     const session = this.resolveProviderSession(sessionId);
     if (!session) return undefined;
     const response = await fetch(
@@ -177,30 +135,56 @@ export class RtermClient {
     return new Uint8Array(await response.arrayBuffer());
   }
 
-  async getEmbedUrlForSession(): Promise<string> {
+  async getEmbedUrlForSession(roomId?: string): Promise<string> {
     if (this.options.enabled === false || !this.options.url) return "";
     try {
       const pageUrl = new URL(this.options.url);
       pageUrl.searchParams.set("embed", "1");
-      const sessions = this.getProviderSessions();
-      for (const session of sessions) {
-        const response = await fetch(`${this.providerApiUrl(session)}/share`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${session.token}` },
-        });
-        if (!response.ok) continue;
-        const result = (await response.json()) as { handoff?: unknown };
-        if (typeof result.handoff !== "string" || !result.handoff) continue;
-        pageUrl.searchParams.append("attachSession", session.sessionId);
-        pageUrl.searchParams.append("handoff", result.handoff);
-        pageUrl.searchParams.append("target", session.target);
-        pageUrl.searchParams.append("user", session.user);
-      }
-      if (this.activeSessionId) pageUrl.searchParams.set("activeSession", this.activeSessionId);
+      if (roomId) pageUrl.searchParams.set("roomId", roomId);
       return pageUrl.toString();
     } catch {
       return "";
     }
+  }
+
+  private getUrlHost(url: string): string {
+    try {
+      return url ? new URL(url).hostname || "remote shell" : "";
+    } catch {
+      return "remote shell";
+    }
+  }
+
+  private adoptSessions(value: unknown): void {
+    if (!Array.isArray(value)) return;
+    const sessions = new Map<string, RtermProviderSession>();
+    for (const item of value) {
+      if (
+        !item ||
+        typeof item !== "object" ||
+        typeof item.sessionId !== "string" ||
+        typeof item.token !== "string"
+      )
+        continue;
+      const session = item as RtermProviderSession;
+      sessions.set(session.sessionId, session);
+    }
+    this.providerSessions.clear();
+    for (const [sessionId, session] of sessions) this.providerSessions.set(sessionId, session);
+    if (!this.activeSessionId || !this.providerSessions.has(this.activeSessionId)) {
+      this.activeSessionId = this.providerSessions.keys().next().value as string | undefined;
+    }
+    this.updateHostLabel();
+  }
+
+  private updateHostLabel(): void {
+    const session = this.activeSessionId
+      ? this.providerSessions.get(this.activeSessionId)
+      : undefined;
+    this.hostLabel =
+      session && typeof session.user === "string" && typeof session.target === "string"
+        ? `${session.user}@${session.target}`
+        : this.getUrlHost(this.options.url ?? "");
   }
 
   private providerApiUrl(session: RtermProviderSession): string {
@@ -215,17 +199,5 @@ export class RtermClient {
     if (sessionId) return this.providerSessions.get(sessionId);
     if (this.activeSessionId) return this.providerSessions.get(this.activeSessionId);
     return this.providerSessions.values().next().value as RtermProviderSession | undefined;
-  }
-
-  private getUrlHost(url: string): string {
-    try {
-      return url ? new URL(url).hostname || "remote shell" : "";
-    } catch {
-      return "remote shell";
-    }
-  }
-
-  private publish(): void {
-    this.options.onChanged(this.getSnapshot());
   }
 }

@@ -38,38 +38,19 @@ export function handleWebCommand(
           .getEmbedUrlForSession()
           .then((url) => reply({ type: "rtermEmbedUrl", requestId, url }));
       break;
-    case "rtermProviderSession":
+    case "rtermSessionsResponse":
       if (
-        command.session &&
-        typeof command.session === "object" &&
-        typeof command.handoff === "string"
+        typeof command.threadId === "string" &&
+        command.response &&
+        typeof command.response === "object" &&
+        typeof (command.response as Record<string, unknown>).requestId === "string" &&
+        typeof (command.response as Record<string, unknown>).ok === "boolean"
       ) {
-        context.remoteTerminal
-          .adoptProviderSession(
-            command.session as never,
-            command.handoff,
-            typeof command.threadId === "string" ? command.threadId : undefined,
-          )
-          .then(replyCommand);
+        context.remoteTerminal.handleSessionsResponse(command.threadId, command.response as never);
+        replyCommand(true);
       } else {
         replyCommand(false);
       }
-      break;
-    case "rtermProviderDisconnected":
-      replyCommand(
-        context.remoteTerminal.clearProviderSession(
-          typeof command.sessionId === "string" ? command.sessionId : undefined,
-        ),
-      );
-      break;
-    case "rtermProviderSelect":
-      replyCommand(
-        typeof command.sessionId === "string" &&
-          context.remoteTerminal.selectProviderSession(
-            command.sessionId,
-            typeof command.threadId === "string" ? command.threadId : undefined,
-          ),
-      );
       break;
     case "submitPrompt":
       replyCommand(

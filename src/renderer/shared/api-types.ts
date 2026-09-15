@@ -97,17 +97,9 @@ export interface PeskApi {
   onCodexStreamDelta: (callback: (delta: CodexStreamDelta) => void) => void;
   getRterm: () => Promise<RtermSnapshot>;
   getRtermEmbedUrl: () => Promise<string>;
-  setRtermProviderSession: (
-    session: {
-      sessionId: string;
-      provider: string;
-      target: string;
-      user: string;
-    },
-    handoff: string,
-    threadId?: string,
-  ) => Promise<boolean>;
-  selectRtermProviderSession: (sessionId: string, threadId?: string) => Promise<boolean>;
-  clearRtermProviderSession: (sessionId?: string) => Promise<boolean>;
-  onRtermChanged: (callback: (snapshot: RtermSnapshot) => void) => void;
+  sendRtermSessionsResponse: (threadId: string, response: RtermSessionsResponse) => void;
+  onRtermSessionsRequest: (
+    callback: (threadId: string, request: RtermSessionsRequest) => void,
+  ) => void;
+  onRtermSessionSelection: (callback: (threadId: string, sessionId: string) => void) => void;
 }

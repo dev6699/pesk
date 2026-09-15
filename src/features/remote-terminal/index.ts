@@ -15,4 +15,6 @@ export {
   type RtermProviderSession,
   type RtermSnapshot,
   type RtermState,
+  type RtermSessionsRequest,
+  type RtermSessionsResponse,
 } from "./rterm-client";

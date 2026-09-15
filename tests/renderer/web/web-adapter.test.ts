@@ -121,6 +121,40 @@ test("authenticates and publishes the initial state", async () => {
   expect(document.getElementById("web-connection-status")?.textContent).toBe("Connected");
 });
 
+test("bridges rterm session requests, selection, and responses", () => {
+  const api = loadAdapter();
+  const socket = FakeWebSocket.instances[0];
+  socket.emit("open");
+  const requests: unknown[] = [];
+  const selections: unknown[] = [];
+  api.onRtermSessionsRequest?.((threadId, request) => requests.push({ threadId, request }));
+  api.onRtermSessionSelection?.((threadId, sessionId) => selections.push({ threadId, sessionId }));
+
+  socket.emit("message", {
+    data: JSON.stringify({
+      type: "rtermSessionsRequest",
+      threadId: "thread-1",
+      request: { requestId: "call-1" },
+    }),
+  });
+  socket.emit("message", {
+    data: JSON.stringify({
+      type: "rtermSessionSelection",
+      threadId: "thread-1",
+      sessionId: "session-2",
+    }),
+  });
+  expect(requests).toEqual([{ threadId: "thread-1", request: { requestId: "call-1" } }]);
+  expect(selections).toEqual([{ threadId: "thread-1", sessionId: "session-2" }]);
+
+  api.sendRtermSessionsResponse?.("thread-1", { requestId: "call-1", ok: true, result: [] });
+  expect(JSON.parse(socket.sent.at(-1) as string)).toMatchObject({
+    type: "rtermSessionsResponse",
+    threadId: "thread-1",
+    response: { requestId: "call-1", ok: true, result: [] },
+  });
+});
+
 test("round-trips fuzzy file search results", async () => {
   const api = loadAdapter();
   const socket = FakeWebSocket.instances[0];
