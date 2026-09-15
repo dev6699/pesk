@@ -37,6 +37,7 @@ describe("ChatWindowController", () => {
     controller.showInactive();
 
     expect(windows[0].showInactive).toHaveBeenCalled();
+    expect(windows[0].loadURL).toHaveBeenCalledWith("pesk://renderer/chat.html");
     expect(windows[0].focus).not.toHaveBeenCalled();
   });
 

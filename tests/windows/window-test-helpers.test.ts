@@ -14,6 +14,7 @@ export class FakeWindow extends EventEmitter {
   setSkipTaskbar = jest.fn();
   setAlwaysOnTop = jest.fn();
   loadFile = jest.fn();
+  loadURL = jest.fn();
   setSize = jest.fn((width: number, height: number) => {
     this.bounds.width = width;
     this.bounds.height = height;
