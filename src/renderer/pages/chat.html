@@ -67,7 +67,40 @@
             tabindex="0"
           ></div>
           <div id="rterm-toolbar">
-            <button id="rterm-close" type="button">Close</button>
+            <button
+              id="rterm-refresh"
+              type="button"
+              aria-label="Refresh remote terminal"
+              title="Refresh remote terminal"
+            >
+              <svg class="rterm-layout-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 11a8 8 0 0 0-14.7-4L3 10"></path>
+                <path d="M3 5v5h5"></path>
+                <path d="M4 13a8 8 0 0 0 14.7 4L21 14"></path>
+                <path d="M21 19v-5h-5"></path>
+              </svg>
+            </button>
+            <button
+              id="rterm-layout"
+              type="button"
+              aria-label="Move remote terminal to the right side"
+              title="Move remote terminal to the right side"
+            >
+              <svg class="rterm-layout-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <path d="M15 3v18"></path>
+              </svg>
+            </button>
+            <button
+              id="rterm-close"
+              type="button"
+              aria-label="Minimize remote terminal"
+              title="Minimize remote terminal"
+            >
+              <svg class="rterm-layout-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h14"></path>
+              </svg>
+            </button>
           </div>
           <iframe id="rterm-frame" title="Remote terminal" tabindex="0"></iframe>
         </section>

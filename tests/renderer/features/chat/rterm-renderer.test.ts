@@ -134,7 +134,7 @@ describe("rterm renderer", () => {
     document.body.innerHTML = `
       <section id="rterm-panel" hidden>
         <div id="rterm-resize-handle"></div>
-        <div id="rterm-toolbar"><span id="rterm-status"></span><button id="rterm-connection"></button><button id="rterm-close"></button></div>
+        <div id="rterm-toolbar"><span id="rterm-status"></span><button id="rterm-refresh"></button><button id="rterm-connection"></button><button id="rterm-close"></button></div>
         <iframe id="rterm-frame"></iframe>
       </section>`;
     const api = {
@@ -160,6 +160,10 @@ describe("rterm renderer", () => {
     expect(embeddedUrl.searchParams.get("bridgeToken")).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
+    const embedCallsBeforeRefresh = api.getRtermEmbedUrl.mock.calls.length;
+    document.getElementById("rterm-refresh")?.dispatchEvent(new Event("click"));
+    expect(api.getRtermEmbedUrl).toHaveBeenCalledTimes(embedCallsBeforeRefresh);
+    expect(frame.src).toContain("/provider/ssh");
   });
 
   test("resizes the panel through the drag handle", () => {
@@ -195,6 +199,66 @@ describe("rterm renderer", () => {
     handle.dispatchEvent(move);
     handle.dispatchEvent(new Event("pointerup"));
     expect((document.getElementById("rterm-panel") as HTMLElement).style.height).toBe("190px");
+  });
+
+  test("docks the terminal to the right and resizes its width", () => {
+    document.body.innerHTML = `
+      <section id="codex-chat">
+        <section id="rterm-panel"><div id="rterm-resize-handle"></div>
+          <div id="rterm-toolbar"><button id="rterm-layout"></button><button id="rterm-close"></button></div>
+          <iframe id="rterm-frame"></iframe></section>
+      </section>`;
+    const api = {
+      getRterm: jest.fn().mockResolvedValue(snapshot("disconnected")),
+      getRtermEmbedUrl: jest.fn().mockResolvedValue(""),
+    };
+    (window as unknown as { peskApi: typeof api }).peskApi = api;
+    const handle = document.getElementById("rterm-resize-handle") as HTMLElement & {
+      setPointerCapture: () => void;
+      releasePointerCapture: () => void;
+      hasPointerCapture: () => boolean;
+    };
+    handle.setPointerCapture = jest.fn();
+    handle.releasePointerCapture = jest.fn();
+    handle.hasPointerCapture = jest.fn().mockReturnValue(true);
+    (document.getElementById("rterm-panel") as HTMLElement).getBoundingClientRect = () =>
+      ({ width: 360, height: 220 }) as DOMRect;
+    (document.getElementById("codex-chat") as HTMLElement).getBoundingClientRect = () =>
+      ({ width: 1000, height: 600 }) as DOMRect;
+    const panel = document.getElementById("rterm-panel") as HTMLElement;
+    panel.style.height = "190px";
+    panel.style.flexBasis = "190px";
+    setupRtermRenderer();
+
+    const layoutButton = document.getElementById("rterm-layout") as HTMLButtonElement;
+    layoutButton.click();
+    expect(document.getElementById("codex-chat")?.classList.contains("rterm-side-layout")).toBe(
+      true,
+    );
+    expect(panel.style.height).toBe("");
+    expect(panel.style.flexBasis).toBe("");
+    expect(layoutButton.querySelector("path")?.getAttribute("d")).toBe("M3 15h18");
+    expect(handle.getAttribute("aria-orientation")).toBe("vertical");
+
+    const down = new Event("pointerdown", { bubbles: true }) as Event & {
+      clientX: number;
+      pointerId: number;
+    };
+    down.clientX = 200;
+    down.pointerId = 1;
+    handle.dispatchEvent(down);
+    const move = new Event("pointermove") as Event & { clientX: number };
+    move.clientX = 150;
+    handle.dispatchEvent(move);
+
+    expect(
+      document.getElementById("codex-chat")?.style.getPropertyValue("--rterm-side-width"),
+    ).toBe("41%");
+
+    (document.getElementById("rterm-close") as HTMLButtonElement).click();
+    expect(document.getElementById("codex-chat")?.classList.contains("rterm-side-layout")).toBe(
+      false,
+    );
   });
 
   test("does not post legacy terminal reset messages", () => {
