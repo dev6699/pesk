@@ -4,7 +4,7 @@ import { ChatWindowController } from "../windows/chat";
 import { FocusController } from "./focus";
 import { ChatWebServer } from "../services/chat-web-server";
 import { CodexController, CodexWebSocketTransport } from "../codex";
-import { RemoteTerminalService } from "../features/remote-terminal";
+import { RemoteTerminalService, RtermProxy } from "../features/remote-terminal";
 import { loadConfig, loadSettings, saveSettings, saveTheme } from "../config/config";
 import { themes, type RendererTheme } from "../config/themes";
 import type { PeskSettings } from "../config/config";
@@ -48,6 +48,7 @@ export class PeskApplication implements ApplicationContext {
   private theme!: RendererTheme;
   private themeName!: string;
   private _remoteTerminal!: RemoteTerminalService;
+  private _rtermProxy!: RtermProxy;
   private currentThreadId: string | undefined;
 
   get codex() {
@@ -126,6 +127,12 @@ export class PeskApplication implements ApplicationContext {
       requestApproval: (threadId, callId, command, reason, kind, toolName) =>
         this.codex.requestDynamicApproval(threadId, callId, command, reason, kind, toolName),
     });
+    this._rtermProxy = new RtermProxy({
+      url: config.features.remoteTerminal.url,
+      getEmbedUrl: () => this.remoteTerminal.getEmbedUrlForSession(),
+      isDeviceAuthorized: (deviceId) => this._webServer?.isDeviceAuthorized(deviceId) ?? false,
+      secure: Boolean(config.webTlsKey && config.webTlsCert),
+    });
 
     this.theme = config.theme;
     this.themeName = config.themeName;
@@ -147,8 +154,9 @@ export class PeskApplication implements ApplicationContext {
       webPushVapidPath: path.join(this.userDataPath, "web-push-vapid.json"),
       webPushSubscriptionsPath: path.join(this.userDataPath, "web-push-subscriptions.json"),
       deviceCredentialsPath: path.join(this.userDataPath, "web-devices.json"),
+      proxies: config.features.remoteTerminal.enabled ? [this._rtermProxy] : [],
       getState: () => this.state.getState(),
-      handleCommand: (message, reply) => this.handleWebCommand(message, reply),
+      handleCommand: (message, reply, deviceId) => this.handleWebCommand(message, reply, deviceId),
       debug,
     });
     this._pet = new PetWindowController({
@@ -247,15 +255,21 @@ export class PeskApplication implements ApplicationContext {
     app.quit();
   }
 
-  private handleWebCommand(message: unknown, reply: (message: unknown) => void): void {
+  private handleWebCommand(
+    message: unknown,
+    reply: (message: unknown) => void,
+    deviceId = "",
+  ): void {
     handleWebCommand(
       {
         codex: this.codex,
         getState: () => this.state.getState(),
         remoteTerminal: this.remoteTerminal,
+        getRtermEmbedUrl: (clientId) => this._rtermProxy.getEmbedUrl(clientId),
       },
       message,
       reply,
+      deviceId,
     );
   }
 

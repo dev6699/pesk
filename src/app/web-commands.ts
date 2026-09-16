@@ -7,12 +7,14 @@ export interface WebCommandContext {
   codex: CodexController;
   getState: () => RendererState;
   remoteTerminal: RemoteTerminalService;
+  getRtermEmbedUrl: (deviceId: string) => Promise<string>;
 }
 
 export function handleWebCommand(
   context: WebCommandContext,
   message: unknown,
   reply: (message: unknown) => void,
+  deviceId = "",
 ): void {
   if (!message || typeof message !== "object") return;
   const command = message as Record<string, unknown>;
@@ -34,8 +36,8 @@ export function handleWebCommand(
       break;
     case "getRtermEmbedUrl":
       if (typeof requestId === "number")
-        context.remoteTerminal
-          .getEmbedUrlForSession()
+        context
+          .getRtermEmbedUrl(deviceId)
           .then((url) => reply({ type: "rtermEmbedUrl", requestId, url }));
       break;
     case "rtermSessionsResponse":

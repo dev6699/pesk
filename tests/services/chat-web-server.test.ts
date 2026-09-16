@@ -4,12 +4,13 @@
 /// <reference path="../../src/renderer/shared/types.d.ts" />
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import webpush from "web-push";
 import { WebSocket as ClientWebSocket } from "ws";
 import { ChatWebServer, type ChatWebServerOptions } from "../../src/services/chat-web-server";
+import { RtermProxy } from "../../src/features/remote-terminal";
 
 jest.mock("web-push", () => ({
   __esModule: true,
@@ -106,7 +107,10 @@ describe("ChatWebServer", () => {
   let directory: string;
   let server: ChatWebServer;
   let port: number;
+  let upstream: ReturnType<typeof createServer>;
+  let upstreamPort: number;
   let state: Record<string, unknown>;
+  let rtermProxy: RtermProxy;
 
   beforeEach(async () => {
     directory = mkdtempSync(path.join(os.tmpdir(), "pesk-web-test-"));
@@ -115,6 +119,26 @@ describe("ChatWebServer", () => {
       codexPendingApproval: false,
       codexPendingUserInput: false,
     };
+    upstream = createServer((request, response) => {
+      if (request.url === "/provider/ssh?embed=1") {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end('<script src="/script.js"></script><link href="/xterm.css">');
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "text/plain" });
+      response.end(`${request.method} ${request.url}`);
+    });
+    await new Promise<void>((resolve, reject) => {
+      upstream.once("error", reject);
+      upstream.listen(0, "127.0.0.1", resolve);
+    });
+    upstreamPort = (upstream.address() as { port: number }).port;
+    rtermProxy = new RtermProxy({
+      url: `http://127.0.0.1:${upstreamPort}/provider/ssh`,
+      getEmbedUrl: async () => `http://127.0.0.1:${upstreamPort}/provider/ssh?embed=1`,
+      isDeviceAuthorized: (deviceId) => server?.isDeviceAuthorized(deviceId) ?? false,
+      secure: false,
+    });
     const options: ChatWebServerOptions = {
       enabled: true,
       port: 0,
@@ -123,6 +147,7 @@ describe("ChatWebServer", () => {
       webPushVapidPath: path.join(directory, "vapid.json"),
       webPushSubscriptionsPath: path.join(directory, "subscriptions.json"),
       deviceCredentialsPath: path.join(directory, "devices.json"),
+      proxies: [rtermProxy],
       getState: () => state,
       handleCommand: jest.fn(),
       debug: jest.fn(),
@@ -133,7 +158,10 @@ describe("ChatWebServer", () => {
   });
 
   afterEach(async () => {
-    await server.stop();
+    if (server) await server.stop();
+    if (upstream.listening) {
+      await new Promise<void>((resolve) => upstream.close(() => resolve()));
+    }
     rmSync(directory, { recursive: true, force: true });
     jest.clearAllMocks();
   });
@@ -188,6 +216,19 @@ describe("ChatWebServer", () => {
     ).toBe(400);
   });
 
+  test("proxies an authenticated rterm embed through Pesk", async () => {
+    const paired = await pair();
+    const embedUrl = await rtermProxy.getEmbedUrl(paired.deviceId);
+    expect(embedUrl).toMatch(/^\/rterm-proxy\/provider\/ssh\?embed=1&proxyToken=/);
+    expect((await httpRequest(port, "GET", "/rterm-proxy/provider/ssh?embed=1")).status).toBe(401);
+
+    const proxied = await httpRequest(port, "GET", embedUrl);
+    expect(proxied.status).toBe(200);
+    expect(proxied.body).toBe(
+      '<script src="/rterm-proxy/script.js"></script><link href="/rterm-proxy/xterm.css">',
+    );
+    expect(proxied.headers["set-cookie"]?.[0]).toContain("pesk-rterm-proxy=");
+  });
   test("registers one subscription per device and computes pushRegistered", async () => {
     const paired = await pair();
     const first = await httpRequest(
@@ -240,6 +281,7 @@ describe("ChatWebServer", () => {
 
   test("revokes device access, sockets, and subscriptions", async () => {
     const paired = await pair();
+    const embedUrl = await rtermProxy.getEmbedUrl(paired.deviceId);
     await httpRequest(
       port,
       "POST",
@@ -255,6 +297,9 @@ describe("ChatWebServer", () => {
     expect(
       (await httpRequest(port, "GET", "/web-push/config", undefined, paired.credential)).status,
     ).toBe(401);
+    expect((await httpRequest(port, "GET", embedUrl, undefined, paired.credential)).status).toBe(
+      401,
+    );
   });
 
   test("sends explicit notifications only to enabled devices", async () => {

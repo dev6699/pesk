@@ -15,6 +15,13 @@ import type {
   RtermSnapshot,
 } from "../features/remote-terminal";
 
+export interface ChatWebProxy {
+  pathPrefix: string;
+  handleHttp(request: IncomingMessage, response: import("node:http").ServerResponse): void;
+  handleUpgrade(request: IncomingMessage, socket: import("node:stream").Duplex, head: Buffer): void;
+  close(): void;
+}
+
 interface PushSubscription {
   endpoint: string;
   expirationTime?: number | null;
@@ -37,8 +44,9 @@ export interface ChatWebServerOptions {
   webPushVapidPath: string;
   webPushSubscriptionsPath: string;
   deviceCredentialsPath: string;
+  proxies?: readonly ChatWebProxy[];
   getState: () => unknown;
-  handleCommand: (command: unknown, reply: (message: unknown) => void) => void;
+  handleCommand: (command: unknown, reply: (message: unknown) => void, deviceId: string) => void;
   debug: (...values: unknown[]) => void;
 }
 
@@ -92,6 +100,20 @@ export class ChatWebServer {
   private listeningPort: number | undefined;
 
   constructor(private readonly options: ChatWebServerOptions) {
+    const proxies = options.proxies ?? [];
+    for (let index = 0; index < proxies.length; index += 1) {
+      const prefix = proxies[index]?.pathPrefix ?? "";
+      if (!prefix.startsWith("/") || !prefix.endsWith("/")) {
+        throw new Error(`Proxy path prefix must start and end with '/': ${prefix}`);
+      }
+      if (
+        proxies.some(
+          (proxy, otherIndex) => otherIndex !== index && proxy.pathPrefix.startsWith(prefix),
+        )
+      ) {
+        throw new Error(`Proxy path prefixes overlap: ${prefix}`);
+      }
+    }
     const requestHandler = (
       request: IncomingMessage,
       response: import("node:http").ServerResponse,
@@ -113,6 +135,11 @@ export class ChatWebServer {
     this.sockets = new WebSocketServer({ noServer: true });
     this.server.on("upgrade", (request, socket, head) => {
       const requestUrl = new URL(request.url ?? "/", "http://localhost");
+      const proxy = this.proxyFor(requestUrl.pathname);
+      if (proxy) {
+        proxy.handleUpgrade(request, socket, head);
+        return;
+      }
       if (requestUrl.pathname !== "/web-socket") {
         socket.destroy();
         return;
@@ -201,6 +228,7 @@ export class ChatWebServer {
     for (const client of this.clients.keys()) client.close();
     this.clients.clear();
     this.sockets.close();
+    for (const proxy of this.options.proxies ?? []) proxy.close();
     this.started = false;
     return new Promise((resolve, reject) => {
       this.server.close((error) => (error ? reject(error) : resolve()));
@@ -292,8 +320,13 @@ export class ChatWebServer {
     saveSubscriptions(this.options.webPushSubscriptionsPath, this.subscriptions);
   }
 
+  isDeviceAuthorized(id: string): boolean {
+    return this.devices.has(id);
+  }
+
   private handleConnection(client: WebSocket): void {
     let authenticated = false;
+    let deviceId = "";
 
     const authenticate = (message: Record<string, unknown>): boolean => {
       if (message.type !== "authenticate" || typeof message.credential !== "string") {
@@ -306,6 +339,7 @@ export class ChatWebServer {
         return false;
       }
       authenticated = true;
+      deviceId = device.id;
       this.addAuthenticatedClient(client, device.id);
       return true;
     };
@@ -325,11 +359,15 @@ export class ChatWebServer {
         return;
       }
       if (!this.clients.has(client)) return;
-      this.options.handleCommand(message, (reply) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify(reply));
-        }
-      });
+      this.options.handleCommand(
+        message,
+        (reply) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(reply));
+          }
+        },
+        deviceId,
+      );
     });
     client.on("close", () => {
       this.options.debug("web chat disconnected");
@@ -414,6 +452,11 @@ export class ChatWebServer {
     response: import("node:http").ServerResponse,
   ): void {
     const requestUrl = new URL(request.url ?? "/", "http://localhost");
+    const proxy = this.proxyFor(requestUrl.pathname);
+    if (proxy) {
+      proxy.handleHttp(request, response);
+      return;
+    }
     if (requestUrl.pathname === "/pair/exchange") {
       void this.handlePairExchange(request, response);
       return;
@@ -462,6 +505,10 @@ export class ChatWebServer {
       "Cache-Control": "no-store",
     });
     createReadStream(file).pipe(response);
+  }
+
+  private proxyFor(pathname: string): ChatWebProxy | undefined {
+    return (this.options.proxies ?? []).find((proxy) => pathname.startsWith(proxy.pathPrefix));
   }
 
   private writeManifest(
@@ -715,6 +762,21 @@ function hashSecret(value: string): Buffer {
 function matchesSecretHash(storedHash: string, candidateHash: Buffer): boolean {
   if (!/^[0-9a-f]{64}$/i.test(storedHash)) return false;
   return timingSafeEqual(Buffer.from(storedHash, "hex"), candidateHash);
+}
+
+function readCookie(request: IncomingMessage, name: string): string | undefined {
+  const header = request.headers.cookie;
+  if (!header) return undefined;
+  for (const item of header.split(";")) {
+    const separator = item.indexOf("=");
+    if (separator < 0 || item.slice(0, separator).trim() !== name) continue;
+    try {
+      return decodeURIComponent(item.slice(separator + 1).trim());
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 function saveSubscriptions(file: string, subscriptions: Map<string, PushSubscription>): void {

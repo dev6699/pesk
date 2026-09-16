@@ -37,7 +37,12 @@ test.each([
   if (type === "moveProject")
     Object.assign(command, { projectId: args[0], beforeProjectId: args[1] });
   handleWebCommand(
-    { codex, getState: () => ({ state: true }) as never, remoteTerminal: {} as never },
+    {
+      codex,
+      getState: () => ({ state: true }) as never,
+      remoteTerminal: {} as never,
+      getRtermEmbedUrl: async () => "",
+    },
     command,
     (reply) => replies.push(reply),
   );
@@ -55,6 +60,7 @@ test("forwards a valid rterm sessions response and rejects malformed responses",
     codex: {} as never,
     getState: () => ({ state: true }) as never,
     remoteTerminal: { handleSessionsResponse } as never,
+    getRtermEmbedUrl: async () => "",
   };
   const replies: unknown[] = [];
 

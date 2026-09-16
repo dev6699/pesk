@@ -172,7 +172,7 @@ export class RtermRenderer {
       if (this.threadId !== threadId || this.frame !== frame) return;
       if (!url) return;
       try {
-        const embedUrl = new URL(url);
+        const embedUrl = new URL(url, window.location.href);
         const bridgeToken = crypto.randomUUID();
         this.bridgeTokens.set(frame, bridgeToken);
         embedUrl.searchParams.set("bridgeToken", bridgeToken);

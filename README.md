@@ -204,6 +204,10 @@ Configuration fields:
 
 ### Remote-machine troubleshooting
 
+Remote-terminal access from web chat is brokered by Pesk. Web clients do not
+connect to the rterm service directly; authenticated paired clients receive
+only a short-lived, device-scoped capability.
+
 When remote-terminal support is enabled, Codex can use these approval-gated
 tools:
 
