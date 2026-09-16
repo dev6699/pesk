@@ -1,23 +1,34 @@
 import { BrowserWindow, screen } from "electron";
 import * as path from "node:path";
 import { loadRawConfig } from "../config/config.js";
+import type { PeskSettings } from "../config/config.js";
 
 export interface ChatSize {
   width: number;
   height: number;
 }
 
+const MIN_CHAT_WIDTH = 360;
+const MIN_CHAT_HEIGHT = 300;
+
 /** Owns the Codex chat BrowserWindow. */
 export class ChatWindowController {
-  private readonly size: ChatSize;
+  private readonly configuredSize: ChatSize;
+  private size: ChatSize;
   private chatWindow: BrowserWindow | null = null;
+  private anchorBounds: Electron.Rectangle | null = null;
+  private readonly getSettings: () => PeskSettings;
+  private readonly saveSettings: () => void;
 
-  constructor() {
+  constructor(options: { getSettings: () => PeskSettings; saveSettings: () => void }) {
     const config = loadRawConfig();
-    this.size = {
-      width: positiveNumber(config.chatWidth, 330),
-      height: positiveNumber(config.chatHeight, 360),
+    this.configuredSize = {
+      width: positiveNumber(config.chatWidth, MIN_CHAT_WIDTH),
+      height: positiveNumber(config.chatHeight, MIN_CHAT_HEIGHT),
     };
+    this.getSettings = options.getSettings;
+    this.saveSettings = options.saveSettings;
+    this.size = this.savedSize();
   }
 
   /** Returns the current chat window, if it has been created. */
@@ -62,6 +73,7 @@ export class ChatWindowController {
   /** Places the chat window beside the pet within the active work area. */
   position(anchorBounds: Electron.Rectangle): void {
     if (!this.chatWindow) return;
+    this.anchorBounds = anchorBounds;
 
     const area = screen.getDisplayMatching(anchorBounds).workArea;
     const { width: chatWidth, height: chatHeight } = this.size;
@@ -89,7 +101,9 @@ export class ChatWindowController {
       frame: false,
       transparent: true,
       backgroundColor: "#00000000",
-      resizable: false,
+      resizable: true,
+      minWidth: MIN_CHAT_WIDTH,
+      minHeight: MIN_CHAT_HEIGHT,
       movable: true,
       alwaysOnTop: true,
       skipTaskbar: true,
@@ -105,6 +119,7 @@ export class ChatWindowController {
     this.chatWindow.setMenu(null);
     this.chatWindow.setSkipTaskbar(true);
     this.chatWindow.loadURL("pesk://renderer/chat.html");
+    this.chatWindow.on("resize", () => this.rememberSize());
     this.chatWindow.once("ready-to-show", () => {
       this.chatWindow?.setSize(this.size.width, this.size.height, false);
       if (process.env.DESKTOP_PET_DEVTOOLS === "1") {
@@ -114,6 +129,32 @@ export class ChatWindowController {
     this.chatWindow.on("closed", () => {
       this.chatWindow = null;
     });
+  }
+
+  private savedSize(): ChatSize {
+    const settings = this.getSettings();
+    return {
+      width: Math.max(
+        MIN_CHAT_WIDTH,
+        positiveNumber(settings.chatWidth, this.configuredSize.width),
+      ),
+      height: Math.max(
+        MIN_CHAT_HEIGHT,
+        positiveNumber(settings.chatHeight, this.configuredSize.height),
+      ),
+    };
+  }
+
+  private rememberSize(): void {
+    if (!this.chatWindow) return;
+    const [width, height] = this.chatWindow.getSize();
+    if (width === this.size.width && height === this.size.height) return;
+    this.size = { width, height };
+    const settings = this.getSettings();
+    settings.chatWidth = width;
+    settings.chatHeight = height;
+    this.saveSettings();
+    if (this.anchorBounds) this.position(this.anchorBounds);
   }
 
   /** Hides chat without changing its persisted visibility preference. */

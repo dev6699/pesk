@@ -23,6 +23,8 @@ export interface PeskSettings {
   locked: boolean;
   visible: boolean;
   codexStatusSound: boolean;
+  chatWidth?: number;
+  chatHeight?: number;
 }
 
 export interface AppConfig {

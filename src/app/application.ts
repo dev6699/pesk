@@ -133,7 +133,10 @@ export class PeskApplication implements ApplicationContext {
     const debug = (...values: unknown[]): void => {
       if (!app.isPackaged) console.log("[pesk]", ...values);
     };
-    this._chat = new ChatWindowController();
+    this._chat = new ChatWindowController({
+      getSettings: () => this.settings,
+      saveSettings: () => saveSettings(this.settings),
+    });
     this._presets = new PresetController(debug);
     this._webServer = new ChatWebServer({
       enabled: config.webAccessEnabled,

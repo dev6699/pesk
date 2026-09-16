@@ -86,9 +86,14 @@ const rtermRenderer = setupRtermRenderer();
 window.peskApi.onCodexInputFocus(() => codex.focusInput());
 window.peskApi.onCodexUserInputFocus(() => codex.focusUserInputOption());
 
-void window.peskApi.getChatSize().then(({ width, height }) => {
+function updateChatSize(width: number, height: number): void {
   document.documentElement.style.setProperty("--chat-width", `${width}px`);
   document.documentElement.style.setProperty("--chat-height", `${height}px`);
+}
+
+void window.peskApi.getChatSize().then(({ width, height }) => updateChatSize(width, height));
+window.addEventListener("resize", () => {
+  if (!document.body.classList.contains("web-chat")) updateChatSize(innerWidth, innerHeight);
 });
 
 void window.peskApi.getSettings().then((next) => {

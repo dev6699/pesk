@@ -168,8 +168,6 @@ Example application configuration:
 {
   "fps": 24,
   "petSize": 180,
-  "chatWidth": 600,
-  "chatHeight": 700,
   "animationsDir": "animations",
   "codexAppServerUrl": "ws://127.0.0.1:4500",
   "features": {
@@ -189,7 +187,6 @@ Example application configuration:
 Configuration fields:
 
 - `fps` and `petSize` control default animation playback and rendering.
-- `chatWidth` and `chatHeight` control the desktop chat window dimensions.
 - `animationsDir` selects the external animation directory. Relative paths are resolved beside the active configuration file.
 - `codexAppServerUrl` specifies the Codex app-server WebSocket endpoint.
 - `features.remoteTerminal.enabled` enables remote-machine investigation through an embedded terminal and approval-gated Codex terminal tools.
