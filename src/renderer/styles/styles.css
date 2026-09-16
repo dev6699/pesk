@@ -423,8 +423,8 @@ body.chat-only #codex-chat {
   position: relative;
   width: 100%;
   min-width: 0;
-  max-width: 520px;
-  flex: 0 1 520px;
+  max-width: none;
+  flex: 1 1 auto;
 }
 
 #codex-session-select {
