@@ -202,6 +202,18 @@ export class CodexController {
     this.socket.stop();
   }
 
+  /** Switches the single Codex connection to another app-server endpoint. */
+  switchServer(url: string): void {
+    if (this.socket.isOpen()) this.interruptTurn();
+    this.socket.stop();
+    this.dynamicApprovals.resetTransportState();
+    this.resetTransportState();
+    this.options.onAttentionCleared?.();
+    this.notifyStateChanged();
+    this.socket.setUrl(url);
+    this.socket.start();
+  }
+
   /** Reports whether the underlying transport is currently writable. */
   private isOpen(): boolean {
     return this.socket.isOpen();
@@ -507,15 +519,19 @@ export class CodexController {
     if (this.threadManager.selectedThreadId) {
       this.threadManager.standaloneThread.replaceHistory(selectedThread.snapshot().messages);
     }
+    this.resetTransportState();
+    this.notifyStateChanged();
+  }
+
+  /** Clears all state that belongs to the previous app-server connection. */
+  private resetTransportState(): void {
     this.initialized = false;
     this.rateLimitManager.resetTransportState();
-    selectedThread.resetTransportState();
+    this.threadManager.selectedThread().resetTransportState();
     this.threadManager.select(undefined);
     this.threadManager.clearThreads();
     this.projectManager.reset();
     this.threadManager.clearTransportState();
-    selectedThread.setStatus("idle");
-    this.notifyStateChanged();
   }
 
   /** Routes a thread-scoped event into the owning thread. */

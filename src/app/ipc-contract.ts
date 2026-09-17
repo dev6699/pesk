@@ -6,6 +6,7 @@ import type { AnimationFrames } from "../windows/pet";
 import type { FuzzyFileSearchResult } from "../codex-schema/FuzzyFileSearchResult";
 import type { ImageInput, RequestId } from "./validation";
 import type { CodexStreamDelta } from "../codex/types";
+import type { CodexAppServerProfileState } from "../config/config";
 import type { RendererState } from "./renderer-state";
 import type {
   RtermSnapshot,
@@ -40,6 +41,17 @@ export interface IpcInvokeContract {
   "get-chat-lock": { args: []; result: boolean };
   "get-presets": { args: []; result: PresetInfo[] };
   "set-theme": { args: [themeName: string]; result: RendererState };
+  "get-codex-app-server-profiles": { args: []; result: CodexAppServerProfileState };
+  "add-codex-app-server-profile": {
+    args: [name: string, url: string];
+    result: CodexAppServerProfileState;
+  };
+  "update-codex-app-server-profile": {
+    args: [id: string, name: string, url: string];
+    result: CodexAppServerProfileState;
+  };
+  "delete-codex-app-server-profile": { args: [id: string]; result: CodexAppServerProfileState };
+  "select-codex-app-server-profile": { args: [id: string]; result: CodexAppServerProfileState };
   "create-pairing": { args: [name: string]; result: PairingInfo | undefined };
   "get-pairing-status": { args: []; result: PairingStatus };
   "get-pairing-devices": { args: []; result: PairingDevice[] };

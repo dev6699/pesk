@@ -1,11 +1,20 @@
 import { app, globalShortcut } from "electron";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import { ChatWindowController } from "../windows/chat";
 import { FocusController } from "./focus";
 import { ChatWebServer } from "../services/chat-web-server";
 import { CodexController, CodexWebSocketTransport } from "../codex";
 import { RemoteTerminalService, RtermProxy } from "../features/remote-terminal";
-import { loadConfig, loadSettings, saveSettings, saveTheme } from "../config/config";
+import {
+  loadConfig,
+  loadSettings,
+  saveCodexAppServerProfiles,
+  saveSettings,
+  saveTheme,
+  type CodexAppServerProfile,
+  type CodexAppServerProfileState,
+} from "../config/config";
 import { themes, type RendererTheme } from "../config/themes";
 import type { PeskSettings } from "../config/config";
 import { registerIpcHandlers } from "./ipc";
@@ -30,6 +39,15 @@ export interface ApplicationContext {
   remoteTerminal: RemoteTerminalService;
   quit: () => void;
   setTheme: (themeName: string) => void;
+  getCodexAppServerProfiles: () => CodexAppServerProfileState;
+  addCodexAppServerProfile: (name: string, url: string) => CodexAppServerProfileState;
+  updateCodexAppServerProfile: (
+    id: string,
+    name: string,
+    url: string,
+  ) => CodexAppServerProfileState;
+  deleteCodexAppServerProfile: (id: string) => CodexAppServerProfileState;
+  selectCodexAppServerProfile: (id: string) => CodexAppServerProfileState;
 }
 
 export class PeskApplication implements ApplicationContext {
@@ -50,6 +68,8 @@ export class PeskApplication implements ApplicationContext {
   private _remoteTerminal!: RemoteTerminalService;
   private _rtermProxy!: RtermProxy;
   private currentThreadId: string | undefined;
+  private codexAppServerProfiles: CodexAppServerProfile[] = [];
+  private activeCodexAppServerProfileId = "";
 
   get codex() {
     return this._codex;
@@ -90,9 +110,59 @@ export class PeskApplication implements ApplicationContext {
     this.state.publish();
   }
 
+  getCodexAppServerProfiles(): CodexAppServerProfileState {
+    return {
+      profiles: structuredClone(this.codexAppServerProfiles),
+      activeProfileId: this.activeCodexAppServerProfileId,
+    };
+  }
+
+  addCodexAppServerProfile(name: string, url: string): CodexAppServerProfileState {
+    this.assertCodexAppServerProfile(name, url);
+    this.codexAppServerProfiles.push({ id: randomUUID(), name: name.trim(), url: url.trim() });
+    this.persistCodexAppServerProfiles();
+    return this.getCodexAppServerProfiles();
+  }
+
+  updateCodexAppServerProfile(id: string, name: string, url: string): CodexAppServerProfileState {
+    this.assertCodexAppServerProfile(name, url, id);
+    const profile = this.codexAppServerProfiles.find((candidate) => candidate.id === id);
+    if (!profile) throw new Error("Codex app-server profile not found.");
+    profile.name = name.trim();
+    profile.url = url.trim();
+    if (id === this.activeCodexAppServerProfileId) this.codex.switchServer(profile.url);
+    this.persistCodexAppServerProfiles();
+    return this.getCodexAppServerProfiles();
+  }
+
+  deleteCodexAppServerProfile(id: string): CodexAppServerProfileState {
+    if (this.codexAppServerProfiles.length === 1)
+      throw new Error("At least one Codex app-server profile is required.");
+    if (id === this.activeCodexAppServerProfileId)
+      throw new Error("Select another Codex app-server before deleting this profile.");
+    this.codexAppServerProfiles = this.codexAppServerProfiles.filter(
+      (profile) => profile.id !== id,
+    );
+    this.persistCodexAppServerProfiles();
+    return this.getCodexAppServerProfiles();
+  }
+
+  selectCodexAppServerProfile(id: string): CodexAppServerProfileState {
+    const profile = this.codexAppServerProfiles.find((candidate) => candidate.id === id);
+    if (!profile) throw new Error("Codex app-server profile not found.");
+    if (id !== this.activeCodexAppServerProfileId) {
+      this.activeCodexAppServerProfileId = id;
+      this.codex.switchServer(profile.url);
+      this.persistCodexAppServerProfiles();
+    }
+    return this.getCodexAppServerProfiles();
+  }
+
   start(): void {
     this.settings = loadSettings();
     const config = loadConfig();
+    this.codexAppServerProfiles = config.codexAppServerProfiles;
+    this.activeCodexAppServerProfileId = config.activeCodexAppServerProfileId;
     this._remoteTerminal = new RemoteTerminalService({
       enabled: config.features.remoteTerminal.enabled,
       url: config.features.remoteTerminal.url,
@@ -210,7 +280,11 @@ export class PeskApplication implements ApplicationContext {
           ? this._remoteTerminal.dynamicTools
           : [],
       },
-      new CodexWebSocketTransport(config.codexAppServerUrl),
+      new CodexWebSocketTransport(
+        config.codexAppServerProfiles.find(
+          (profile) => profile.id === config.activeCodexAppServerProfileId,
+        )?.url ?? config.codexAppServerProfiles[0].url,
+      ),
     );
     this.notifications = new NotificationController(this.pet, this.chat, this.webServer, {
       codex: this.codex,
@@ -280,6 +354,24 @@ export class PeskApplication implements ApplicationContext {
     if (!firstAnimation) return;
     this.settings.animation = firstAnimation.name;
     saveSettings(this.settings);
+  }
+
+  private assertCodexAppServerProfile(name: string, url: string, ignoredId?: string): void {
+    if (!name.trim()) throw new Error("Codex app-server profile name is required.");
+    if (!/^wss?:\/\//.test(url.trim()))
+      throw new Error("Codex app-server URL must start with ws:// or wss://.");
+    if (
+      this.codexAppServerProfiles.some(
+        (profile) =>
+          profile.id !== ignoredId &&
+          profile.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase(),
+      )
+    )
+      throw new Error("A Codex app-server profile with this name already exists.");
+  }
+
+  private persistCodexAppServerProfiles(): void {
+    saveCodexAppServerProfiles(this.codexAppServerProfiles, this.activeCodexAppServerProfileId);
   }
 
   private registerShortcuts(): void {

@@ -18,16 +18,23 @@ interface PairingInfo {
   deviceName: string;
 }
 
+interface CodexProfile {
+  id: string;
+  name: string;
+  url: string;
+}
+
 const controls = document.getElementById("controls") as HTMLElement;
+const codex = document.getElementById("codex") as HTMLElement;
 const animations = document.getElementById("animations") as HTMLElement;
 const presetSearch = document.getElementById("preset-search") as HTMLInputElement;
 const presetList = document.getElementById("preset-list") as HTMLElement;
 const sectionTitle = document.getElementById("section-title") as HTMLElement;
 const focusState = document.getElementById("focus-state") as HTMLElement;
 const sectionTabs = Array.from(document.querySelectorAll<HTMLButtonElement>("#sections button"));
-const sectionIds = ["presets", "animations", "controls", "pairing"];
+const sectionIds = ["presets", "animations", "codex", "controls", "pairing"];
 let activeSection = 0;
-const lastActionIndices = [0, 0, 0, 0];
+const lastActionIndices = [0, 0, 0, 0, 0];
 let menuInitialized = false;
 let allPresets: Preset[] = [];
 let pairingActive = false;
@@ -52,7 +59,7 @@ function focusSectionAction(): void {
     presetSearch.focus();
     return;
   }
-  if (activeSection === 3) {
+  if (activeSection === 4) {
     (document.getElementById("pairing-device-name") as HTMLInputElement | null)?.focus();
     return;
   }
@@ -87,7 +94,7 @@ function closeMenu(): void {
   window.peskApi.closeMenuWindow();
 }
 
-function addAction(label: string, action: () => void): void {
+function addAction(label: string, action: () => void, target: HTMLElement = controls): void {
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = label;
@@ -96,11 +103,145 @@ function addAction(label: string, action: () => void): void {
     action();
     closeMenu();
   });
-  controls.append(button);
+  target.append(button);
 }
 
 function titleCaseThemeName(themeName: string): string {
   return themeName.charAt(0).toUpperCase() + themeName.slice(1);
+}
+
+function renderCodexProfiles(
+  settings: MenuSettings,
+  profileState: { profiles: CodexProfile[]; activeProfileId: string },
+  busy: boolean,
+): void {
+  const addHeading = document.createElement("h3");
+  addHeading.textContent = "Add app-server";
+  codex.append(addHeading);
+  const addForm = document.createElement("div");
+  addForm.className = "codex-profile-form";
+  const addName = document.createElement("input");
+  addName.className = "codex-profile-input";
+  addName.placeholder = "New profile name";
+  addName.setAttribute("aria-label", "New profile name");
+  const addUrl = document.createElement("input");
+  addUrl.className = "codex-profile-input";
+  addUrl.placeholder = "WebSocket URL (ws:// or wss://)";
+  addUrl.setAttribute("aria-label", "New profile URL");
+  const add = document.createElement("button");
+  add.type = "button";
+  add.textContent = "Add app-server";
+  add.addEventListener("click", () => {
+    void window.peskApi
+      .addCodexAppServerProfile(addName.value, addUrl.value)
+      .then(() => void loadMenu())
+      .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+  });
+  addForm.append(addName, addUrl, add);
+  codex.append(addForm);
+
+  const listHeading = document.createElement("h3");
+  listHeading.textContent = "App-server profiles";
+  codex.append(listHeading);
+  const profileList = document.createElement("div");
+  profileList.className = "codex-profile-list";
+  for (const profile of profileState.profiles) {
+    const row = document.createElement("div");
+    row.className = "pairing-device codex-profile";
+    const isActive = profile.id === profileState.activeProfileId;
+    row.setAttribute("aria-current", isActive ? "true" : "false");
+    const details = document.createElement("div");
+    details.className = "codex-profile-details";
+    const name = document.createElement("span");
+    name.textContent = profile.name;
+    const url = document.createElement("small");
+    url.textContent = profile.url;
+    details.append(name, url);
+    const actions = document.createElement("div");
+    actions.className = "codex-profile-actions";
+    const select = document.createElement("button");
+    select.type = "button";
+    select.className = isActive ? "active" : "";
+    select.textContent = profile.id === profileState.activeProfileId ? "Active" : "Select";
+    select.disabled = profile.id === profileState.activeProfileId;
+    select.addEventListener("click", () => {
+      if (busy && select.dataset.confirming !== "true") {
+        select.dataset.confirming = "true";
+        select.textContent = "Confirm switch";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.textContent = "Cancel";
+        cancel.addEventListener("click", () => void loadMenu());
+        actions.append(cancel);
+        select.focus();
+        return;
+      }
+      void window.peskApi.selectCodexAppServerProfile(profile.id).then(() => void loadMenu());
+    });
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => {
+      const editName = document.createElement("input");
+      editName.className = "codex-profile-input";
+      editName.value = profile.name;
+      editName.setAttribute("aria-label", `${profile.name} profile name`);
+      const editUrl = document.createElement("input");
+      editUrl.className = "codex-profile-input";
+      editUrl.value = profile.url;
+      editUrl.setAttribute("aria-label", `${profile.name} profile URL`);
+      const save = document.createElement("button");
+      save.type = "button";
+      save.textContent = "Save";
+      save.addEventListener("click", () => {
+        void window.peskApi
+          .updateCodexAppServerProfile(profile.id, editName.value, editUrl.value)
+          .then(() => void loadMenu())
+          .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+      });
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", () => void loadMenu());
+      row.replaceChildren(editName, editUrl, save, cancel);
+      editName.focus();
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Delete";
+    remove.disabled =
+      profileState.profiles.length === 1 || profile.id === profileState.activeProfileId;
+    remove.title =
+      profile.id === profileState.activeProfileId
+        ? "Select another profile before deleting this one"
+        : "Delete profile";
+    remove.addEventListener("click", () => {
+      if (remove.dataset.confirming !== "true") {
+        remove.dataset.confirming = "true";
+        remove.textContent = "Confirm delete";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.textContent = "Cancel";
+        cancel.addEventListener("click", () => void loadMenu());
+        actions.append(cancel);
+        remove.focus();
+        return;
+      }
+      void window.peskApi
+        .deleteCodexAppServerProfile(profile.id)
+        .then(() => void loadMenu())
+        .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+    });
+    actions.append(select, edit, remove);
+    row.append(details, actions);
+    profileList.append(row);
+  }
+  codex.append(profileList);
+  addAction(
+    settings.codexStatusSound ? "Disable Codex status sound" : "Enable Codex status sound",
+    window.peskApi.toggleCodexStatusSound,
+    codex,
+  );
 }
 
 function renderControls(
@@ -132,10 +273,6 @@ function renderControls(
   addAction(settings.paused ? "Resume animation" : "Pause animation", window.peskApi.togglePaused);
   addAction(settings.locked ? "Unlock position" : "Lock position", window.peskApi.toggleLocked);
   addAction(settings.visible ? "Hide Pesk" : "Show Pesk", window.peskApi.togglePetVisibility);
-  addAction(
-    settings.codexStatusSound ? "Disable Codex status sound" : "Enable Codex status sound",
-    window.peskApi.toggleCodexStatusSound,
-  );
   addAction("Open config folder", window.peskApi.openConfigFolder);
   addAction("Quit Pesk", window.peskApi.quitPesk);
 }
@@ -367,8 +504,19 @@ async function loadMenu(): Promise<void> {
     window.peskApi.getAnimations(),
     window.peskApi.getPresets(),
   ]);
+  const profileState =
+    typeof window.peskApi.getCodexAppServerProfiles === "function"
+      ? await window.peskApi.getCodexAppServerProfiles()
+      : undefined;
   applyRendererTheme(state.assets.theme);
   renderControls(state.settings, state.assets.themeName, state.assets.themeNames);
+  codex.replaceChildren();
+  if (profileState)
+    renderCodexProfiles(
+      state.settings,
+      profileState,
+      state.codex.threads.current.thread.status !== "idle",
+    );
   renderAnimations(animations, state.settings.animation, state.settings.animationMode);
   await renderPairing();
   allPresets = presets;

@@ -31,10 +31,10 @@ test("generates and displays a pairing QR when Enter is pressed in the device na
     <main>
       <span id="focus-state"></span><nav id="sections">
         <button data-section="presets"></button><button data-section="animations"></button>
-        <button data-section="controls"></button><button data-section="pairing"></button>
+        <button data-section="codex"></button><button data-section="controls"></button><button data-section="pairing"></button>
       </nav><h2 id="section-title"></h2>
       <section id="presets"><input id="preset-search"><div id="preset-list"></div></section>
-      <section id="animations"></section><section id="controls"></section>
+      <section id="animations"></section><section id="codex"></section><section id="controls"></section>
       <section id="pairing"><input id="pairing-device-name"><p id="pairing-status" hidden></p>
         <div id="pairing-details" hidden><img id="pairing-qr"><p id="pairing-url"></p><p id="pairing-expiry"></p></div>
         <div id="pairing-devices"></div>
@@ -81,10 +81,10 @@ test("moves from preset search through preset items with Up and Down", async () 
     <main>
       <span id="focus-state"></span><nav id="sections">
         <button data-section="presets"></button><button data-section="animations"></button>
-        <button data-section="controls"></button><button data-section="pairing"></button>
+        <button data-section="codex"></button><button data-section="controls"></button><button data-section="pairing"></button>
       </nav><h2 id="section-title"></h2>
       <section id="presets"><input id="preset-search"><div id="preset-list"></div></section>
-      <section id="animations"></section><section id="controls"></section>
+      <section id="animations"></section><section id="codex"></section><section id="controls"></section>
       <section id="pairing"><input id="pairing-device-name"><p id="pairing-status" hidden></p>
         <div id="pairing-details" hidden></div><div id="pairing-devices"></div>
       </section>

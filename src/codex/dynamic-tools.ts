@@ -21,6 +21,12 @@ export class DynamicToolApprovalManager {
 
   constructor(private readonly dependencies: DynamicApprovalDependencies) {}
 
+  /** Cancels local approvals that cannot survive an app-server switch. */
+  resetTransportState(): void {
+    for (const approval of this.pending.values()) approval.resolve(false);
+    this.pending.clear();
+  }
+
   /** Resolves a local approval response, returning false when it belongs to the app server. */
   respond(requestId: RequestId, optionId: string): boolean {
     const key = requestIdKey(requestId);

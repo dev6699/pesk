@@ -3,6 +3,17 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { defaultTheme, themes, type RendererTheme } from "./themes";
 
+export interface CodexAppServerProfile {
+  id: string;
+  name: string;
+  url: string;
+}
+
+export interface CodexAppServerProfileState {
+  profiles: CodexAppServerProfile[];
+  activeProfileId: string;
+}
+
 export interface SavedMonitor {
   id?: number;
   x: number;
@@ -28,7 +39,8 @@ export interface PeskSettings {
 }
 
 export interface AppConfig {
-  codexAppServerUrl: string;
+  codexAppServerProfiles: CodexAppServerProfile[];
+  activeCodexAppServerProfileId: string;
   features: {
     remoteTerminal: {
       enabled: boolean;
@@ -101,7 +113,8 @@ const defaultSettings: PeskSettings = {
 };
 
 const defaultConfig: AppConfig = {
-  codexAppServerUrl: "ws://127.0.0.1:4500",
+  codexAppServerProfiles: [{ id: "default", name: "Default", url: "ws://127.0.0.1:4500" }],
+  activeCodexAppServerProfileId: "default",
   features: { remoteTerminal: { enabled: false, url: "" } },
   codexStatusSound: "",
   webAccessEnabled: false,
@@ -135,11 +148,16 @@ export function saveSettings(settings: PeskSettings): void {
 export function loadConfig(): AppConfig {
   try {
     const config = loadRawConfig();
+    const profiles = normalizeCodexAppServerProfiles(config);
+    const activeProfileId = profiles.some(
+      (profile) => profile.id === config.activeCodexAppServerProfileId,
+    )
+      ? config.activeCodexAppServerProfileId
+      : profiles[0].id;
+    const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0];
     return {
-      codexAppServerUrl:
-        typeof config.codexAppServerUrl === "string" && /^wss?:\/\//.test(config.codexAppServerUrl)
-          ? config.codexAppServerUrl
-          : defaultConfig.codexAppServerUrl,
+      codexAppServerProfiles: profiles,
+      activeCodexAppServerProfileId: activeProfile.id,
       codexStatusSound:
         typeof config.codexStatusSound === "string" && config.codexStatusSound.trim()
           ? path.resolve(getConfigDirectory(), config.codexStatusSound.trim())
@@ -182,6 +200,44 @@ export function loadConfig(): AppConfig {
   } catch {
     return { ...defaultConfig };
   }
+}
+
+function normalizeCodexAppServerProfiles(config: Record<string, any>): CodexAppServerProfile[] {
+  const profiles = Array.isArray(config.codexAppServerProfiles)
+    ? config.codexAppServerProfiles
+        .filter(
+          (profile: any) =>
+            typeof profile?.id === "string" &&
+            typeof profile?.name === "string" &&
+            typeof profile?.url === "string" &&
+            /^wss?:\/\//.test(profile.url),
+        )
+        .map((profile: any) => ({
+          id: profile.id.trim(),
+          name: profile.name.trim(),
+          url: profile.url.trim(),
+        }))
+        .filter((profile: CodexAppServerProfile) => profile.id && profile.name)
+    : [];
+  if (profiles.length) return profiles;
+  return structuredClone(defaultConfig.codexAppServerProfiles);
+}
+
+export function saveCodexAppServerProfiles(
+  profiles: CodexAppServerProfile[],
+  activeProfileId: string,
+): void {
+  const userPath = path.join(app.getPath("userData"), "config.json");
+  let user: Record<string, any> = {};
+  try {
+    user = JSON.parse(fs.readFileSync(userPath, "utf8"));
+  } catch {
+    // A user configuration is optional and can be created on first change.
+  }
+  user.codexAppServerProfiles = profiles;
+  user.activeCodexAppServerProfileId = activeProfileId;
+  fs.mkdirSync(path.dirname(userPath), { recursive: true });
+  fs.writeFileSync(userPath, JSON.stringify(user, null, 2));
 }
 
 export function saveTheme(themeName: string): void {

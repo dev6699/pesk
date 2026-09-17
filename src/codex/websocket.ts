@@ -18,6 +18,7 @@ export interface CodexSocketTransport {
   ): this;
   start(): void;
   stop(): void;
+  setUrl(url: string): void;
   isOpen(): boolean;
   send(message: OutgoingMessage): void;
   setRequest<TResult>(id: number, callback: (message: JsonRpcResponse<TResult>) => void): void;
@@ -38,7 +39,7 @@ export class CodexWebSocketTransport implements CodexSocketTransport {
   private readonly requests = new Map<number, (message: JsonRpcResponse) => void>();
   private readonly eventEmitter = new EventEmitter();
 
-  constructor(private readonly url = "ws://127.0.0.1:4500") {}
+  constructor(private url = "ws://127.0.0.1:4500") {}
 
   /** Subscribes to a transport lifecycle or server-message event. */
   on<Event extends keyof SocketEvents>(
@@ -67,6 +68,11 @@ export class CodexWebSocketTransport implements CodexSocketTransport {
     this.requests.clear();
     socket?.close();
     this.eventEmitter.emit("stopped");
+  }
+
+  /** Changes the endpoint; callers should stop the transport before restarting it. */
+  setUrl(url: string): void {
+    this.url = url;
   }
 
   /** Returns whether the current socket is open and ready to send. */

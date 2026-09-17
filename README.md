@@ -169,7 +169,8 @@ Example application configuration:
   "fps": 24,
   "petSize": 180,
   "animationsDir": "animations",
-  "codexAppServerUrl": "ws://127.0.0.1:4500",
+  "codexAppServerProfiles": [{ "id": "default", "name": "Default", "url": "ws://127.0.0.1:4500" }],
+  "activeCodexAppServerProfileId": "default",
   "features": {
     "remoteTerminal": {
       "enabled": true,
@@ -188,7 +189,8 @@ Configuration fields:
 
 - `fps` and `petSize` control default animation playback and rendering.
 - `animationsDir` selects the external animation directory. Relative paths are resolved beside the active configuration file.
-- `codexAppServerUrl` specifies the Codex app-server WebSocket endpoint.
+- `codexAppServerProfiles` defines named app-server profiles. `activeCodexAppServerProfileId` selects
+  the startup profile. Both can also be managed from the Pesk Menu.
 - `features.remoteTerminal.enabled` enables remote-machine investigation through an embedded terminal and approval-gated Codex terminal tools.
 - `features.remoteTerminal.url` points to an rterm provider page such as `http://127.0.0.1:5000/provider/ssh`. rterm owns provider, target, user, terminal-session creation, credentials, and provider operations.
 - `codexStatusSound` specifies an optional sound file. Relative paths are resolved beside the active configuration file.
@@ -217,29 +219,28 @@ tools:
 - `remote_terminal.upload` — upload a workspace file after approval.
 - `remote_terminal.download` — download a remote file after approval.
 
-### Connect to Codex app-server
+### Codex app-server
 
-Pesk is a client of Codex app-server; it does not start the server or manage its
-authentication. Start an authenticated app-server separately, listening only on
-the local machine:
+Start an authenticated app-server separately:
 
 ```bash
 codex app-server --listen ws://127.0.0.1:4500
 ```
 
-Then configure Pesk to use the same WebSocket address. In development, edit the
-repository `config.json`; after installation, create or update
-`%APPDATA%\pesk\config.json`:
+Configure one or more profiles in `config.json` or from the Pesk Menu:
 
 ```json
 {
-  "codexAppServerUrl": "ws://127.0.0.1:4500"
+  "codexAppServerProfiles": [
+    { "id": "local", "name": "Local", "url": "ws://127.0.0.1:4500" },
+    { "id": "remote", "name": "Remote", "url": "wss://codex.example.test/ws" }
+  ],
+  "activeCodexAppServerProfileId": "local"
 }
 ```
 
-`codexAppServerUrl` accepts `ws://` or `wss://` endpoints. Restart Pesk after a
-configuration change. The app-server owns authentication, threads, and Codex
-permissions; Pesk sends its JSON-RPC requests over this connection.
+URLs must use `ws://` or `wss://`. The active profile can be switched from the Pesk Menu without
+restarting; Pesk reloads threads and projects from the selected server.
 
 To confirm that a local server is listening before opening Pesk, request its
 readiness endpoint:

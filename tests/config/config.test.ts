@@ -82,4 +82,34 @@ describe("configuration directory", () => {
 
     expect(loadConfig().features.remoteTerminal).toEqual({ enabled: true, url: "" });
   });
+
+  test("loads named Codex app-server profiles and the active profile", () => {
+    readFileSync.mockImplementation((filePath: string) => {
+      if (filePath === path.join("/app", "config.json"))
+        return JSON.stringify({
+          codexAppServerProfiles: [
+            { id: "local", name: "Local", url: "ws://127.0.0.1:4500" },
+            { id: "remote", name: "Remote", url: "wss://codex.example.test/ws" },
+          ],
+          activeCodexAppServerProfileId: "remote",
+        });
+      throw new Error("missing user config");
+    });
+
+    expect(loadConfig().codexAppServerProfiles[1].url).toBe("wss://codex.example.test/ws");
+    expect(loadConfig().activeCodexAppServerProfileId).toBe("remote");
+    expect(loadConfig().codexAppServerProfiles).toHaveLength(2);
+  });
+
+  test("uses the built-in profile when named profiles are missing", () => {
+    readFileSync.mockImplementation((filePath: string) => {
+      if (filePath === path.join("/app", "config.json")) return JSON.stringify({});
+      throw new Error("missing user config");
+    });
+
+    expect(loadConfig().codexAppServerProfiles).toEqual([
+      { id: "default", name: "Default", url: "ws://127.0.0.1:4500" },
+    ]);
+    expect(loadConfig().activeCodexAppServerProfileId).toBe("default");
+  });
 });

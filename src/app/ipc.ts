@@ -32,6 +32,19 @@ export function registerIpcHandlers(context: ApplicationContext): void {
     if (typeof themeName === "string") context.setTheme(themeName);
     return state.getState();
   });
+  registerInvoke("get-codex-app-server-profiles", () => context.getCodexAppServerProfiles());
+  registerInvoke("add-codex-app-server-profile", (_event, name, url) =>
+    context.addCodexAppServerProfile(name, url),
+  );
+  registerInvoke("update-codex-app-server-profile", (_event, id, name, url) =>
+    context.updateCodexAppServerProfile(id, name, url),
+  );
+  registerInvoke("delete-codex-app-server-profile", (_event, id) =>
+    context.deleteCodexAppServerProfile(id),
+  );
+  registerInvoke("select-codex-app-server-profile", (_event, id) =>
+    context.selectCodexAppServerProfile(id),
+  );
   registerEvent("refresh-codex-rate-limits", () => codex.refreshRateLimits());
   registerEvent("open-config-folder", () => void shell.openPath(context.userDataPath));
 

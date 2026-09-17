@@ -83,6 +83,33 @@ export interface PeskApi {
   chooseCodexProjectRoot: () => Promise<string | undefined>;
   getPresets: () => Promise<{ name: string }[]>;
   setTheme: (themeName: string) => Promise<RendererState>;
+  getCodexAppServerProfiles: () => Promise<{
+    profiles: Array<{ id: string; name: string; url: string }>;
+    activeProfileId: string;
+  }>;
+  addCodexAppServerProfile: (
+    name: string,
+    url: string,
+  ) => Promise<{
+    profiles: Array<{ id: string; name: string; url: string }>;
+    activeProfileId: string;
+  }>;
+  updateCodexAppServerProfile: (
+    id: string,
+    name: string,
+    url: string,
+  ) => Promise<{
+    profiles: Array<{ id: string; name: string; url: string }>;
+    activeProfileId: string;
+  }>;
+  deleteCodexAppServerProfile: (id: string) => Promise<{
+    profiles: Array<{ id: string; name: string; url: string }>;
+    activeProfileId: string;
+  }>;
+  selectCodexAppServerProfile: (id: string) => Promise<{
+    profiles: Array<{ id: string; name: string; url: string }>;
+    activeProfileId: string;
+  }>;
   runPreset: (name: string) => void;
   closeMenuWindow: () => void;
   onMenuUpdated: (callback: () => void) => void;
