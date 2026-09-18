@@ -6,9 +6,11 @@
   "author": "dev6699",
   "license": "MIT",
   "scripts": {
-    "build": "node scripts/clean-build.js && tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-renderer-assets.js",
+    "build": "node scripts/build.js",
     "typecheck:tests": "tsc -p tsconfig.tests.json",
     "test": "npm run build && npm run typecheck:tests && jest --runInBand",
+    "test:e2e": "node scripts/test-e2e.js",
+    "test:e2e:headed": "node scripts/test-e2e.js --headed",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win",
@@ -28,6 +30,7 @@
     "electron-builder": "^26.15.3",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
+    "playwright": "^1.63.0",
     "prettier": "^3.9.6",
     "typescript": "^7.0.2"
   },

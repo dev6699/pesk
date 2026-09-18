@@ -2,7 +2,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const source = path.join(__dirname, "..", "src", "renderer");
-const destination = path.join(__dirname, "..", "build", "renderer");
+const destination = path.resolve(
+  path.join(__dirname, ".."),
+  process.env.PESK_BUILD_DIR || "build",
+  "renderer",
+);
 fs.mkdirSync(destination, { recursive: true });
 fs.mkdirSync(path.join(destination, "vendor"), { recursive: true });
 fs.copyFileSync(

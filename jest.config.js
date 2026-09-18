@@ -1,5 +1,6 @@
 /** @type {import('jest').Config} */
 module.exports = {
+  modulePathIgnorePatterns: ["<rootDir>/.e2e-deps/"],
   transform: {
     "^.+\\.tsx?$": [
       "@swc/jest",
