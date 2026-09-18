@@ -110,6 +110,17 @@ function titleCaseThemeName(themeName: string): string {
   return themeName.charAt(0).toUpperCase() + themeName.slice(1);
 }
 
+function showCodexProfileError(container: HTMLElement, error: unknown): void {
+  let message = container.querySelector<HTMLElement>(".codex-profile-error");
+  if (!message) {
+    message = document.createElement("p");
+    message.className = "codex-profile-error";
+    message.setAttribute("role", "alert");
+    container.append(message);
+  }
+  message.textContent = error instanceof Error ? error.message : String(error);
+}
+
 function renderCodexProfiles(
   settings: MenuSettings,
   profileState: { profiles: CodexProfile[]; activeProfileId: string },
@@ -132,10 +143,10 @@ function renderCodexProfiles(
   add.type = "button";
   add.textContent = "Add app-server";
   add.addEventListener("click", () => {
-    void window.peskApi
+    window.peskApi
       .addCodexAppServerProfile(addName.value, addUrl.value)
-      .then(() => void loadMenu())
-      .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+      .then(() => loadMenu())
+      .catch((error) => showCodexProfileError(addForm, error));
   });
   addForm.append(addName, addUrl, add);
   codex.append(addForm);
@@ -171,12 +182,12 @@ function renderCodexProfiles(
         const cancel = document.createElement("button");
         cancel.type = "button";
         cancel.textContent = "Cancel";
-        cancel.addEventListener("click", () => void loadMenu());
+        cancel.addEventListener("click", () => loadMenu());
         actions.append(cancel);
         select.focus();
         return;
       }
-      void window.peskApi.selectCodexAppServerProfile(profile.id).then(() => void loadMenu());
+      window.peskApi.selectCodexAppServerProfile(profile.id).then(() => loadMenu());
     });
     const edit = document.createElement("button");
     edit.type = "button";
@@ -194,15 +205,15 @@ function renderCodexProfiles(
       save.type = "button";
       save.textContent = "Save";
       save.addEventListener("click", () => {
-        void window.peskApi
+        window.peskApi
           .updateCodexAppServerProfile(profile.id, editName.value, editUrl.value)
-          .then(() => void loadMenu())
-          .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+          .then(() => loadMenu())
+          .catch((error) => showCodexProfileError(row, error));
       });
       const cancel = document.createElement("button");
       cancel.type = "button";
       cancel.textContent = "Cancel";
-      cancel.addEventListener("click", () => void loadMenu());
+      cancel.addEventListener("click", () => loadMenu());
       row.replaceChildren(editName, editUrl, save, cancel);
       editName.focus();
     });
@@ -222,15 +233,15 @@ function renderCodexProfiles(
         const cancel = document.createElement("button");
         cancel.type = "button";
         cancel.textContent = "Cancel";
-        cancel.addEventListener("click", () => void loadMenu());
+        cancel.addEventListener("click", () => loadMenu());
         actions.append(cancel);
         remove.focus();
         return;
       }
-      void window.peskApi
+      window.peskApi
         .deleteCodexAppServerProfile(profile.id)
-        .then(() => void loadMenu())
-        .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+        .then(() => loadMenu())
+        .catch((error) => showCodexProfileError(row, error));
     });
     actions.append(select, edit, remove);
     row.append(details, actions);
@@ -263,7 +274,7 @@ function renderControls(
   }
   themeSelect.value = themeName ?? themeNames[0] ?? "";
   themeSelect.addEventListener("change", () => {
-    void window.peskApi.setTheme(themeSelect.value).then((next) => {
+    window.peskApi.setTheme(themeSelect.value).then((next) => {
       applyRendererTheme(next.assets.theme);
       renderControls(next.settings, next.assets.themeName, next.assets.themeNames);
     });
@@ -334,7 +345,7 @@ async function renderPairing(
           cancel.textContent = "Cancel";
           cancel.dataset.deviceId = device.id;
           cancel.dataset.action = "cancel-revoke";
-          cancel.addEventListener("click", () => void renderPairing(device.id, "revoke"));
+          cancel.addEventListener("click", () => renderPairing(device.id, "revoke"));
           row.append(cancel);
           revoke.focus();
           return;
@@ -387,7 +398,7 @@ async function generatePairing(): Promise<void> {
 document.getElementById("pairing-device-name")?.addEventListener("keydown", (event) => {
   if (!matchesShortcut(event, "pairingSubmit")) return;
   event.preventDefault();
-  void generatePairing();
+  generatePairing();
 });
 
 document.getElementById("pairing-device-name")?.addEventListener("input", () => {
@@ -529,8 +540,8 @@ async function loadMenu(): Promise<void> {
   }
 }
 
-void loadMenu();
-window.peskApi.onMenuUpdated(() => void loadMenu());
+loadMenu();
+window.peskApi.onMenuUpdated(() => loadMenu());
 window.peskApi.onMenuFocusChanged(updateFocusState);
 updateFocusState(document.hasFocus());
 

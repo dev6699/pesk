@@ -356,6 +356,12 @@ h2 {
   background: var(--menu-input-focus-surface);
 }
 
+.codex-profile-error {
+  margin: 2px 0;
+  color: var(--menu-error);
+  font-size: 12px;
+}
+
 #pairing-status {
   margin: 6px 0;
   color: var(--menu-success);
