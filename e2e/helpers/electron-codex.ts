@@ -74,6 +74,7 @@ export class ElectronCodexHarness {
         } catch {
           // The process may already have exited.
         }
+        await waitForProcessExit(childProcess);
       }
     };
     this.applications.add(app);
@@ -134,11 +135,30 @@ export class ElectronCodexHarness {
     );
     this.applications.clear();
     await this.server.close();
-    fs.rmSync(this.userDataDirectory, {
-      recursive: true,
-      force: true,
-      maxRetries: 20,
-      retryDelay: 250,
+    await removeDirectoryWithRetry(this.userDataDirectory);
+  }
+}
+
+async function waitForProcessExit(process: ReturnType<ElectronApplication["process"]>) {
+  if (process.exitCode !== null) return;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 5_000);
+    process.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
     });
+  });
+}
+
+async function removeDirectoryWithRetry(directory: string): Promise<void> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      await fs.promises.rm(directory, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EBUSY" && code !== "ENOTEMPTY" && code !== "EPERM") throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
   }
 }

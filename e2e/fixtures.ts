@@ -156,12 +156,17 @@ export class WebChatFixture {
   }
 
   async stop(): Promise<void> {
-    for (const socket of this.sockets) socket.close();
-    this.webSockets.close();
+    for (const socket of this.sockets) socket.terminate();
+    for (const socket of this.webSockets.clients) socket.terminate();
+    await new Promise<void>((resolve) => {
+      this.webSockets.close(() => resolve());
+      setTimeout(resolve, 500);
+    });
     if (!this.server.listening) return;
-    await new Promise<void>((resolve, reject) =>
-      this.server.close((error) => (error ? reject(error) : resolve())),
-    );
+    await new Promise<void>((resolve) => {
+      this.server.close(() => resolve());
+      setTimeout(resolve, 500);
+    });
   }
 
   private handle(socket: WebSocket, message: Record<string, unknown>): void {
