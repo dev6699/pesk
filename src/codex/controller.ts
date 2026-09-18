@@ -277,6 +277,11 @@ export class CodexController {
     return true;
   }
 
+  /** Reports whether any thread still has an unresolved attention request. */
+  hasPendingAttention(): boolean {
+    return typeof this.threadManager.nextAttention() === "string";
+  }
+
   /** Loads the next older persisted history page for the selected thread. */
   loadOlderHistory(): Promise<boolean> {
     return this.lifecycle.loadOlderHistory();

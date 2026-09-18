@@ -1,13 +1,15 @@
 import { defineConfig, devices } from "playwright/test";
 
 export default defineConfig({
-  testDir: "./tests/e2e",
+  testDir: "./specs",
+  globalSetup: "./global-setup.ts",
+  globalTeardown: "./global-teardown.ts",
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 1,
+  workers: process.env.PLAYWRIGHT_WORKERS ? Number(process.env.PLAYWRIGHT_WORKERS) : 1,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "list",
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? "test-results",
   use: {
@@ -20,12 +22,14 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
-      testMatch: /web-chat\.spec\.ts/,
+      testMatch:
+        /[\\/]specs[\\/](codex|projects|attention|remote|regression)[\\/](?!.*(?:\.desktop|connection|profile-switching)\.spec\.ts$).*\.spec\.ts/,
     },
     {
       name: "electron",
       use: { ...devices["Desktop Chrome"] },
-      testMatch: /electron\.spec\.ts/,
+      testMatch:
+        /[\\/]specs[\\/](app[\\/].*|codex[\\/](?:.*\.desktop|connection|profile-switching)\.spec\.ts|projects[\\/].*\.desktop\.spec\.ts|attention[\\/].*\.desktop\.spec\.ts|remote[\\/].*\.desktop\.spec\.ts|regression[\\/].*\.desktop\.spec\.ts)/,
     },
   ],
 });

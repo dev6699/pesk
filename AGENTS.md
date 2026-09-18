@@ -8,7 +8,7 @@
 - `src/renderer/pages/chat.html` is the Electron desktop chat entry point, while `src/renderer/pages/web-chat.html` is the browser/PWA entry point served by `ChatWebServer`; maintain shared chat markup in both files and verify both when changing the composer or chat UI.
 - `assets/` contains the tray icon and bundled fallback artwork.
 - `tests/` contains Jest tests for app behavior, windows, services, renderers, and Codex behavior.
-- `tests/e2e/` contains Playwright browser and Electron end-to-end tests.
+- `e2e/specs/` contains workflow-oriented Playwright tests grouped under `app/`, `codex/`, `projects/`, `attention/`, `remote/`, and `regression/`; `e2e/fixtures.ts`, `e2e/servers/`, `e2e/helpers/`, and `e2e/pages/` contain shared E2E infrastructure.
 - `scripts/` contains build cleanup, renderer asset-copy, E2E dependency/bootstrap, and TLS certificate helpers.
 
 ## Build, Test, and Development
@@ -20,6 +20,7 @@ npm start         # Build and launch Electron locally
 npm test          # Build, then run Jest serially
 npm run test:e2e  # Build in a temporary directory and run Playwright browser/Electron coverage
 npm run test:e2e:headed # Run Playwright with visible browser windows
+PLAYWRIGHT_WORKERS=1 npm run test:e2e # Override the default parallel worker count
 npm run dist      # Build a Windows NSIS installer
 npm run format     # Format supported project files with Prettier
 npm run format:check # Verify formatting without changing files
@@ -38,11 +39,14 @@ Tests use Jest with `@swc/jest`; name files `*.test.ts` under `tests/`. Run `npm
 ```bash
 npx tsc -p tsconfig.json --noEmit
 npx tsc -p tsconfig.renderer.json --noEmit
+npm run typecheck:e2e
 ```
 
 Static checks do not prove Windows GUI, installer, or runtime behavior; verify those separately when changing windows, shortcuts, packaging, or startup behavior.
 
 Playwright uses the real renderer and Electron shell. The first E2E run on each host platform creates a cached dependency tree under `.e2e-deps/<platform>`; later runs reuse it. Do not share a Windows `node_modules` tree with WSL/Linux. Install Chromium once with `npx playwright install chromium`. Run Electron coverage from a native Linux or native Windows runtime, not a mixed WSL/Windows Electron setup. On CI, retain the Playwright report, traces, screenshots, and videos for failures.
+
+Electron E2E launches use a disposable `PESK_E2E_USER_DATA_DIR` and the harness fake app-server profile. Do not hard-code web ports in remote E2E specs; reserve an ephemeral local port so a test cannot connect to a running Pesk instance.
 
 ## Configuration and Assets
 

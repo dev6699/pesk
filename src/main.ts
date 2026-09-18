@@ -3,6 +3,9 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { PeskApplication } from "./app/application";
 
+const e2eUserDataPath = process.env.PESK_E2E_USER_DATA_DIR;
+if (e2eUserDataPath) app.setPath("userData", path.resolve(e2eUserDataPath));
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "pesk",
@@ -70,9 +73,14 @@ app.whenReady().then(() => {
     app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
   }
   application.start();
+  if (process.env.PESK_E2E_SHOW_MENU === "1") application.menu.showWindow();
 });
 
 app.on("window-all-closed", () => {
+  if (process.env.PESK_E2E_USER_DATA_DIR) {
+    app.quit();
+    return;
+  }
   // Keep the tray application alive until the user chooses Quit.
 });
 

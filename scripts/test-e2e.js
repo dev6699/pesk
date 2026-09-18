@@ -37,6 +37,7 @@ const env = {
       ? path.join(root, "test-results")
       : path.join(os.tmpdir(), "pesk-playwright-results")),
 };
+if (process.argv.includes("--headed")) env.PESK_E2E_HEADED = "1";
 env.PESK_E2E_NODE_MODULES = selectedDependencies;
 env.PESK_ELECTRON_EXECUTABLE = path.join(
   selectedDependencies,
@@ -48,6 +49,7 @@ env.NODE_PATH = [selectedDependencies, path.join(root, "node_modules"), process.
   .filter(Boolean)
   .join(path.delimiter);
 
+const buildDirectory = path.resolve(env.PESK_BUILD_DIR);
 const build = spawnSync(process.execPath, [path.join(__dirname, "build.js")], {
   cwd: root,
   env,
@@ -60,7 +62,6 @@ if (build.error) {
 if (build.status !== 0) process.exit(build.status ?? 1);
 console.log(`[e2e] build ready at ${env.PESK_BUILD_DIR}`);
 
-const buildDirectory = path.resolve(env.PESK_BUILD_DIR);
 const runtimeDependencies = path.join(buildDirectory, "node_modules");
 if (!fs.existsSync(runtimeDependencies)) {
   fs.symlinkSync(
@@ -70,6 +71,10 @@ if (!fs.existsSync(runtimeDependencies)) {
   );
 }
 fs.cpSync(path.join(root, "assets"), path.join(buildDirectory, "assets"), { recursive: true });
+const relocatedAssets = path.join(path.dirname(buildDirectory), "assets");
+if (path.resolve(relocatedAssets) !== path.resolve(path.join(root, "assets"))) {
+  fs.cpSync(path.join(root, "assets"), relocatedAssets, { recursive: true });
+}
 fs.writeFileSync(
   path.join(buildDirectory, "config.json"),
   JSON.stringify(
@@ -91,7 +96,13 @@ fs.writeFileSync(
 
 const playwright = spawnSync(
   process.execPath,
-  [path.join(root, "node_modules", "playwright", "cli.js"), "test", ...process.argv.slice(2)],
+  [
+    path.join(root, "node_modules", "playwright", "cli.js"),
+    "test",
+    "--config",
+    path.join(root, "e2e", "playwright.config.ts"),
+    ...process.argv.slice(2),
+  ],
   { cwd: root, env, stdio: "inherit" },
 );
 if (playwright.error) {

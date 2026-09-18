@@ -202,6 +202,7 @@ export class PeskApplication implements ApplicationContext {
       getEmbedUrl: () => this.remoteTerminal.getEmbedUrlForSession(),
       isDeviceAuthorized: (deviceId) => this._webServer?.isDeviceAuthorized(deviceId) ?? false,
       secure: Boolean(config.webTlsKey && config.webTlsCert),
+      capabilityTtlMs: positiveEnvironmentNumber("PESK_E2E_RTERM_CAPABILITY_TTL_MS"),
     });
 
     this.theme = config.theme;
@@ -383,4 +384,9 @@ export class PeskApplication implements ApplicationContext {
     );
     globalShortcut.register(shortcutAccelerator("chatLock"), () => this.focus.toggleChatLock());
   }
+}
+
+function positiveEnvironmentNumber(name: string): number | undefined {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
 }

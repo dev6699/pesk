@@ -434,6 +434,15 @@ export class PetWindowController {
     const size = Math.round(this.getSize() * scale);
     const maxX = area.x + Math.max(0, area.width - size);
     const maxY = area.y + Math.max(0, area.height - size);
+    const fixedPosition = process.env.PESK_E2E_FIXED_WINDOW_POSITION?.split(",", 2).map((value) =>
+      Number(value),
+    );
+    if (fixedPosition?.length === 2 && fixedPosition.every(Number.isFinite)) {
+      return {
+        x: Math.min(maxX, Math.max(area.x, fixedPosition[0]!)),
+        y: Math.min(maxY, Math.max(area.y, fixedPosition[1]!)),
+      };
+    }
     return {
       x: Math.min(maxX, Math.max(area.x, settings.x ?? maxX - 40)),
       y: Math.min(maxY, Math.max(area.y, settings.y ?? maxY - 40)),

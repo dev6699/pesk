@@ -4,7 +4,10 @@ import type { PetWindowController } from "../windows/pet";
 import type { CodexController, CodexAttentionEvent } from "../codex/controller";
 
 export interface NotificationControllerOptions {
-  codex: Pick<CodexController, "selectThread" | "selectNextAttentionThread">;
+  codex: Pick<
+    CodexController,
+    "selectThread" | "selectNextAttentionThread" | "hasPendingAttention"
+  >;
   isChatVisible: () => boolean;
 }
 
@@ -47,7 +50,7 @@ export class NotificationController {
   }
 
   clear(): void {
-    this.pet.setCodexUpdateIndicator(false);
+    this.pet.setCodexUpdateIndicator(this.options?.codex.hasPendingAttention() ?? false);
     if (this.options && !this.options.isChatVisible()) {
       this.options.codex.selectNextAttentionThread();
     }

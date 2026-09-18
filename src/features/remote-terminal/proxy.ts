@@ -15,6 +15,7 @@ export interface RtermProxyOptions {
   isDeviceAuthorized: (deviceId: string) => boolean;
   secure: boolean;
   pathPrefix?: string;
+  capabilityTtlMs?: number;
 }
 
 interface Capability {
@@ -41,7 +42,10 @@ export class RtermProxy {
     if (!directUrl) return "";
     try {
       const token = randomBytes(32).toString("base64url");
-      this.capabilities.set(token, { deviceId, expiresAt: Date.now() + 10 * 60_000 });
+      this.capabilities.set(token, {
+        deviceId,
+        expiresAt: Date.now() + (this.options.capabilityTtlMs ?? 10 * 60_000),
+      });
       const parsed = new URL(directUrl);
       parsed.searchParams.set("proxyToken", token);
       parsed.pathname = `${this.pathPrefix.slice(0, -1)}${parsed.pathname}`;

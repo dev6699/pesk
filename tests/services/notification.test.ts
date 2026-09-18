@@ -24,6 +24,7 @@ function createController() {
   const codex = {
     selectThread: jest.fn(),
     selectNextAttentionThread: jest.fn(),
+    hasPendingAttention: jest.fn(() => false),
   };
   const controller = new NotificationController(pet as never, chat as never, webServer as never, {
     codex,

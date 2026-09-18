@@ -8,6 +8,7 @@
   "scripts": {
     "build": "node scripts/build.js",
     "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "typecheck:e2e": "tsc -p e2e/tsconfig.json",
     "test": "npm run build && npm run typecheck:tests && jest --runInBand",
     "test:e2e": "node scripts/test-e2e.js",
     "test:e2e:headed": "node scripts/test-e2e.js --headed",
