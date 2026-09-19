@@ -121,6 +121,7 @@ export class MenuController {
     );
     this.menuWindow.on("blur", () => {
       this.menuWindow?.webContents.send("menu-focus-changed", false);
+      if (process.env.PESK_E2E_SHOW_MENU === "1") return;
       this.menuWindow?.hide();
     });
     this.menuWindow.on("closed", () => {

@@ -8,7 +8,7 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  retries: 0,
   workers: process.env.PLAYWRIGHT_WORKERS ? Number(process.env.PLAYWRIGHT_WORKERS) : 1,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "list",
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? "test-results",

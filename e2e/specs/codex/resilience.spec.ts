@@ -34,9 +34,7 @@ test.describe("browser UI resilience", () => {
     await expect(page.locator("#web-connection-status")).toHaveText("Connected");
     await expect(page.locator(".codex-session-trigger")).toContainText("Long thread title");
     await page.reload();
-    await expect(page.locator("#web-connection-status")).toHaveText("Connected", {
-      timeout: 5_000,
-    });
+    await expect(page.locator("#web-connection-status")).toHaveText("Connected");
     await expect(page.locator(".codex-session-trigger")).toContainText("Long thread title");
   });
 });

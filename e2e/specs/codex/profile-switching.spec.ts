@@ -1,4 +1,4 @@
-import { test, expect } from "playwright/test";
+import { test, expect } from "../../helpers/electron-test";
 import { FakeCodexAppServer } from "../../servers/fake-codex/server";
 import { ElectronCodexHarness } from "../../helpers/electron-codex";
 import * as fs from "node:fs";
@@ -7,8 +7,8 @@ import * as path from "node:path";
 test.describe("Electron Codex profile switching", () => {
   let harness: ElectronCodexHarness;
 
-  test.beforeEach(async () => {
-    harness = new ElectronCodexHarness();
+  test.beforeEach(async ({ electronProfile }) => {
+    harness = new ElectronCodexHarness(electronProfile);
     await harness.start();
   });
 
@@ -47,135 +47,107 @@ test.describe("Electron Codex profile switching", () => {
     });
 
     let app = await harness.launch({ ...process.env, PESK_E2E_SHOW_MENU: "1" });
-    try {
-      const menu = await harness.waitForMenu(app);
-      const chat = await harness.waitForChat(app);
-      await expect(chat.locator(".codex-session-trigger")).toContainText("Fixture thread", {
-        timeout: 10_000,
-      });
+    const menu = await harness.waitForMenu(app);
+    const chat = await harness.waitForChat(app);
+    await expect(chat.locator(".codex-session-trigger")).toContainText("Fixture thread");
 
-      await menu.waitForLoadState("domcontentloaded");
-      await menu.bringToFront();
-      await menu.getByRole("button", { name: "Codex" }).click({ force: true });
-      const profiles = menu.locator(".codex-profile");
-      await expect(profiles).toHaveCount(2);
-      await profiles
-        .filter({ hasText: "Remote" })
-        .getByRole("button", { name: "Select" })
-        .click({ force: true });
-      await expect(menu.locator(".codex-profile[aria-current='true']")).toContainText("Remote");
-      await expect(chat.locator(".codex-session-trigger")).toContainText("Remote thread", {
-        timeout: 10_000,
-      });
+    await menu.waitForLoadState("domcontentloaded");
+    await harness.focusWindow(app, menu);
+    await menu.getByRole("button", { name: "Codex" }).click();
+    const profiles = menu.locator(".codex-profile");
+    await expect(profiles).toHaveCount(2);
+    await profiles.filter({ hasText: "Remote" }).getByRole("button", { name: "Select" }).click();
+    await expect(menu.locator(".codex-profile[aria-current='true']")).toContainText("Remote");
+    await expect(chat.locator(".codex-session-trigger")).toContainText("Remote thread");
 
-      const persisted = JSON.parse(
-        fs.readFileSync(path.join(harness.userDataDirectory, "config.json"), "utf8"),
-      ) as Record<string, unknown>;
-      expect(persisted.activeCodexAppServerProfileId).toBe("remote");
+    const persisted = JSON.parse(
+      fs.readFileSync(path.join(harness.userDataDirectory, "config.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(persisted.activeCodexAppServerProfileId).toBe("remote");
 
-      await app.close();
-      app = await harness.launch({ ...process.env, PESK_E2E_SHOW_MENU: "1" });
-      const relaunchedMenu = await harness.waitForMenu(app);
-      const relaunchedChat = await harness.waitForChat(app);
-      await relaunchedMenu.waitForLoadState("domcontentloaded");
-      await relaunchedMenu.bringToFront();
-      await relaunchedMenu.getByRole("button", { name: "Codex" }).click({ force: true });
-      await expect(relaunchedMenu.locator(".codex-profile[aria-current='true']")).toContainText(
-        "Remote",
-      );
-      await expect(relaunchedChat.locator(".codex-session-trigger")).toContainText(
-        "Remote thread",
-        { timeout: 10_000 },
-      );
+    await app.close();
+    app = await harness.launch({ ...process.env, PESK_E2E_SHOW_MENU: "1" });
+    const relaunchedMenu = await harness.waitForMenu(app);
+    const relaunchedChat = await harness.waitForChat(app);
+    await relaunchedMenu.waitForLoadState("domcontentloaded");
+    await harness.focusWindow(app, relaunchedMenu);
+    await relaunchedMenu.getByRole("button", { name: "Codex" }).click();
+    await expect(relaunchedMenu.locator(".codex-profile[aria-current='true']")).toContainText(
+      "Remote",
+    );
+    await expect(relaunchedChat.locator(".codex-session-trigger")).toContainText("Remote thread");
 
-      await remote.close();
-      await relaunchedMenu.bringToFront();
-      await relaunchedMenu
-        .locator(".codex-profile")
-        .filter({ hasText: "Local" })
-        .getByRole("button", { name: "Select" })
-        .click({ force: true });
-      await expect(relaunchedChat.locator(".codex-session-trigger")).toContainText(
-        "Fixture thread",
-        {
-          timeout: 10_000,
-        },
-      );
-    } finally {
-      await app.close();
-      await remote.close();
-    }
+    await remote.close();
+    await harness.focusWindow(app, relaunchedMenu);
+    await relaunchedMenu
+      .locator(".codex-profile")
+      .filter({ hasText: "Local" })
+      .getByRole("button", { name: "Select" })
+      .click();
+    await expect(relaunchedChat.locator(".codex-session-trigger")).toContainText("Fixture thread");
+    await remote.close();
   });
 
   test("adds, edits, and deletes an inactive profile from the Codex menu", async () => {
-    test.setTimeout(60_000);
     const app = await harness.launch({ ...process.env, PESK_E2E_SHOW_MENU: "1" });
-    try {
-      const menu = await harness.waitForMenu(app);
-      await menu.waitForLoadState("domcontentloaded");
-      await menu.bringToFront();
-      await menu.getByRole("button", { name: "Codex" }).click({ force: true });
+    const menu = await harness.waitForMenu(app);
+    await menu.waitForLoadState("domcontentloaded");
+    await harness.focusWindow(app, menu);
+    await menu.getByRole("button", { name: "Codex" }).click();
 
-      const onlyProfile = menu.locator(".codex-profile").filter({ hasText: "E2E" });
-      await expect(onlyProfile.getByRole("button", { name: "Delete" })).toBeDisabled();
+    const onlyProfile = menu.locator(".codex-profile").filter({ hasText: "E2E" });
+    await expect(onlyProfile.getByRole("button", { name: "Delete" })).toBeDisabled();
 
-      await menu.getByRole("textbox", { name: "New profile name" }).fill("Temporary");
-      await menu.getByRole("textbox", { name: "New profile URL" }).fill(harness.server.url);
-      await menu.getByRole("button", { name: "Add app-server" }).click({ force: true });
-      await expect(menu.locator(".codex-profile")).toHaveCount(2);
-      await expect(
-        menu.locator(".codex-profile").filter({ hasText: "E2E" }).getByRole("button", {
-          name: "Delete",
-        }),
-      ).toBeDisabled();
+    await menu.getByRole("textbox", { name: "New profile name" }).fill("Temporary");
+    await menu.getByRole("textbox", { name: "New profile URL" }).fill(harness.server.url);
+    await menu.getByRole("button", { name: "Add app-server" }).click();
+    await expect(menu.locator(".codex-profile")).toHaveCount(2);
+    await expect(
+      menu.locator(".codex-profile").filter({ hasText: "E2E" }).getByRole("button", {
+        name: "Delete",
+      }),
+    ).toBeDisabled();
 
-      await menu.getByRole("textbox", { name: "New profile name" }).fill("Secure");
-      await menu.getByRole("textbox", { name: "New profile URL" }).fill("wss://codex.example.test");
-      await menu.getByRole("button", { name: "Add app-server" }).click({ force: true });
-      await expect(menu.locator(".codex-profile")).toHaveCount(3);
+    await menu.getByRole("textbox", { name: "New profile name" }).fill("Secure");
+    await menu.getByRole("textbox", { name: "New profile URL" }).fill("wss://codex.example.test");
+    await menu.getByRole("button", { name: "Add app-server" }).click();
+    await expect(menu.locator(".codex-profile")).toHaveCount(3);
 
-      const temporary = menu.locator(".codex-profile").filter({ hasText: "Temporary" });
-      await temporary.getByRole("button", { name: "Edit" }).click({ force: true });
-      await menu.getByRole("textbox", { name: "Temporary profile name" }).fill("Renamed");
-      await menu.getByRole("button", { name: "Save" }).click({ force: true });
-      await expect(menu.locator(".codex-profile").filter({ hasText: "Renamed" })).toBeVisible();
+    const temporary = menu.locator(".codex-profile").filter({ hasText: "Temporary" });
+    await temporary.getByRole("button", { name: "Edit" }).click();
+    await menu.getByRole("textbox", { name: "Temporary profile name" }).fill("Renamed");
+    await menu.getByRole("button", { name: "Save" }).click();
+    await expect(menu.locator(".codex-profile").filter({ hasText: "Renamed" })).toBeVisible();
 
-      const renamed = menu.locator(".codex-profile").filter({ hasText: "Renamed" });
-      await renamed.getByRole("button", { name: "Delete" }).click({ force: true });
-      await renamed.getByRole("button", { name: "Confirm delete" }).click({ force: true });
-      const secure = menu.locator(".codex-profile").filter({ hasText: "Secure" });
-      await secure.getByRole("button", { name: "Delete" }).click({ force: true });
-      await secure.getByRole("button", { name: "Confirm delete" }).click({ force: true });
-      await expect(menu.locator(".codex-profile")).toHaveCount(1);
-      await expect(menu.locator(".codex-profile")).toContainText("E2E");
-      await expect(
-        menu.locator(".codex-profile").getByRole("button", { name: "Delete" }),
-      ).toBeDisabled();
-    } finally {
-      await app.close();
-    }
+    const renamed = menu.locator(".codex-profile").filter({ hasText: "Renamed" });
+    await renamed.getByRole("button", { name: "Delete" }).click();
+    await renamed.getByRole("button", { name: "Confirm delete" }).click();
+    const secure = menu.locator(".codex-profile").filter({ hasText: "Secure" });
+    await secure.getByRole("button", { name: "Delete" }).click();
+    await secure.getByRole("button", { name: "Confirm delete" }).click();
+    await expect(menu.locator(".codex-profile")).toHaveCount(1);
+    await expect(menu.locator(".codex-profile")).toContainText("E2E");
+    await expect(
+      menu.locator(".codex-profile").getByRole("button", { name: "Delete" }),
+    ).toBeDisabled();
   });
 
   test("rejects invalid and duplicate profile definitions", async () => {
     const app = await harness.launch({ ...process.env, PESK_E2E_SHOW_MENU: "1" });
-    try {
-      const menu = await harness.waitForMenu(app);
-      await menu.waitForLoadState("domcontentloaded");
-      await menu.bringToFront();
-      await menu.getByRole("button", { name: "Codex" }).click({ force: true });
+    const menu = await harness.waitForMenu(app);
+    await menu.waitForLoadState("domcontentloaded");
+    await harness.focusWindow(app, menu);
+    await menu.getByRole("button", { name: "Codex" }).click();
 
-      await menu.getByRole("textbox", { name: "New profile name" }).fill("Invalid");
-      await menu.getByRole("textbox", { name: "New profile URL" }).fill("http://not-websocket");
-      await menu.getByRole("button", { name: "Add app-server" }).click({ force: true });
-      await expect(menu.locator(".codex-profile-error")).toContainText(/WebSocket|ws:\/\//i);
+    await menu.getByRole("textbox", { name: "New profile name" }).fill("Invalid");
+    await menu.getByRole("textbox", { name: "New profile URL" }).fill("http://not-websocket");
+    await menu.getByRole("button", { name: "Add app-server" }).click();
+    await expect(menu.locator(".codex-profile-error")).toContainText(/WebSocket|ws:\/\//i);
 
-      await menu.getByRole("textbox", { name: "New profile name" }).fill("E2E");
-      await menu.getByRole("textbox", { name: "New profile URL" }).fill(harness.server.url);
-      await menu.getByRole("button", { name: "Add app-server" }).click({ force: true });
-      await expect(menu.locator(".codex-profile-error")).toContainText(/duplicate|already exists/i);
-    } finally {
-      await app.close();
-    }
+    await menu.getByRole("textbox", { name: "New profile name" }).fill("E2E");
+    await menu.getByRole("textbox", { name: "New profile URL" }).fill(harness.server.url);
+    await menu.getByRole("button", { name: "Add app-server" }).click();
+    await expect(menu.locator(".codex-profile-error")).toContainText(/duplicate|already exists/i);
   });
 
   test("restores local projects after switching back from a remote server", async () => {
@@ -221,42 +193,32 @@ test.describe("Electron Codex profile switching", () => {
       activeCodexAppServerProfileId: "local",
     });
     const app = await harness.launch({ ...process.env, PESK_E2E_SHOW_MENU: "1" });
-    try {
-      const menu = await harness.waitForMenu(app);
-      const chat = await harness.waitForChat(app);
-      await expect(chat.locator(".codex-session-trigger")).toContainText("Fixture thread", {
-        timeout: 10_000,
-      });
-      await menu.bringToFront();
-      await menu.getByRole("button", { name: "Codex" }).click({ force: true });
-      await menu
-        .locator(".codex-profile")
-        .filter({ hasText: "Remote" })
-        .getByRole("button", { name: "Select" })
-        .click({ force: true });
-      await expect(chat.locator(".codex-session-trigger")).toContainText("Remote thread", {
-        timeout: 10_000,
-      });
-      await expect(chat.locator("#codex-session-menu")).toBeHidden();
-      await chat.locator(".codex-session-trigger").click();
-      await expect(chat.locator("#codex-session-menu")).toContainText("Remote project");
+    const menu = await harness.waitForMenu(app);
+    const chat = await harness.waitForChat(app);
+    await expect(chat.locator(".codex-session-trigger")).toContainText("Fixture thread");
+    await harness.focusWindow(app, menu);
+    await menu.getByRole("button", { name: "Codex" }).click();
+    await menu
+      .locator(".codex-profile")
+      .filter({ hasText: "Remote" })
+      .getByRole("button", { name: "Select" })
+      .click();
+    await expect(chat.locator(".codex-session-trigger")).toContainText("Remote thread");
+    await expect(chat.locator("#codex-session-menu")).toBeHidden();
+    await chat.locator(".codex-session-trigger").click();
+    await expect(chat.locator("#codex-session-menu")).toContainText("Remote project");
 
-      await menu.bringToFront();
-      await menu
-        .locator(".codex-profile")
-        .filter({ hasText: "Local" })
-        .getByRole("button", { name: "Select" })
-        .click({ force: true });
-      await expect(chat.locator(".codex-session-trigger")).toContainText("Fixture thread", {
-        timeout: 10_000,
-      });
-      await chat.locator(".codex-session-trigger").click();
-      await expect(chat.locator("#codex-session-menu")).toContainText("Local project");
-      await expect(chat.locator("#codex-session-menu")).not.toContainText("Remote project");
-    } finally {
-      await app.close();
-      await remote.close();
-    }
+    await harness.focusWindow(app, menu);
+    await menu
+      .locator(".codex-profile")
+      .filter({ hasText: "Local" })
+      .getByRole("button", { name: "Select" })
+      .click();
+    await expect(chat.locator(".codex-session-trigger")).toContainText("Fixture thread");
+    await chat.locator(".codex-session-trigger").click();
+    await expect(chat.locator("#codex-session-menu")).toContainText("Local project");
+    await expect(chat.locator("#codex-session-menu")).not.toContainText("Remote project");
+    await remote.close();
   });
 
   test("keeps profile configuration usable after selecting an unavailable server", async () => {
@@ -272,43 +234,35 @@ test.describe("Electron Codex profile switching", () => {
       activeCodexAppServerProfileId: "local",
     });
     const app = await harness.launch({ ...process.env, PESK_E2E_SHOW_MENU: "1" });
-    try {
-      const menu = await harness.waitForMenu(app);
-      const chat = await harness.waitForChat(app);
-      await menu.bringToFront();
-      await menu.getByRole("button", { name: "Codex" }).click({ force: true });
-      await menu
-        .locator(".codex-profile")
-        .filter({ hasText: "Remote" })
-        .getByRole("button", { name: "Select" })
-        .click({ force: true });
-      await expect(chat.locator(".codex-session-trigger")).toContainText("No active session", {
-        timeout: 10_000,
-      });
-      const persisted = JSON.parse(
-        fs.readFileSync(path.join(harness.userDataDirectory, "config.json"), "utf8"),
-      ) as {
-        codexAppServerProfiles: Array<{ name: string }>;
-        activeCodexAppServerProfileId: string;
-      };
-      expect(persisted.codexAppServerProfiles.map((profile) => profile.name)).toEqual([
-        "Local",
-        "Remote",
-      ]);
-      expect(persisted.activeCodexAppServerProfileId).toBe("remote");
+    const menu = await harness.waitForMenu(app);
+    const chat = await harness.waitForChat(app);
+    await harness.focusWindow(app, menu);
+    await menu.getByRole("button", { name: "Codex" }).click();
+    await menu
+      .locator(".codex-profile")
+      .filter({ hasText: "Remote" })
+      .getByRole("button", { name: "Select" })
+      .click();
+    await expect(chat.locator(".codex-session-trigger")).toContainText("No active session");
+    const persisted = JSON.parse(
+      fs.readFileSync(path.join(harness.userDataDirectory, "config.json"), "utf8"),
+    ) as {
+      codexAppServerProfiles: Array<{ name: string }>;
+      activeCodexAppServerProfileId: string;
+    };
+    expect(persisted.codexAppServerProfiles.map((profile) => profile.name)).toEqual([
+      "Local",
+      "Remote",
+    ]);
+    expect(persisted.activeCodexAppServerProfileId).toBe("remote");
 
-      await menu.bringToFront();
-      await menu
-        .locator(".codex-profile")
-        .filter({ hasText: "Local" })
-        .getByRole("button", { name: "Select" })
-        .click({ force: true });
-      await expect(chat.locator(".codex-session-trigger")).toContainText("Fixture thread", {
-        timeout: 10_000,
-      });
-    } finally {
-      await app.close();
-    }
+    await harness.focusWindow(app, menu);
+    await menu
+      .locator(".codex-profile")
+      .filter({ hasText: "Local" })
+      .getByRole("button", { name: "Select" })
+      .click();
+    await expect(chat.locator(".codex-session-trigger")).toContainText("Fixture thread");
   });
 
   test("clears an active turn when switching app-server profiles", async () => {
@@ -332,27 +286,21 @@ test.describe("Electron Codex profile switching", () => {
       activeCodexAppServerProfileId: "local",
     });
     const app = await harness.launch({ ...process.env, PESK_E2E_SHOW_MENU: "1" });
-    try {
-      const chat = await harness.waitForChat(app);
-      await chat.getByRole("textbox", { name: "Message Codex" }).fill("keep running");
-      await chat.getByRole("textbox", { name: "Message Codex" }).press("Enter");
-      await expect(chat.locator("#codex-working-status")).toBeVisible({ timeout: 10_000 });
+    const chat = await harness.waitForChat(app);
+    await chat.getByRole("textbox", { name: "Message Codex" }).fill("keep running");
+    await chat.getByRole("textbox", { name: "Message Codex" }).press("Enter");
+    await expect(chat.locator("#codex-working-status")).toBeVisible();
 
-      const menu = await harness.waitForMenu(app);
-      await menu.bringToFront();
-      await menu.getByRole("button", { name: "Codex" }).click({ force: true });
-      await menu
-        .locator(".codex-profile")
-        .filter({ hasText: "Remote" })
-        .getByRole("button", { name: "Select" })
-        .click({ force: true });
-      await expect(chat.locator(".codex-session-trigger")).toContainText("Remote thread", {
-        timeout: 10_000,
-      });
-      await expect(chat.locator("#codex-working-status")).toBeHidden();
-    } finally {
-      await app.close();
-      await remote.close();
-    }
+    const menu = await harness.waitForMenu(app);
+    await harness.focusWindow(app, menu);
+    await menu.getByRole("button", { name: "Codex" }).click();
+    await menu
+      .locator(".codex-profile")
+      .filter({ hasText: "Remote" })
+      .getByRole("button", { name: "Select" })
+      .click();
+    await expect(chat.locator(".codex-session-trigger")).toContainText("Remote thread");
+    await expect(chat.locator("#codex-working-status")).toBeHidden();
+    await remote.close();
   });
 });

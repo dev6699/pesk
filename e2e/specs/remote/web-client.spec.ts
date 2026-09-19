@@ -25,9 +25,7 @@ test.describe("browser connection recovery", () => {
     await expect(page.locator("#web-connection-status")).toHaveText("Connected");
     for (const socket of fixture.sockets) socket.close();
     await expect(page.locator("#web-connection-status")).toHaveText(/Reconnecting|Connecting/);
-    await expect(page.locator("#web-connection-status")).toHaveText("Connected", {
-      timeout: 5_000,
-    });
+    await expect(page.locator("#web-connection-status")).toHaveText("Connected");
   });
 
   test("retries from the connection-status control", async ({ page }) => {
@@ -37,9 +35,7 @@ test.describe("browser connection recovery", () => {
     await expect(page.locator("#web-connection-status")).toHaveText(/Reconnecting|Connecting/);
 
     await page.getByRole("button", { name: /Reconnecting|Connecting/ }).click();
-    await expect(page.locator("#web-connection-status")).toHaveText("Connected", {
-      timeout: 5_000,
-    });
+    await expect(page.locator("#web-connection-status")).toHaveText("Connected");
   });
 
   test("reconnects when the browser comes back online", async ({ page }) => {
@@ -50,9 +46,7 @@ test.describe("browser connection recovery", () => {
     await expect(page.locator("#web-connection-status")).toHaveText(/Reconnecting|Connecting/);
 
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
-    await expect(page.locator("#web-connection-status")).toHaveText("Connected", {
-      timeout: 5_000,
-    });
+    await expect(page.locator("#web-connection-status")).toHaveText("Connected");
   });
 
   test("shows an authentication failure and clears stale credentials", async ({ page }) => {

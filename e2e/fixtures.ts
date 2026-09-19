@@ -160,12 +160,11 @@ export class WebChatFixture {
     for (const socket of this.webSockets.clients) socket.terminate();
     await new Promise<void>((resolve) => {
       this.webSockets.close(() => resolve());
-      setTimeout(resolve, 500);
     });
     if (!this.server.listening) return;
-    await new Promise<void>((resolve) => {
-      this.server.close(() => resolve());
-      setTimeout(resolve, 500);
+    await new Promise<void>((resolve, reject) => {
+      this.server.close((error) => (error ? reject(error) : resolve()));
+      this.server.closeAllConnections();
     });
   }
 

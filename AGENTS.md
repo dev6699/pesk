@@ -8,7 +8,7 @@
 - `src/renderer/pages/chat.html` is the Electron desktop chat entry point, while `src/renderer/pages/web-chat.html` is the browser/PWA entry point served by `ChatWebServer`; maintain shared chat markup in both files and verify both when changing the composer or chat UI.
 - `assets/` contains the tray icon and bundled fallback artwork.
 - `tests/` contains Jest tests for app behavior, windows, services, renderers, and Codex behavior.
-- `e2e/specs/` contains workflow-oriented Playwright tests grouped under `app/`, `codex/`, `projects/`, `attention/`, `remote/`, and `regression/`; `e2e/fixtures.ts`, `e2e/servers/`, `e2e/helpers/`, and `e2e/pages/` contain shared E2E infrastructure.
+- `e2e/specs/` contains workflow-oriented Playwright tests grouped under `app/`, `codex/`, `projects/`, `attention/`, `remote/`, and `regression/`; `e2e/fixtures.ts`, `e2e/servers/`, and `e2e/helpers/` contain shared E2E infrastructure.
 - `scripts/` contains build cleanup, renderer asset-copy, E2E dependency/bootstrap, and TLS certificate helpers.
 
 ## Build, Test, and Development
@@ -18,15 +18,17 @@ npm install       # Install locked dependencies
 npm run build     # Compile main and renderer TypeScript and copy page assets
 npm start         # Build and launch Electron locally
 npm test          # Build, then run Jest serially
-npm run test:e2e  # Build in a temporary directory and run Playwright browser/Electron coverage
-npm run test:e2e:headed # Run Playwright with visible browser windows
-PLAYWRIGHT_WORKERS=1 npm run test:e2e # Override the default parallel worker count
+npm run test:e2e  # Build in a temporary directory and run all Playwright browser/Electron projects
+npm run test:e2e:headed # Run Electron coverage with the chat window shown
+PLAYWRIGHT_WORKERS=1 npm run test:e2e # Override the default worker count
+npm run test:e2e -- e2e/specs/codex/chat.desktop.spec.ts # Run one spec
+npm run test:e2e -- --grep "queued message" # Filter tests by title
 npm run dist      # Build a Windows NSIS installer
 npm run format     # Format supported project files with Prettier
 npm run format:check # Verify formatting without changing files
 ```
 
-Compiled files go to `build/` by default; set `PESK_BUILD_DIR` to relocate build output. The E2E script uses a temporary build directory automatically. Installer artifacts go to `dist/`. Distribute the generated `Pesk-Setup-<version>.exe`, not the build directory.
+Compiled files go to `build/` by default; set `PESK_BUILD_DIR` to relocate build output. The E2E launcher defaults to an OS temporary build directory (`pesk-e2e-build`) and forwards additional arguments to Playwright. Installer artifacts go to `dist/`. Distribute the generated `Pesk-Setup-<version>.exe`, not the build directory.
 
 ## Coding Style and Naming
 
@@ -44,9 +46,9 @@ npm run typecheck:e2e
 
 Static checks do not prove Windows GUI, installer, or runtime behavior; verify those separately when changing windows, shortcuts, packaging, or startup behavior.
 
-Playwright uses the real renderer and Electron shell. The first E2E run on each host platform creates a cached dependency tree under `.e2e-deps/<platform>`; later runs reuse it. Do not share a Windows `node_modules` tree with WSL/Linux. Install Chromium once with `npx playwright install chromium`. Run Electron coverage from a native Linux or native Windows runtime, not a mixed WSL/Windows Electron setup. On CI, retain the Playwright report, traces, screenshots, and videos for failures.
+Playwright uses the real renderer and Electron shell. The first E2E run on each host platform bootstraps and caches its Electron dependency tree under `.e2e-deps/<platform>`; later runs reuse it. Do not share a Windows `node_modules` tree with WSL/Linux. If the Playwright Chromium browser is unavailable, install it once with `npx playwright install chromium`. Run Electron coverage from a native Linux or native Windows runtime, not a mixed WSL/Windows Electron setup. Local reports default to an OS temporary directory; CI writes to `test-results/` and retains the HTML report, traces, screenshots, and videos for failures.
 
-Electron E2E launches use a disposable `PESK_E2E_USER_DATA_DIR` and the harness fake app-server profile. Do not hard-code web ports in remote E2E specs; reserve an ephemeral local port so a test cannot connect to a running Pesk instance.
+Electron E2E specs use the worker-scoped `electronProfile` fixture from `e2e/helpers/electron-test.ts`. Each test creates a fresh harness with that directory; the harness resets persisted state while retaining Chromium caches and configures its own fake app-server profile. The worker removes the directory at teardown. Do not hard-code profile paths or server endpoints. Remote E2E specs must reserve an ephemeral local web port so a test cannot connect to a running Pesk instance.
 
 ## Configuration and Assets
 

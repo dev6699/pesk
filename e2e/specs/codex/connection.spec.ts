@@ -1,12 +1,12 @@
-import { test, expect } from "playwright/test";
+import { test, expect } from "../../helpers/electron-test";
 import { ElectronCodexHarness } from "../../helpers/electron-codex";
 import { FakeCodexAppServer } from "../../servers/fake-codex/server";
 
 test.describe("Electron Codex connection", () => {
   let harness: ElectronCodexHarness;
 
-  test.beforeEach(async () => {
-    harness = new ElectronCodexHarness();
+  test.beforeEach(async ({ electronProfile }) => {
+    harness = new ElectronCodexHarness(electronProfile);
     await harness.start();
   });
 
@@ -25,18 +25,14 @@ test.describe("Electron Codex connection", () => {
     });
     harness.server.threads[0]!.projectId = "fixture-project";
     const app = await harness.launch();
-    try {
-      const chat = await harness.waitForChat(app);
-      const trigger = chat.locator(".codex-session-trigger");
-      await expect(trigger).toContainText("Fixture thread", { timeout: 10_000 });
-      await trigger.click();
-      await expect(chat.locator("#codex-session-menu")).toContainText("Fixture project");
-      expect(harness.server.methods).toEqual(
-        expect.arrayContaining(["initialize", "thread/list", "project/list"]),
-      );
-    } finally {
-      await app.close();
-    }
+    const chat = await harness.waitForChat(app);
+    const trigger = chat.locator(".codex-session-trigger");
+    await expect(trigger).toContainText("Fixture thread");
+    await trigger.click();
+    await expect(chat.locator("#codex-session-menu")).toContainText("Fixture project");
+    expect(harness.server.methods).toEqual(
+      expect.arrayContaining(["initialize", "thread/list", "project/list"]),
+    );
   });
 
   test("recovers when the configured app-server starts after Electron", async () => {
@@ -44,34 +40,20 @@ test.describe("Electron Codex connection", () => {
     await harness.server.close();
     let lateServer: FakeCodexAppServer | undefined;
     const app = await harness.launch();
-    try {
-      const chat = await harness.waitForChat(app);
-      await expect(chat.locator(".codex-session-trigger")).toContainText("No active session", {
-        timeout: 5_000,
-      });
-      lateServer = new FakeCodexAppServer({ port });
-      await lateServer.ready();
-      await expect(chat.locator(".codex-session-trigger")).toContainText("Fixture thread", {
-        timeout: 10_000,
-      });
-      expect(lateServer.methods).toContain("initialize");
-    } finally {
-      await app.close();
-      await lateServer?.close();
-    }
+    const chat = await harness.waitForChat(app);
+    await expect(chat.locator(".codex-session-trigger")).toContainText("No active session");
+    lateServer = new FakeCodexAppServer({ port });
+    await lateServer.ready();
+    await expect(chat.locator(".codex-session-trigger")).toContainText("Fixture thread");
+    expect(lateServer.methods).toContain("initialize");
+    await lateServer?.close();
   });
 
   test("shows an unavailable-server error without presenting stale sessions", async () => {
     await harness.server.close();
     const app = await harness.launch();
-    try {
-      const chat = await harness.waitForChat(app);
-      await expect(chat.locator(".codex-session-trigger")).toContainText("No active session", {
-        timeout: 5_000,
-      });
-      await expect(chat.locator("#codex-error")).toHaveText("Codex connection error.");
-    } finally {
-      await app.close();
-    }
+    const chat = await harness.waitForChat(app);
+    await expect(chat.locator(".codex-session-trigger")).toContainText("No active session");
+    await expect(chat.locator("#codex-error")).toHaveText("Codex connection error.");
   });
 });

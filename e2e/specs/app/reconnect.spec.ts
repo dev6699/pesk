@@ -1,12 +1,12 @@
-import { test, expect } from "playwright/test";
+import { test, expect } from "../../helpers/electron-test";
 import { ElectronCodexHarness } from "../../helpers/electron-codex";
 import { FakeCodexAppServer } from "../../servers/fake-codex/server";
 
 test.describe("Electron reconnect behavior", () => {
   let harness: ElectronCodexHarness;
 
-  test.beforeEach(async () => {
-    harness = new ElectronCodexHarness();
+  test.beforeEach(async ({ electronProfile }) => {
+    harness = new ElectronCodexHarness(electronProfile);
     await harness.start();
   });
 
@@ -27,48 +27,44 @@ test.describe("Electron reconnect behavior", () => {
     const port = harness.server.port;
     const app = await harness.launch();
     let restarted: FakeCodexAppServer | undefined;
-    try {
-      const chat = await harness.waitForChat(app);
-      const sessions = chat.locator(".codex-session-trigger");
-      await expect(sessions).toContainText("Fixture thread", { timeout: 10_000 });
-      await sessions.click();
-      await expect(chat.locator("#codex-session-menu")).toContainText("Old project");
+    const chat = await harness.waitForChat(app);
+    const sessions = chat.locator(".codex-session-trigger");
+    await expect(sessions).toContainText("Fixture thread");
+    await sessions.click();
+    await expect(chat.locator("#codex-session-menu")).toContainText("Old project");
 
-      await harness.server.close();
-      await expect(sessions).toContainText("No active session", { timeout: 5_000 });
-      await expect(chat.locator("#codex-session-menu")).not.toContainText("Old project");
+    await harness.server.close();
+    await expect(sessions).toContainText("No active session");
+    await expect(chat.locator("#codex-session-menu")).not.toContainText("Old project");
 
-      restarted = new FakeCodexAppServer({
-        port,
-        threads: [
-          {
-            id: "restarted-thread",
-            preview: "Restarted thread",
-            cwd: "/tmp/restarted",
-            projectId: "restarted-project",
-          },
-        ],
-        projects: [
-          {
-            id: "restarted-project",
-            name: "Restarted project",
-            roots: [{ path: "/tmp/restarted" }],
-            metadata: {},
-            position: 0,
-            createdAt: 2,
-            updatedAt: 2,
-            recencyAt: null,
-          },
-        ],
-      });
-      await restarted.ready();
-      await expect(sessions).toContainText("Restarted thread", { timeout: 10_000 });
-      await sessions.click();
-      await expect(chat.locator("#codex-session-menu")).toContainText("Restarted project");
-      await expect(chat.locator("#codex-session-menu")).not.toContainText("Old project");
-    } finally {
-      await app.close();
-      await restarted?.close();
-    }
+    restarted = new FakeCodexAppServer({
+      port,
+      threads: [
+        {
+          id: "restarted-thread",
+          preview: "Restarted thread",
+          cwd: "/tmp/restarted",
+          projectId: "restarted-project",
+        },
+      ],
+      projects: [
+        {
+          id: "restarted-project",
+          name: "Restarted project",
+          roots: [{ path: "/tmp/restarted" }],
+          metadata: {},
+          position: 0,
+          createdAt: 2,
+          updatedAt: 2,
+          recencyAt: null,
+        },
+      ],
+    });
+    await restarted.ready();
+    await expect(sessions).toContainText("Restarted thread");
+    await sessions.click();
+    await expect(chat.locator("#codex-session-menu")).toContainText("Restarted project");
+    await expect(chat.locator("#codex-session-menu")).not.toContainText("Old project");
+    await restarted?.close();
   });
 });

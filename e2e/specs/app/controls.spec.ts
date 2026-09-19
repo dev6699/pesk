@@ -1,11 +1,11 @@
-import { test, expect } from "playwright/test";
+import { test, expect } from "../../helpers/electron-test";
 import { ElectronCodexHarness } from "../../helpers/electron-codex";
 
 test.describe("Electron desktop controls", () => {
   let harness: ElectronCodexHarness;
 
-  test.beforeEach(async () => {
-    harness = new ElectronCodexHarness();
+  test.beforeEach(async ({ electronProfile }) => {
+    harness = new ElectronCodexHarness(electronProfile);
     await harness.start();
   });
 
@@ -13,19 +13,12 @@ test.describe("Electron desktop controls", () => {
 
   test("toggles the desktop chat lock control", async () => {
     const app = await harness.launch();
-    try {
-      const chat = await expect
-        .poll(() => app.windows().find((window) => window.url().includes("chat.html")))
-        .toBeTruthy()
-        .then(() => app.windows().find((window) => window.url().includes("chat.html"))!);
-      const lock = chat.locator("#codex-chat-lock");
-      await expect(lock).toHaveAttribute("aria-label", "Lock chat window");
-      await lock.click();
-      await expect(lock).toHaveAttribute("aria-label", "Unlock chat window");
-      await lock.click();
-      await expect(lock).toHaveAttribute("aria-label", "Lock chat window");
-    } finally {
-      await app.close();
-    }
+    const chat = await harness.waitForChat(app);
+    const lock = chat.locator("#codex-chat-lock");
+    await expect(lock).toHaveAttribute("aria-label", "Lock chat window");
+    await lock.click();
+    await expect(lock).toHaveAttribute("aria-label", "Unlock chat window");
+    await lock.click();
+    await expect(lock).toHaveAttribute("aria-label", "Lock chat window");
   });
 });

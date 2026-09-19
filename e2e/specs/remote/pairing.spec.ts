@@ -23,20 +23,17 @@ test.describe("browser pairing and multi-client sync", () => {
 
   test("synchronizes a prompt response across browser clients", async ({ browser, page }) => {
     const secondPage = await browser.newPage();
-    try {
-      await Promise.all([page.goto(url), secondPage.goto(url)]);
-      await expect(secondPage.locator("#web-connection-status")).toHaveText("Connected");
-      await page.getByRole("textbox", { name: "Message Codex" }).fill("hello from client one");
-      await page.getByRole("button", { name: "Send" }).click();
-      const response = "Hello from the deterministic Codex fixture.";
-      await expect(
-        page.locator("#codex-history-content").getByText(response, { exact: true }),
-      ).toBeVisible();
-      await expect(
-        secondPage.locator("#codex-history-content").getByText(response, { exact: true }),
-      ).toBeVisible();
-    } finally {
-      await secondPage.close();
-    }
+    await Promise.all([page.goto(url), secondPage.goto(url)]);
+    await expect(secondPage.locator("#web-connection-status")).toHaveText("Connected");
+    await page.getByRole("textbox", { name: "Message Codex" }).fill("hello from client one");
+    await page.getByRole("button", { name: "Send" }).click();
+    const response = "Hello from the deterministic Codex fixture.";
+    await expect(
+      page.locator("#codex-history-content").getByText(response, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      secondPage.locator("#codex-history-content").getByText(response, { exact: true }),
+    ).toBeVisible();
+    await secondPage.close();
   });
 });

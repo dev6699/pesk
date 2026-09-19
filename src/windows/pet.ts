@@ -378,8 +378,10 @@ export class PetWindowController {
 
   /** Stops movement and closes the pet window during shutdown. */
   close(): void {
-    this.stopDragging();
-    this.petWindow?.close();
+    try {
+      this.stopDragging();
+      this.petWindow?.close();
+    } catch {}
   }
 
   private saveWindowPosition(): void {

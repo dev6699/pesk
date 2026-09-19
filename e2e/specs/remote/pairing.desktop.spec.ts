@@ -1,4 +1,4 @@
-import { test, expect } from "playwright/test";
+import { test, expect } from "../../helpers/electron-test";
 import { createServer } from "node:net";
 import { ElectronCodexHarness } from "../../helpers/electron-codex";
 
@@ -24,8 +24,8 @@ test.describe("paired browser Codex workflows", () => {
   let harness: ElectronCodexHarness;
   let webPort: number;
 
-  test.beforeEach(async () => {
-    harness = new ElectronCodexHarness();
+  test.beforeEach(async ({ electronProfile }) => {
+    harness = new ElectronCodexHarness(electronProfile);
     await harness.start();
     webPort = await freePort();
     harness.writeConfig({ webAccessEnabled: true, webPort });
@@ -37,33 +37,28 @@ test.describe("paired browser Codex workflows", () => {
     harness.server.enableApproval();
     const app = await harness.launch({ ...process.env, PESK_E2E_SHOW_MENU: "1" });
     const page = await browser.newPage();
-    try {
-      const menu = await harness.waitForMenu(app);
-      const pairing = await menu.evaluate(() => window.peskApi.createPairing("E2E approval"));
-      if (!pairing) throw new Error("Pairing was not created");
-      const pairingCode = new URL(pairing.urls[0] ?? "").searchParams.get("code");
-      if (!pairingCode) throw new Error("Pairing URL did not contain a code");
+    const menu = await harness.waitForMenu(app);
+    const pairing = await menu.evaluate(() => window.peskApi.createPairing("E2E approval"));
+    if (!pairing) throw new Error("Pairing was not created");
+    const pairingCode = new URL(pairing.urls[0] ?? "").searchParams.get("code");
+    if (!pairingCode) throw new Error("Pairing URL did not contain a code");
 
-      await page.goto(`http://127.0.0.1:${webPort}/pair?code=${encodeURIComponent(pairingCode)}`);
-      await expect(page.locator("#web-connection-status")).toHaveText("Connected", {
-        timeout: 10_000,
-      });
-      const input = page.getByRole("textbox", { name: "Message Codex" });
-      await input.fill("approve this remotely");
-      await page.getByRole("button", { name: "Send" }).click();
+    await page.goto(`http://127.0.0.1:${webPort}/pair?code=${encodeURIComponent(pairingCode)}`);
+    await page.bringToFront();
+    await expect(page.locator("#web-connection-status")).toHaveText("Connected");
+    await menu.evaluate(() => window.peskApi.closeMenuWindow());
+    const input = page.getByRole("textbox", { name: "Message Codex" });
+    await input.fill("approve this remotely");
+    await page.getByRole("button", { name: "Send" }).click();
 
-      const approval = page.locator("#codex-user-input");
-      await expect(approval).toContainText("echo approval-required", { timeout: 10_000 });
-      await approval.getByRole("radio", { name: /Approve once/ }).check();
-      await approval.getByRole("button", { name: "Submit" }).click();
-      await expect(page.locator("#codex-history-content")).toContainText(
-        "Hello from fake Codex app-server.",
-        { timeout: 10_000 },
-      );
-      expect(harness.server.permissionResponses).toEqual([{ decision: "accept" }]);
-    } finally {
-      await page.close();
-      await app.close();
-    }
+    const approval = page.locator("#codex-user-input");
+    await expect(approval).toContainText("echo approval-required");
+    await approval.getByRole("radio", { name: /Approve once/ }).check();
+    await approval.getByRole("button", { name: "Submit" }).click();
+    await expect(page.locator("#codex-history-content")).toContainText(
+      "Hello from fake Codex app-server.",
+    );
+    expect(harness.server.permissionResponses).toEqual([{ decision: "accept" }]);
+    await page.close();
   });
 });
