@@ -13,6 +13,7 @@ jobs:
   validate:
     name: Validate on Windows
     runs-on: windows-latest
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v7
@@ -31,7 +32,7 @@ jobs:
           CI: true
 
       - name: Upload Playwright report
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
