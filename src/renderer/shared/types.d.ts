@@ -44,6 +44,7 @@ interface CodexHistoryItem {
     output?: string;
     changes?: string[];
     details?: string;
+    image?: string;
   };
   approval?: {
     requestId: string | number;

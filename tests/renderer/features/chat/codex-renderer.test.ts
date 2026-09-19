@@ -3807,6 +3807,47 @@ test("renders attached images in user message history", () => {
   open.mockRestore();
 });
 
+test("renders image generation activity results as images", () => {
+  const image = "data:image/png;base64,iVBORw0KGgo=";
+  const state = {
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "system" as const,
+                text: "Activity · completed",
+                activity: {
+                  kind: "other" as const,
+                  label: "imageGeneration",
+                  status: "completed",
+                  image,
+                },
+              },
+            ],
+          },
+        },
+      },
+    },
+  };
+  const { renderer, elements } = makeRenderer(state);
+  renderer.updateState(state);
+
+  expect(
+    (elements.history.querySelector(".codex-activity-details-block") as HTMLDetailsElement).open,
+  ).toBe(true);
+  expect(elements.history.querySelector(".codex-activity-image")).toMatchObject({
+    src: image,
+    alt: "Generated image",
+  });
+});
+
 test("keeps web chat input focused before and after an async submission", async () => {
   const next = {
     ...defaultRendererState(),

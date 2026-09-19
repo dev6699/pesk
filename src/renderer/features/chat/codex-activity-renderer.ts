@@ -72,9 +72,13 @@ export class CodexActivityRenderer {
       details.open =
         openActivityKeys.has(activityKey) ||
         isReviewActivity(message.activity) ||
-        message.activity.label === "contextCompaction";
+        message.activity.label === "contextCompaction" ||
+        Boolean(message.activity.image);
       const summary = document.createElement("summary");
-      const label = activityLabel(message.activity.kind);
+      const label =
+        message.activity.label === "imageGeneration"
+          ? "Image generation"
+          : activityLabel(message.activity.kind);
       summary.textContent = `${label} · ${message.activity.status ?? "in progress"}`;
       if (message.activity.summary) {
         const query = document.createElement("span");
@@ -87,6 +91,13 @@ export class CodexActivityRenderer {
       body.className = "codex-activity-details";
       body.textContent = message.text;
       details.append(body);
+      if (message.activity.image) {
+        const image = document.createElement("img");
+        image.className = "codex-message-image codex-activity-image";
+        image.src = message.activity.image;
+        image.alt = "Generated image";
+        details.append(makeImageOpenable(image));
+      }
       return details;
     }
     const content = document.createElement("div");

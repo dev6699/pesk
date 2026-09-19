@@ -240,6 +240,25 @@ describe("CodexThread", () => {
     ]);
   });
 
+  test("converts image generation results into a renderer image", () => {
+    const thread = new CodexThread("thread-1");
+
+    thread.processStartedItem(
+      { type: "imageGeneration", id: "image-1", result: "iVBORw0KGgo=" },
+      "turn-1",
+      false,
+    );
+
+    expect(thread.state.history).toEqual([
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          label: "imageGeneration",
+          image: "data:image/png;base64,iVBORw0KGgo=",
+        }),
+      }),
+    ]);
+  });
+
   test("restores persisted turns without replacing a live unsaved user message", () => {
     const thread = new CodexThread("thread-1");
     thread.addMessage("user", "live prompt");

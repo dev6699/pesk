@@ -78,6 +78,7 @@ export function historyStructureKey(history: CodexHistory): string {
     add(activity.summary);
     for (const change of activity.changes ?? []) add(change);
     if (activity.kind !== "plan") add(activity.details);
+    add(activity.image);
     if (activity.kind !== "command") add(activity.output);
   }
   return `${history?.length ?? 0}:${first >>> 0}:${second >>> 0}`;

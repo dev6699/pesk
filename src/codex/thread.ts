@@ -297,15 +297,18 @@ export class CodexThread {
         (isReviewCompletion ? "Review completed" : undefined),
       output: typeof item.aggregatedOutput === "string" ? item.aggregatedOutput : undefined,
       changes,
+      image: imageGenerationDataUrl(item),
       details: isReviewCompletion
         ? undefined
-        : kind === "plan"
-          ? typeof item.text === "string"
-            ? item.text
-            : undefined
-          : kind === "command" || kind === "fileChange"
-            ? undefined
-            : summarizeActivity(item),
+        : type === "imageGeneration"
+          ? undefined
+          : kind === "plan"
+            ? typeof item.text === "string"
+              ? item.text
+              : undefined
+            : kind === "command" || kind === "fileChange"
+              ? undefined
+              : summarizeActivity(item),
     };
     return {
       role: "system",
@@ -1053,6 +1056,22 @@ function formatActivityText(activity: NonNullable<CodexMessage["activity"]>): st
   if (activity.output) lines.push(activity.output);
   if (activity.details) lines.push(activity.details);
   return lines.join("\n");
+}
+
+function imageGenerationDataUrl(item: Record<string, unknown>): string | undefined {
+  if (item.type !== "imageGeneration") return undefined;
+
+  let value: unknown = item.result;
+  let mimeType = typeof item.mimeType === "string" ? item.mimeType : undefined;
+  if (value && typeof value === "object") {
+    const result = value as Record<string, unknown>;
+    value = result.data ?? result.base64 ?? result.image;
+    if (typeof result.mimeType === "string") mimeType = result.mimeType;
+  }
+  if (typeof value !== "string" || !value) return undefined;
+  if (/^(data:image\/|https?:\/\/)/i.test(value)) return value;
+  const imageMimeType = mimeType?.startsWith("image/") ? mimeType : "image/png";
+  return `data:${imageMimeType};base64,${value}`;
 }
 
 export function isActivityItem(item: Record<string, unknown> | undefined): boolean {
