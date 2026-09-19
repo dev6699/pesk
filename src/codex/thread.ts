@@ -8,7 +8,7 @@ import type {
   ApprovalDecision,
   PendingApproval,
 } from "./types";
-import { records, stringValue } from "./protocol";
+import { isRecord, records, stringValue } from "./protocol";
 import type { RequestId } from "../codex-schema";
 import type { ThreadGoal, ThreadTokenUsage, TokenUsageBreakdown } from "../codex-schema/v2";
 
@@ -247,12 +247,13 @@ export class CodexThread {
     itemId?: string,
     statusOverride?: string,
     timestamp = Date.now(),
+    turnId?: string,
   ): void {
     const message = this.activityMessage(
       statusOverride ? { ...item, status: statusOverride } : item,
       timestamp,
     );
-    this.updateActivity(message, itemId);
+    this.updateActivity({ ...message, turnId }, itemId);
   }
 
   /** Converts a raw server item into a structured activity message. */
@@ -273,7 +274,17 @@ export class CodexThread {
                 : "other";
     const changes = records(item.changes).map((change) => {
       const filePath = typeof change.path === "string" ? change.path : "unknown file";
-      const changeKind = typeof change.kind === "string" ? `${change.kind}: ` : "";
+      const changeKind = isRecord(change.kind)
+        ? stringValue(change.kind.type) === "add"
+          ? "added: "
+          : stringValue(change.kind.type) === "delete"
+            ? "deleted: "
+            : stringValue(change.kind.type) === "update"
+              ? "modified: "
+              : ""
+        : typeof change.kind === "string"
+          ? `${change.kind}: `
+          : "";
       const content = firstText(change, ["diff", "patch", "content", "newContent"]);
       return [`${changeKind}${filePath}`, content ? indentActivityContent(content) : ""]
         .filter(Boolean)
@@ -449,12 +460,18 @@ export class CodexThread {
       }
     }
     if (isActivityItem(item)) {
-      this.addActivity(item, stringValue(item.id), item.type === "plan" ? "inProgress" : undefined);
+      this.addActivity(
+        item,
+        stringValue(item.id),
+        item.type === "plan" ? "inProgress" : undefined,
+        Date.now(),
+        turnId,
+      );
     }
   }
 
   /** Normalizes a server item when it completes and records its visible output. */
-  processCompletedItem(item: Record<string, unknown>): void {
+  processCompletedItem(item: Record<string, unknown>, turnId?: string): void {
     if (item.type === "agentMessage") {
       const text =
         typeof item.text === "string"
@@ -468,6 +485,8 @@ export class CodexThread {
         item,
         stringValue(item.id),
         item.type === "plan" || item.type === "contextCompaction" ? "completed" : undefined,
+        Date.now(),
+        turnId,
       );
     }
   }

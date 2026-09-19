@@ -20,7 +20,26 @@
             aria-label="Copy session ID"
             title="Copy session ID"
           >
-            Copy
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+              <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"></path>
+            </svg>
+          </button>
+          <button
+            id="codex-changes-toggle"
+            type="button"
+            aria-label="View file changes"
+            aria-expanded="false"
+            title="View file changes in this thread"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5.5 3.5H13L18.5 9V20.5H5.5V3.5Z"></path>
+              <path d="M13 3.5V9H18.5"></path>
+              <path class="changes-added" d="M8.5 12.5H12"></path>
+              <path class="changes-added" d="M15.5 12V15M14 13.5H17"></path>
+              <path class="changes-removed" d="M8.5 16H12"></path>
+              <path class="changes-removed" d="M14 18H17"></path>
+            </svg>
           </button>
           <button
             id="codex-chat-lock"
@@ -31,6 +50,23 @@
             🔓
           </button>
         </div>
+        <section
+          id="codex-changes-panel"
+          class="codex-changes-panel"
+          aria-label="File changes"
+          hidden
+        >
+          <div class="codex-changes-backdrop" data-changes-backdrop></div>
+          <div class="codex-changes-dialog" role="dialog" aria-labelledby="codex-changes-title">
+            <div class="codex-changes-header">
+              <strong id="codex-changes-title">File changes</strong>
+              <button type="button" data-changes-close aria-label="Close file changes">
+                Close
+              </button>
+            </div>
+            <div data-changes-content></div>
+          </div>
+        </section>
         <div id="codex-rate-limit" aria-live="polite" hidden></div>
         <div id="codex-error" role="alert" hidden></div>
         <div id="codex-history-shell">

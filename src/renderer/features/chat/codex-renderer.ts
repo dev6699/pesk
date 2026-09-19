@@ -6,6 +6,7 @@ import { CodexPromptRenderer } from "./codex-prompt-renderer.js";
 import { CodexModelRenderer } from "./codex-model-renderer.js";
 import { CodexStatusRenderer } from "./codex-status-renderer.js";
 import { CodexSuggestionRenderer } from "./codex-suggestions-renderer.js";
+import { CodexChangesRenderer } from "./codex-changes-renderer.js";
 import {
   formatElapsed,
   formatRateLimitDetails,
@@ -52,6 +53,7 @@ export class CodexRenderer {
   private readonly inputController: CodexInputController;
   private readonly historyRenderer: CodexHistoryRenderer;
   private readonly threadProjectIds = new Map<string, string | null>();
+  private readonly changesRenderer?: CodexChangesRenderer;
 
   /** Creates the renderer and wires chat, history, and composer events. */
   constructor(
@@ -154,6 +156,18 @@ export class CodexRenderer {
       this.commandNotice,
       () => this.state,
     );
+    const changesToggle = document.getElementById(
+      "codex-changes-toggle",
+    ) as HTMLButtonElement | null;
+    const changesPanel = document.getElementById("codex-changes-panel");
+    if (changesToggle && changesPanel) {
+      this.changesRenderer = new CodexChangesRenderer(
+        changesPanel,
+        changesToggle,
+        (turnId, edge) => this.navigateToTurn(turnId, edge),
+        (prompt) => this.fillChangesPrompt(prompt),
+      );
+    }
     this.sessionPicker = document.createElement("div");
     this.sessionPicker.className = "codex-session-picker";
     this.sessionTrigger = document.createElement("button");
@@ -471,6 +485,7 @@ export class CodexRenderer {
       next.codex.threads.current.history.loading,
       next.codex.threads.current.thread.queuedSubmissions,
     );
+    this.changesRenderer?.render(next.codex.threads.current.thread.messages);
     this.statusRenderer.update();
     this.inputController.renderCommandMode();
     this.renderTokenUsage();
@@ -718,6 +733,26 @@ export class CodexRenderer {
     );
   }
 
+  /** Reveals the first or last currently loaded message belonging to a turn. */
+  private navigateToTurn(turnId: string, edge: "start" | "end"): void {
+    const allMessages = Array.from(
+      this.history.querySelectorAll<HTMLElement>(".codex-message, .codex-queued-submission"),
+    );
+    const messages = allMessages.filter((message) => message.dataset.turnId === turnId);
+    const message = edge === "start" ? messages[0] : messages.at(-1);
+    if (!message) return;
+    this.selectedMessageIndex = allMessages.indexOf(message);
+    this.applySelectedMessage();
+    this.historyRenderer.revealMessage(message);
+  }
+
+  /** Replaces the composer with a structured prompt for one changed file. */
+  private fillChangesPrompt(prompt: string): void {
+    this.input.value = prompt;
+    this.input.dispatchEvent(new Event("input", { bubbles: true }));
+    this.input.focus();
+  }
+
   /** Requests an explicit jump to the live bottom of chat history. */
   scrollHistoryToLatest(force = true): void {
     this.historyRenderer.scrollToLatest(force);
@@ -870,10 +905,19 @@ export class CodexRenderer {
     const sessionId = this.sessionSelect.value;
     if (!sessionId) return;
     await copyTextToClipboard(sessionId);
-    const originalLabel = this.sessionCopy.textContent;
-    this.sessionCopy.textContent = "Copied";
+    const originalLabel = this.sessionCopy.getAttribute("aria-label") ?? "Copy session ID";
+    const originalTitle = this.sessionCopy.title;
+    const originalIcon = this.sessionCopy.innerHTML;
+    this.sessionCopy.setAttribute("aria-label", "Copied");
+    this.sessionCopy.title = "Copied";
+    this.sessionCopy.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"></path></svg>';
+    this.sessionCopy.classList.add("codex-session-copy-copied");
     window.setTimeout(() => {
-      this.sessionCopy.textContent = originalLabel ?? "Copy";
+      this.sessionCopy.setAttribute("aria-label", originalLabel);
+      this.sessionCopy.title = originalTitle;
+      this.sessionCopy.innerHTML = originalIcon;
+      this.sessionCopy.classList.remove("codex-session-copy-copied");
     }, 1200);
   }
 

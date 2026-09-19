@@ -52,6 +52,58 @@ test.describe("Electron file-change activity", () => {
     ]);
   });
 
+  test("opens the thread-wide changes view and navigates or fills the composer", async () => {
+    harness.server.enableFileChange([
+      { kind: "added", path: "src/added.ts", diff: "@@ -0,0 +1 @@\n+export {};" },
+      { kind: "modified", path: "src/changed.ts", diff: "@@ -1 +1 @@\n-old\n+new" },
+      { kind: "deleted", path: "src/removed.ts", diff: "@@ -1 +0,0 @@\n-deleted" },
+    ]);
+    const app = await harness.launch();
+    const chat = await harness.waitForChat(app);
+    const input = chat.getByRole("textbox", { name: "Message Codex" });
+    await input.fill("inspect all changed files");
+    await input.press("Enter");
+
+    const toggle = chat.locator("#codex-changes-toggle");
+    await expect(toggle).toBeEnabled();
+    await toggle.click();
+
+    const panel = chat.locator("#codex-changes-panel");
+    await expect(panel).toBeVisible();
+    const turn = panel.locator(".codex-changes-turn");
+    await expect(turn).toHaveCount(1);
+    await expect(turn.locator(".codex-changes-turn-label .codex-changes-kind-new")).toHaveText(
+      "1 New",
+    );
+    await expect(turn.locator(".codex-changes-turn-label .codex-changes-kind-modified")).toHaveText(
+      "1 Modified",
+    );
+    await expect(turn.locator(".codex-changes-turn-label .codex-changes-kind-deleted")).toHaveText(
+      "1 Deleted",
+    );
+    await expect(turn.locator(".codex-changes-file")).toHaveCount(3);
+    await expect(turn.locator(".codex-changes-diff")).toContainText([
+      "+export {};",
+      "+new",
+      "-deleted",
+    ]);
+    await turn.locator("summary").click();
+
+    const fillButton = turn.locator(".codex-changes-file").nth(1).locator(".codex-changes-fill");
+    await fillButton.scrollIntoViewIfNeeded();
+    await fillButton.click();
+    await expect(input).toHaveValue(
+      "`src/changed.ts`\n\n### Change 1 (Modified)\n\n```diff\n  @@ -1 +1 @@\n  -old\n  +new\n```",
+    );
+
+    await turn.getByRole("button", { name: "Start" }).click();
+    await expect(panel).toBeVisible();
+    await expect(chat.locator(".codex-message-selected")).toHaveCount(1);
+    await turn.getByRole("button", { name: "End" }).click();
+    await expect(panel).toBeVisible();
+    await expect(chat.locator(".codex-message-selected")).toHaveCount(1);
+  });
+
   test("restores file changes with their thread after reopening it", async () => {
     harness.server.enableFileChange();
     let app = await harness.launch();

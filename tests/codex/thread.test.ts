@@ -201,6 +201,54 @@ describe("CodexThread", () => {
     );
   });
 
+  test.each([
+    ["add", "added: src/app.ts"],
+    ["delete", "deleted: src/app.ts"],
+    ["update", "modified: src/app.ts"],
+  ])("normalizes structured file-change kind %s", (kind, expectedPath) => {
+    const thread = new CodexThread("thread-1");
+
+    const message = thread.activityMessage(
+      {
+        id: "file-1",
+        type: "fileChange",
+        changes: [
+          {
+            path: "src/app.ts",
+            kind: { type: kind },
+            diff: "@@ -1 +1 @@\n-old\n+new",
+          },
+        ],
+      },
+      123,
+    );
+
+    expect(message.activity?.changes).toEqual([`${expectedPath}\n  @@ -1 +1 @@\n  -old\n  +new`]);
+  });
+
+  test("preserves legacy string file-change kinds", () => {
+    const thread = new CodexThread("thread-1");
+
+    const message = thread.activityMessage(
+      {
+        id: "file-1",
+        type: "fileChange",
+        changes: [
+          {
+            path: "src/app.ts",
+            kind: "update",
+            diff: "@@ -1 +1 @@\n-old\n+new",
+          },
+        ],
+      },
+      123,
+    );
+
+    expect(message.activity?.changes?.[0]).toBe(
+      "update: src/app.ts\n  @@ -1 +1 @@\n  -old\n  +new",
+    );
+  });
+
   test("does not echo a locally remembered prompt when processing a started item", () => {
     const thread = new CodexThread("thread-1");
     thread.addMessage("user", "already shown");

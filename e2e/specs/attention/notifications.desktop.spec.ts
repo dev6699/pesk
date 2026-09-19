@@ -83,8 +83,9 @@ test.describe("Electron attention workflows", () => {
     await expect(chat.locator("#codex-user-input")).toContainText("echo thread-a");
 
     harness.server.emitApprovalForThread("attention-thread-b", "echo thread-b");
-    harness.server.emitTurnStartedForThread("attention-thread-c");
     const aggregate = pet.locator("#codex-aggregate-status-label");
+    await expect(aggregate).toHaveAttribute("title", /Thread B: Waiting · needs approval/);
+    harness.server.emitTurnStartedForThread("attention-thread-c");
     await expect(aggregate).toHaveAttribute("title", /Thread B: Waiting · needs approval/);
     await expect(aggregate).toHaveAttribute("title", /Thread C: Working/);
     await expect(pet.locator("#pet")).toBeVisible();

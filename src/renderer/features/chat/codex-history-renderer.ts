@@ -483,10 +483,14 @@ export class CodexHistoryRenderer {
     if (message.activity) {
       bubble.classList.add(`codex-activity-${message.activity.kind}`);
       if (
-        message.activity.kind === "command" &&
-        (message.activity.status === "failed" || message.activity.status === "declined")
+        (message.activity.kind === "command" || message.activity.kind === "fileChange") &&
+        ["failed", "declined"].includes(message.activity.status?.toLowerCase() ?? "")
       ) {
-        bubble.classList.add("codex-activity-command-failed");
+        bubble.classList.add(
+          message.activity.kind === "command"
+            ? "codex-activity-command-failed"
+            : "codex-activity-fileChange-failed",
+        );
       }
       if (isReviewActivity(message.activity)) bubble.classList.add("codex-activity-review");
       if (message.activity.output) bubble.classList.add("codex-activity-output");
@@ -494,6 +498,7 @@ export class CodexHistoryRenderer {
     if (message.temporary) bubble.classList.add("codex-message-working");
     const activityKey = historyMessageKeyForRenderer(message, index);
     bubble.dataset.historyKey = activityKey;
+    if (message.turnId) bubble.dataset.turnId = message.turnId;
     if (message.itemId) bubble.dataset.messageItemId = message.itemId;
     if (message.activity?.kind === "plan") {
       this.renderedPlanDetails.set(activityKey, message.activity.details ?? "");

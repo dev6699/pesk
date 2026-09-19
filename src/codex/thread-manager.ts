@@ -416,7 +416,7 @@ export class CodexThreadManager {
   ): ThreadEventResult {
     const item = isRecord(message.params.item) ? message.params.item : undefined;
     if (!item) return {};
-    thread.processCompletedItem(item);
+    thread.processCompletedItem(item, message.params.turnId);
     if (item.type !== "agentMessage") return {};
     return {
       completedStreamDelta: {

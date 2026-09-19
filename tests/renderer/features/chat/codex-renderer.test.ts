@@ -3229,6 +3229,39 @@ test("marks failed command activity in red", () => {
   expect(elements.history.querySelector(".codex-activity-command-failed")).not.toBeNull();
 });
 
+test("marks declined file-change activity in red", () => {
+  const { renderer, elements } = makeRenderer();
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            messages: [
+              {
+                role: "system",
+                text: "File change declined",
+                itemId: "declined-file-change",
+                activity: {
+                  kind: "fileChange",
+                  status: "DECLINED",
+                  changes: ["src/app.ts\n  +not applied"],
+                },
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  expect(elements.history.querySelector(".codex-activity-fileChange-failed")).not.toBeNull();
+});
+
 test("expands user commands but collapses agent commands", () => {
   const { renderer, elements } = makeRenderer();
   renderer.updateState({

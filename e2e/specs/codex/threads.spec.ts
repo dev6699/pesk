@@ -47,6 +47,6 @@ test.describe("browser session controls", () => {
   test("copies the active session identifier", async ({ page }) => {
     await page.goto(url);
     await page.getByRole("button", { name: "Copy session ID" }).click();
-    await expect(page.getByRole("button", { name: "Copy session ID" })).toHaveText("Copied");
+    await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
   });
 });
