@@ -1,10 +1,17 @@
-import type { JsonRpcResponse, LocalQueueListRequest, LocalQueueListResponse } from "./protocol";
+import type {
+  JsonRpcResponse,
+  LocalQueueDeleteRequest,
+  LocalQueueDeleteResponse,
+  LocalQueueListRequest,
+  LocalQueueListResponse,
+  OutgoingRequestInput,
+} from "./protocol";
 import { CodexThreadManager } from "./thread-manager";
 
 export interface QueueManagerOptions {
   request: (
-    request: Omit<LocalQueueListRequest, "id">,
-    callback: (message: JsonRpcResponse<LocalQueueListResponse>) => void,
+    request: OutgoingRequestInput,
+    callback: (message: JsonRpcResponse<unknown>) => void,
   ) => boolean;
   threadManager: CodexThreadManager;
   onStateChanged: () => void;
@@ -19,6 +26,25 @@ export class CodexQueueManager {
     this.loadPage(threadId, null, true);
   }
 
+  /** Deletes one server-backed queued submission and refreshes the queue. */
+  delete(threadId: string, queuedSubmissionId: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const accepted = this.options.request(
+        {
+          method: "thread/queue/delete",
+          params: { threadId, queuedSubmissionId },
+        },
+        (message) => {
+          const deleted =
+            (message.result as LocalQueueDeleteResponse | undefined)?.deleted === true;
+          if (deleted) this.refresh(threadId);
+          resolve(deleted);
+        },
+      );
+      if (!accepted) resolve(false);
+    });
+  }
+
   private loadPage(threadId: string, cursor: string | null, replace: boolean): void {
     const accepted = this.options.request(
       {
@@ -26,11 +52,12 @@ export class CodexQueueManager {
         params: cursor === null ? { threadId, limit: 100 } : { threadId, cursor, limit: 100 },
       },
       (message) => {
+        const result = message as JsonRpcResponse<LocalQueueListResponse>;
         this.options.threadManager.withThread(threadId, (thread) => {
-          if (replace) thread.replaceQueueFromServer(message.result?.data ?? []);
-          else thread.appendQueueFromServer(message.result?.data ?? []);
+          if (replace) thread.replaceQueueFromServer(result.result?.data ?? []);
+          else thread.appendQueueFromServer(result.result?.data ?? []);
           this.options.onStateChanged();
-          const nextCursor = message.result?.nextCursor;
+          const nextCursor = result.result?.nextCursor;
           if (nextCursor) this.loadPage(threadId, nextCursor, false);
         });
       },

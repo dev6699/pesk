@@ -136,6 +136,12 @@ export type LocalQueueListRequest = {
   id: number;
   params: { threadId: string; cursor?: string | null; limit?: number | null };
 };
+export type LocalQueueDeleteRequest = {
+  method: "thread/queue/delete";
+  id: number;
+  params: { threadId: string; queuedSubmissionId: string };
+};
+export type LocalQueueDeleteResponse = { deleted?: boolean };
 export type LocalQueueAddResponse = {
   queuedSubmission?: {
     id: string;
@@ -157,6 +163,7 @@ export type OutgoingMessage =
   | ClientNotification
   | LocalQueueAddRequest
   | LocalQueueListRequest
+  | LocalQueueDeleteRequest
   | ProjectRequest
   | JsonRpcResponse;
 
@@ -169,6 +176,7 @@ export type OutgoingRequestInput = RequestWithoutId<
   | TurnSteerRequest
   | LocalQueueAddRequest
   | LocalQueueListRequest
+  | LocalQueueDeleteRequest
   | ProjectRequest
   | ThreadStartRequestWithTools
 >;

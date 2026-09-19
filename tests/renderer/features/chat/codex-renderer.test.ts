@@ -117,6 +117,7 @@ function makeRenderer(
     focusCodexInput: jest.fn(),
     implementCodexPlan: jest.fn(async () => settings),
     interruptCodexTurn: jest.fn(async () => true),
+    removeCodexQueuedSubmission: jest.fn(async () => true),
     submitCodexPrompt: jest.fn(async () => settings),
     getSettings: jest.fn(async () => settings),
     listCodexProjects: jest.fn(async () => settings),
@@ -1903,6 +1904,7 @@ test("covers direct history scroll controls and reset", () => {
   const state = defaultRendererState();
   const historyRenderer = new CodexHistoryRenderer(history, () => state, {
     applySelectedMessage: jest.fn(),
+    removeQueuedSubmission: jest.fn(),
     setActivePlanConfirmation: jest.fn(),
     isPlanConfirmationDismissed: jest.fn(() => false),
   });
@@ -1914,6 +1916,31 @@ test("covers direct history scroll controls and reset", () => {
 
   expect(history.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
   expect(history.scrollBy).toHaveBeenCalledWith({ top: 64, behavior: "smooth" });
+});
+
+test("renders independent queue removal controls and supports Delete", () => {
+  const history = document.createElement("div");
+  const state = defaultRendererState();
+  const remove = jest.fn();
+  const historyRenderer = new CodexHistoryRenderer(history, () => state, {
+    applySelectedMessage: jest.fn(),
+    removeQueuedSubmission: remove,
+    setActivePlanConfirmation: jest.fn(),
+    isPlanConfirmationDismissed: jest.fn(() => false),
+  });
+
+  historyRenderer.renderHistory([], true, false, [
+    { id: "queued-1", text: "first", clientUserMessageId: "client-1" },
+    { id: "queued-2", text: "second", clientUserMessageId: "client-2" },
+  ]);
+
+  const items = history.querySelectorAll<HTMLElement>(".codex-queued-submission");
+  expect(items).toHaveLength(2);
+  const removeButton = items[0].querySelector("button") as HTMLButtonElement;
+  expect(removeButton.textContent).toBe("");
+  expect(removeButton.querySelector("svg")).not.toBeNull();
+  removeButton.click();
+  expect(remove.mock.calls).toEqual([["queued-1"]]);
 });
 
 test("ignores layout scroll events without user scroll intent", () => {
@@ -3972,6 +3999,66 @@ test("blurs the input when selecting a message with Alt+Up", () => {
 
   expect(event.defaultPrevented).toBe(true);
   expect(document.activeElement).not.toBe(elements.input);
+});
+
+test("includes queued messages in Alt+Up and Alt+Down selection", () => {
+  const { renderer, elements } = makeRenderer({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            queuedSubmissions: [
+              { id: "queued-1", text: "queued message", clientUserMessageId: "client-1" },
+            ],
+          },
+        },
+      },
+    },
+  });
+  renderer.updateState({
+    ...defaultRendererState(),
+    codex: {
+      ...defaultRendererState().codex,
+      threads: {
+        ...defaultRendererState().codex.threads,
+        current: {
+          ...defaultRendererState().codex.threads.current,
+          thread: {
+            ...defaultRendererState().codex.threads.current.thread,
+            queuedSubmissions: [
+              { id: "queued-1", text: "queued message", clientUserMessageId: "client-1" },
+            ],
+          },
+        },
+      },
+    },
+  });
+  const queued = elements.history.querySelector<HTMLElement>(".codex-queued-submission")!;
+  queued.scrollIntoView = jest.fn();
+  const event = new KeyboardEvent("keydown", {
+    key: "ArrowDown",
+    altKey: true,
+    cancelable: true,
+  });
+
+  renderer.handleKeydown(event);
+
+  expect(event.defaultPrevented).toBe(true);
+  expect(queued.classList.contains("codex-message-selected")).toBe(true);
+  expect(queued.getAttribute("aria-selected")).toBe("true");
+
+  const removeEvent = new KeyboardEvent("keydown", {
+    key: "Delete",
+    cancelable: true,
+  });
+  renderer.handleKeydown(removeEvent);
+  expect(removeEvent.defaultPrevented).toBe(true);
+  expect(window.peskApi.removeCodexQueuedSubmission).toHaveBeenCalledWith("queued-1");
 });
 
 test("renders working and completed elapsed states", () => {

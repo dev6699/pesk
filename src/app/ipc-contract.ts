@@ -71,6 +71,7 @@ export interface IpcInvokeContract {
   };
   "interrupt-codex-turn": { args: []; result: boolean };
   "steer-codex-turn": { args: [prompt: string]; result: RendererState };
+  "remove-codex-queued-submission": { args: [id: string]; result: boolean };
   "load-older-codex-history": { args: []; result: boolean };
   "fuzzy-file-search": { args: [query: string, roots: string[]]; result: FuzzyFileSearchResult[] };
   "list-codex-projects": { args: []; result: RendererState };

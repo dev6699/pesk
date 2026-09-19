@@ -13,6 +13,7 @@ import { makeImageOpenable, makeMarkdownLinksOpenable } from "./codex-image-link
 
 interface HistoryRendererCallbacks {
   applySelectedMessage(): void;
+  removeQueuedSubmission(id: string): void;
   setActivePlanConfirmation(value: { key: string; planText: string } | undefined): void;
   isPlanConfirmationDismissed(activityKey: string): boolean;
 }
@@ -427,6 +428,8 @@ export class CodexHistoryRenderer {
     for (const submission of queuedSubmissions) {
       const item = document.createElement("div");
       item.className = "codex-queued-submission";
+      item.tabIndex = 0;
+      item.dataset.queuedSubmissionId = submission.id;
       const text = document.createElement("span");
       text.textContent = submission.text || "Image attachment";
       item.append(text);
@@ -437,6 +440,27 @@ export class CodexHistoryRenderer {
         preview.alt = image.name ? `Queued image: ${image.name}` : "Queued image";
         item.append(makeImageOpenable(preview));
       }
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "codex-queued-submission-remove";
+      remove.setAttribute(
+        "aria-label",
+        `Remove queued message: ${submission.text || "Image attachment"}`,
+      );
+      remove.title = "Remove queued message";
+      remove.disabled = submission.id.startsWith("pending-");
+      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      icon.setAttribute("viewBox", "0 0 24 24");
+      icon.setAttribute("aria-hidden", "true");
+      icon.classList.add("codex-queued-submission-remove-icon");
+      const lid = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      lid.setAttribute("d", "M4 7h16M9 7V4h6v3M10 11v6M14 11v6");
+      const bin = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      bin.setAttribute("d", "M6 7l1 13h10l1-13");
+      icon.append(lid, bin);
+      remove.append(icon);
+      remove.addEventListener("click", () => this.callbacks.removeQueuedSubmission(submission.id));
+      item.append(remove);
       item.title = "Queued follow-up";
       queue.append(item);
     }

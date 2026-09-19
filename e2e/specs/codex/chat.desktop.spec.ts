@@ -50,4 +50,75 @@ test.describe("Electron Codex chat", () => {
       await app.close();
     }
   });
+
+  test("removes the highlighted queued message with Delete", async () => {
+    harness.server.enableLongRunning();
+    const app = await harness.launch();
+    try {
+      const chat = await harness.waitForChat(app);
+      const input = chat.getByRole("textbox", { name: "Message Codex" });
+
+      await input.fill("active prompt");
+      await input.press("Enter");
+      await expect.poll(() => harness.server.turnEvents).toContain("turn/started");
+      await expect.poll(() => harness.server.hasLongRunningTurn()).toBe(true);
+
+      for (const prompt of ["queued one", "queued two", "queued three"]) {
+        await input.fill(prompt);
+        await input.press("Enter");
+      }
+
+      const queued = chat.locator(".codex-queued-submission");
+      await expect(queued).toHaveCount(3, { timeout: 10_000 });
+      await expect(queued.nth(1)).toContainText("queued two");
+
+      await input.press("Alt+ArrowDown");
+      await input.press("Alt+ArrowDown");
+      await expect(queued.nth(1)).toHaveClass(/codex-message-selected/);
+
+      await chat.keyboard.press("Delete");
+      await expect.poll(() => harness.server.methods).toContain("thread/queue/delete");
+      await expect
+        .poll(() => harness.server.queuedSubmissionTexts())
+        .toEqual(["queued one", "queued three"]);
+      await expect(queued).toHaveCount(2, { timeout: 10_000 });
+      await expect(chat.locator(".codex-queued-submissions")).toContainText("queued one");
+      await expect(chat.locator(".codex-queued-submissions")).toContainText("queued three");
+      await expect(chat.locator(".codex-queued-submissions")).not.toContainText("queued two");
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("removes one queued message with its button", async () => {
+    harness.server.enableLongRunning();
+    const app = await harness.launch();
+    try {
+      const chat = await harness.waitForChat(app);
+      const input = chat.getByRole("textbox", { name: "Message Codex" });
+
+      await input.fill("active prompt");
+      await input.press("Enter");
+      await expect.poll(() => harness.server.hasLongRunningTurn()).toBe(true);
+
+      for (const prompt of ["queued one", "queued two"]) {
+        await input.fill(prompt);
+        await input.press("Enter");
+      }
+
+      const queued = chat.locator(".codex-queued-submission");
+      await expect(queued).toHaveCount(2, { timeout: 10_000 });
+      await queued
+        .nth(0)
+        .getByRole("button", { name: /Remove queued message: queued one/ })
+        .click();
+      await expect.poll(() => harness.server.methods).toContain("thread/queue/delete");
+      await expect.poll(() => harness.server.queuedSubmissionTexts()).toEqual(["queued two"]);
+      await expect(queued).toHaveCount(1, { timeout: 10_000 });
+      await expect(chat.locator(".codex-queued-submissions")).toContainText("queued two");
+      await expect(chat.locator(".codex-queued-submissions")).not.toContainText("queued one");
+    } finally {
+      await app.close();
+    }
+  });
 });

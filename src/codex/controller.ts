@@ -392,6 +392,13 @@ export class CodexController {
     return this.interaction.steerPrompt(value);
   }
 
+  /** Removes one queued submission from the selected thread. */
+  removeQueuedSubmission(queuedSubmissionId: string): Promise<boolean> {
+    const threadId = this.threadManager.selectedThreadId;
+    if (!threadId || !queuedSubmissionId.trim()) return Promise.resolve(false);
+    return this.queueManager.delete(threadId, queuedSubmissionId);
+  }
+
   /** Parses and submits a prompt without image attachments. */
   submitPrompt(value: string): boolean {
     return this.submitPromptWithImages(value, []);

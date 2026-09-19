@@ -48,6 +48,7 @@ export interface PeskApi {
   respondCodexUserInput: (requestId: string | number, answers: Record<string, string[]>) => void;
   interruptCodexTurn: () => Promise<boolean>;
   steerCodexTurn: (prompt: string) => Promise<RendererState>;
+  removeCodexQueuedSubmission: (id: string) => Promise<boolean>;
   selectAnimation: (name: string) => void;
   setAnimationMode: (mode: "selected" | "shuffle") => void;
   quitPesk: () => void;

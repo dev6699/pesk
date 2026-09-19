@@ -1452,7 +1452,8 @@ body.chat-only #codex-chat {
   overflow-wrap: anywhere;
 }
 
-.codex-message-selected {
+.codex-message-selected,
+.codex-queued-submission-selected {
   outline: 2px solid var(--text-primary);
   outline-offset: 2px;
 }
@@ -1649,8 +1650,45 @@ body.chat-only #codex-chat {
 }
 
 .codex-queued-submission {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin-top: 0.25rem;
+  border-radius: 9px;
   white-space: pre-wrap;
+}
+
+.codex-queued-submission:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.codex-queued-submission-remove {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  padding: 0.2rem;
+}
+
+.codex-queued-submission-remove:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.codex-queued-submission-remove-icon {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .codex-message-system {

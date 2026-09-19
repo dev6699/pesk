@@ -54,12 +54,13 @@ export class FakeCodexAppServer {
   private remoteTerminalEnabled = false;
   private turnDelayMs = 20;
   private streamingDelayMs = 0;
+  private nextQueuedSubmissionId = 1;
   private readonly longRunningTurns = new Map<string, WebSocket>();
   private readonly threadResponses = new Map<string, string>();
   private readonly pendingPrompts = new Map<string, string>();
   private readonly queuedPrompts = new Map<
     string,
-    { id: string; text: string; clientUserMessageId: string }
+    Array<{ id: string; text: string; clientUserMessageId: string }>
   >();
   private approvalSocket: WebSocket | undefined;
   private approvalThreadId = "";
@@ -179,6 +180,14 @@ export class FakeCodexAppServer {
       this.longRunningTurns.delete(activeThreadId);
       this.emitTurnCompletion(socket, activeThreadId);
     }
+  }
+
+  hasLongRunningTurn(threadId = this.threads[0]?.id ?? "e2e-thread-1"): boolean {
+    return this.longRunningTurns.has(threadId);
+  }
+
+  queuedSubmissionTexts(threadId = this.threads[0]?.id ?? "e2e-thread-1"): string[] {
+    return (this.queuedPrompts.get(threadId) ?? []).map((submission) => submission.text);
   }
 
   enableFileChange(
@@ -421,11 +430,13 @@ export class FakeCodexAppServer {
             .join("");
           const clientUserMessageId = String(params.clientUserMessageId ?? "");
           const queuedSubmission = {
-            id: `e2e-queued-${this.queuedPrompts.size + 1}`,
+            id: `e2e-queued-${this.nextQueuedSubmissionId++}`,
             text,
             clientUserMessageId,
           };
-          this.queuedPrompts.set(threadId, queuedSubmission);
+          const queued = this.queuedPrompts.get(threadId) ?? [];
+          queued.push(queuedSubmission);
+          this.queuedPrompts.set(threadId, queued);
           this.prompts.push(text);
           this.reply(socket, message.id, {
             queuedSubmission: {
@@ -435,25 +446,35 @@ export class FakeCodexAppServer {
             },
           });
           if (!this.longRunningTurns.has(threadId)) {
-            this.queuedPrompts.delete(threadId);
-            this.pendingPrompts.set(threadId, text);
+            const next = queued.shift();
+            if (queued.length) this.queuedPrompts.set(threadId, queued);
+            else this.queuedPrompts.delete(threadId);
+            this.pendingPrompts.set(threadId, next?.text ?? text);
             setTimeout(() => this.emitTurn(socket, threadId), this.turnDelayMs);
           }
           break;
         }
+        case "thread/queue/delete": {
+          const params = (message.params ?? {}) as Record<string, unknown>;
+          const threadId = String(params.threadId ?? this.threads[0]?.id ?? "e2e-thread-1");
+          const id = String(params.queuedSubmissionId ?? "");
+          const queued = this.queuedPrompts.get(threadId) ?? [];
+          const remaining = queued.filter((submission) => submission.id !== id);
+          const deleted = remaining.length !== queued.length;
+          if (remaining.length) this.queuedPrompts.set(threadId, remaining);
+          else this.queuedPrompts.delete(threadId);
+          this.reply(socket, message.id, { deleted });
+          break;
+        }
         case "thread/queue/list": {
           const threadId = this.threadId(message) ?? "e2e-thread-1";
-          const queued = this.queuedPrompts.get(threadId);
+          const queued = this.queuedPrompts.get(threadId) ?? [];
           this.reply(socket, message.id, {
-            data: queued
-              ? [
-                  {
-                    id: queued.id,
-                    input: [{ type: "text", text: queued.text, text_elements: [] }],
-                    clientUserMessageId: queued.clientUserMessageId,
-                  },
-                ]
-              : [],
+            data: queued.map((submission) => ({
+              id: submission.id,
+              input: [{ type: "text", text: submission.text, text_elements: [] }],
+              clientUserMessageId: submission.clientUserMessageId,
+            })),
             nextCursor: null,
           });
           break;
@@ -474,16 +495,18 @@ export class FakeCodexAppServer {
         }
         case "turn/interrupt": {
           const threadId = this.threadId(message) ?? this.threads[0]?.id ?? "e2e-thread-1";
-          const queued = this.queuedPrompts.get(threadId);
-          this.queuedPrompts.delete(threadId);
+          const queued = this.queuedPrompts.get(threadId) ?? [];
+          const next = queued.shift();
+          if (queued.length) this.queuedPrompts.set(threadId, queued);
+          else this.queuedPrompts.delete(threadId);
           this.longRunningTurns.delete(threadId);
           this.reply(socket, message.id, {});
           this.notify(socket, "turn/completed", {
             threadId,
             turn: this.turn("e2e-turn-1", "interrupted"),
           });
-          if (queued) {
-            this.pendingPrompts.set(threadId, queued.text);
+          if (next) {
+            this.pendingPrompts.set(threadId, next.text);
             setTimeout(() => this.emitTurn(socket, threadId), this.turnDelayMs);
           }
           break;
@@ -765,10 +788,12 @@ export class FakeCodexAppServer {
         });
         this.pendingPrompts.delete(threadId);
       }
-      const queued = this.queuedPrompts.get(threadId);
-      if (queued) {
-        this.queuedPrompts.delete(threadId);
-        this.pendingPrompts.set(threadId, queued.text);
+      const queued = this.queuedPrompts.get(threadId) ?? [];
+      const next = queued.shift();
+      if (next) {
+        if (queued.length) this.queuedPrompts.set(threadId, queued);
+        else this.queuedPrompts.delete(threadId);
+        this.pendingPrompts.set(threadId, next.text);
         setTimeout(() => this.emitTurn(socket, threadId), this.turnDelayMs);
       }
     };

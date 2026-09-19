@@ -74,6 +74,7 @@ const api: PeskApi = {
   respondCodexUserInput: sendChannel("respond-codex-user-input"),
   interruptCodexTurn: invokeChannel("interrupt-codex-turn"),
   steerCodexTurn: invokeChannel("steer-codex-turn"),
+  removeCodexQueuedSubmission: invokeChannel("remove-codex-queued-submission"),
   selectAnimation: sendChannel("select-animation"),
   setAnimationMode: sendChannel("set-animation-mode"),
   quitPesk: sendChannel("quit-pesk"),

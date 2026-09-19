@@ -114,6 +114,9 @@ export function registerIpcHandlers(context: ApplicationContext): void {
     if (typeof prompt === "string") codex.steerPrompt(prompt);
     return state.getState();
   });
+  registerInvoke("remove-codex-queued-submission", (_event, id) =>
+    typeof id === "string" ? codex.removeQueuedSubmission(id) : false,
+  );
   registerInvoke("load-older-codex-history", () => codex.loadOlderHistory());
   registerInvoke("fuzzy-file-search", (_event, query, roots) => {
     const valid = validRoots(roots);

@@ -1,4 +1,7 @@
 /** @jest-environment node */
+
+/// <reference types="jest" />
+
 import { CodexQueueManager } from "../../src/codex/queue";
 import { CodexThreadManager } from "../../src/codex/thread-manager";
 import type { JsonRpcResponse } from "../../src/codex/protocol";
@@ -75,4 +78,32 @@ test("handles an empty queue response without requesting another page", () => {
   requests[0]({ id: 1, result: {} });
 
   expect(requests).toHaveLength(1);
+});
+
+test("deletes one queued submission and refreshes the authoritative queue", async () => {
+  const requests: Array<{
+    request: unknown;
+    callback: (message: JsonRpcResponse<unknown>) => void;
+  }> = [];
+  const manager = new CodexQueueManager({
+    request: (request, callback) => {
+      requests.push({ request, callback });
+      return true;
+    },
+    threadManager: new CodexThreadManager(),
+    onStateChanged: jest.fn(),
+  });
+
+  const deleted = manager.delete("thread-1", "queued-2");
+  expect(requests[0].request).toEqual({
+    method: "thread/queue/delete",
+    params: { threadId: "thread-1", queuedSubmissionId: "queued-2" },
+  });
+  requests[0].callback({ id: 1, result: { deleted: true } });
+
+  expect(await deleted).toBe(true);
+  expect(requests[1].request).toEqual({
+    method: "thread/queue/list",
+    params: { threadId: "thread-1", limit: 100 },
+  });
 });

@@ -454,6 +454,8 @@ const webApi = {
   interruptCodexTurn: async () => (await sendCommand("interruptTurn")).ok,
   steerCodexTurn: async (prompt: string) =>
     (await sendCommand("steerTurn", { prompt })).state ?? state!,
+  removeCodexQueuedSubmission: async (id: string) =>
+    (await sendCommand("removeQueuedSubmission", { id })).ok,
   respondCodexPermission: (requestId: string | number, optionId: string) =>
     send("respondPermission", { requestId, optionId }),
   respondCodexUserInput: (requestId: string | number, answers: Record<string, string[]>) =>

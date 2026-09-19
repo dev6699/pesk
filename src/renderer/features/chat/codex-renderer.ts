@@ -90,6 +90,7 @@ export class CodexRenderer {
     );
     this.historyRenderer = new CodexHistoryRenderer(this.history, () => this.state, {
       applySelectedMessage: () => this.applySelectedMessage(),
+      removeQueuedSubmission: (id) => this.removeQueuedSubmission(id),
       setActivePlanConfirmation: (value) => {
         this.activePlanConfirmation = value;
       },
@@ -640,6 +641,11 @@ export class CodexRenderer {
       event.stopPropagation();
       return;
     }
+    if (!this.chat.hidden && event.key === "Delete" && this.removeSelectedQueuedSubmission()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!this.chat.hidden && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
       const direction =
         matchesShortcut(event, "selectPreviousUserMessage") ||
@@ -722,12 +728,19 @@ export class CodexRenderer {
     direction: -1 | 1,
     role?: RendererState["codex"]["threads"]["current"]["thread"]["messages"][number]["role"],
   ): void {
-    const messages = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message"));
+    const messages = Array.from(
+      this.history.querySelectorAll<HTMLElement>(".codex-message, .codex-queued-submission"),
+    );
     if (!messages.length) return;
 
     const candidateIndices = messages
       .map((message, index) => ({ message, index }))
-      .filter(({ message }) => !role || message.classList.contains(`codex-message-${role}`))
+      .filter(
+        ({ message }) =>
+          !role ||
+          (message.classList.contains("codex-message") &&
+            message.classList.contains(`codex-message-${role}`)),
+      )
       .map(({ index }) => index);
     if (!candidateIndices.length) return;
     this.input.blur();
@@ -764,7 +777,9 @@ export class CodexRenderer {
 
   /** Applies the selected-message styling and accessibility state. */
   private applySelectedMessage(): void {
-    const messages = Array.from(this.history.querySelectorAll<HTMLElement>(".codex-message"));
+    const messages = Array.from(
+      this.history.querySelectorAll<HTMLElement>(".codex-message, .codex-queued-submission"),
+    );
     messages.forEach((message, index) => {
       const selected = index === this.selectedMessageIndex;
       message.classList.toggle("codex-message-selected", selected);
@@ -772,11 +787,31 @@ export class CodexRenderer {
     });
   }
 
+  /** Removes the currently highlighted queued submission, if any. */
+  private removeSelectedQueuedSubmission(): boolean {
+    if (this.selectedMessageIndex < 0) return false;
+    const selected = this.history.querySelectorAll<HTMLElement>(
+      ".codex-message, .codex-queued-submission",
+    )[this.selectedMessageIndex];
+    const id = selected?.dataset.queuedSubmissionId;
+    if (!id || id.startsWith("pending-")) return false;
+    this.removeQueuedSubmission(id);
+    return true;
+  }
+
+  private removeQueuedSubmission(id: string): void {
+    void window.peskApi.removeCodexQueuedSubmission(id).then((next) => {
+      if (next) this.updateState(this.state);
+    });
+  }
+
   /** Toggles the selected activity or message details. */
   private toggleSelectedMessage(): boolean {
     if (this.selectedMessageIndex < 0) return false;
-    const message =
-      this.history.querySelectorAll<HTMLElement>(".codex-message")[this.selectedMessageIndex];
+    const message = this.history.querySelectorAll<HTMLElement>(
+      ".codex-message, .codex-queued-submission",
+    )[this.selectedMessageIndex];
+    if (!message?.classList.contains("codex-message")) return false;
     const details = message?.querySelector<HTMLDetailsElement>("details");
     if (!details) return false;
     details.open = !details.open;
@@ -786,12 +821,15 @@ export class CodexRenderer {
   /** Returns the text represented by the current message selection. */
   private selectedMessageText(): string | undefined {
     if (this.selectedMessageIndex < 0) return undefined;
-    const message =
-      this.history.querySelectorAll<HTMLElement>(".codex-message")[this.selectedMessageIndex];
+    const message = this.history.querySelectorAll<HTMLElement>(
+      ".codex-message, .codex-queued-submission",
+    )[this.selectedMessageIndex];
     if (!message) return undefined;
     const content = message.cloneNode(true) as HTMLElement;
     content
-      .querySelectorAll(".codex-message-time, .codex-approval-actions")
+      .querySelectorAll(
+        ".codex-message-time, .codex-approval-actions, .codex-queued-submission-remove",
+      )
       .forEach((element) => element.remove());
     return content.textContent?.trim() || undefined;
   }

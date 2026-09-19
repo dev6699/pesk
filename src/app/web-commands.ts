@@ -103,6 +103,13 @@ export function handleWebCommand(
     case "steerTurn":
       replyCommand(typeof command.prompt === "string" && context.codex.steerPrompt(command.prompt));
       break;
+    case "removeQueuedSubmission":
+      if (typeof command.id === "string") {
+        context.codex.removeQueuedSubmission(command.id).then(replyCommand);
+      } else {
+        replyCommand(false);
+      }
+      break;
     case "respondPermission":
       if (isRequestId(command.requestId) && typeof command.optionId === "string") {
         context.codex.respondPermission(command.requestId, command.optionId);
