@@ -1,6 +1,6 @@
 {
   "name": "pesk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Animated Windows desktop pet.",
   "main": "build/main.js",
   "author": "dev6699",
