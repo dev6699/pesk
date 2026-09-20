@@ -9,6 +9,7 @@ const slashCommands: SlashCommand[] = [
   { command: "/plan", description: "Switch to Plan mode" },
   { command: "/goal", description: "Usage: /goal [<objective>|clear|edit|pause|resume]" },
   { command: "/project", description: "Manage projects" },
+  { command: "/rename", description: "Rename the current thread" },
   { command: "/compact", description: "Compact the current conversation" },
   { command: "/default", description: "Switch to Default mode" },
   { command: "/new", description: "Start a new Codex session" },

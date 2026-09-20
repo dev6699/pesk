@@ -101,6 +101,10 @@ export function registerIpcHandlers(context: ApplicationContext): void {
       codex.startProjectThread(projectId, cwd);
     return state.getState();
   });
+  registerInvoke("rename-codex-thread", (_event, name) => {
+    if (typeof name === "string") codex.renameThread(name);
+    return state.getState();
+  });
   registerInvoke("start-codex-review", (_event, instructions) => {
     if (typeof instructions === "string") codex.startReview(instructions);
     return state.getState();

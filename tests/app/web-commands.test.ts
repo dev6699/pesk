@@ -7,6 +7,7 @@ import { handleWebCommand } from "../../src/app/web-commands";
 test.each([
   ["listProjects", []],
   ["startProjectThread", ["project-1", "/workspace"]],
+  ["renameThread", ["Renamed thread"]],
   ["readProject", ["project-1"]],
   ["createProject", ["Workspace", ["/workspace"], {}, undefined]],
   ["importProject", ["Workspace", ["/workspace"], ["thread-1"], {}, undefined]],
@@ -22,7 +23,9 @@ test.each([
         (_target, method: string) =>
         (...methodArgs: unknown[]) => {
           calls.push({ method, args: methodArgs });
-          return method === "startProjectThread" ? true : Promise.resolve(true);
+          return method === "startProjectThread" || method === "renameThread"
+            ? true
+            : Promise.resolve(true);
         },
     },
   ) as never;
@@ -30,6 +33,7 @@ test.each([
   const command: Record<string, unknown> = { type, requestId: 1 };
   if (type === "readProject" || type === "deleteProject") command.projectId = args[0];
   if (type === "startProjectThread") Object.assign(command, { projectId: args[0], cwd: args[1] });
+  if (type === "renameThread") Object.assign(command, { name: args[0] });
   if (type === "createProject") Object.assign(command, { name: args[0], root: "/workspace" });
   if (type === "importProject")
     Object.assign(command, { name: args[0], roots: args[1], threadIds: args[2] });

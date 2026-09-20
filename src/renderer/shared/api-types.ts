@@ -60,6 +60,7 @@ export interface PeskApi {
   selectCodexModel: (model: string, effort: string) => Promise<RendererState>;
   cancelCodexModel: () => Promise<RendererState>;
   startCodexProjectThread: (projectId: string, cwd: string) => Promise<RendererState>;
+  renameCodexThread: (name: string) => Promise<RendererState>;
   startCodexReview: (instructions: string) => Promise<RendererState>;
   fuzzyFileSearch: (query: string, roots: string[]) => Promise<FuzzyFileSearchResult[]>;
   listCodexProjects: () => Promise<RendererState>;

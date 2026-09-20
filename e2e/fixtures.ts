@@ -8,7 +8,7 @@ import type { RendererState } from "../src/app/renderer-state";
 const rendererRoot = path.resolve(process.env.PESK_BUILD_DIR || "build", "renderer");
 
 export interface FixtureStateOptions {
-  threadItems?: Array<{ id: string; preview?: string }>;
+  threadItems?: Array<{ id: string; name?: string | null; preview?: string }>;
   projects?: RendererState["codex"]["projects"]["items"];
   messages?: RendererState["codex"]["threads"]["current"]["thread"]["messages"];
   modelPicker?: NonNullable<RendererState["codex"]["modelPicker"]>;
@@ -319,6 +319,18 @@ export class WebChatFixture {
       this.currentState = nextState;
       this.selectedThread = threadId;
       this.replyCommand(socket, message, nextState);
+      socket.send(JSON.stringify({ type: "state", state: nextState }));
+      return;
+    }
+    if (message.type === "renameThread") {
+      this.lastCommand = "renameThread";
+      const nextState = structuredClone(this.currentState);
+      const thread = nextState.codex.threads.items.find(
+        (entry) => entry.id === nextState.codex.threads.selectedId,
+      );
+      if (thread && typeof message.name === "string") thread.name = message.name;
+      this.currentState = nextState;
+      this.replyCommand(socket, message, nextState, Boolean(thread));
       socket.send(JSON.stringify({ type: "state", state: nextState }));
       return;
     }

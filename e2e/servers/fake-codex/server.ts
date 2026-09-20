@@ -6,6 +6,7 @@ export interface FakeCodexThread {
   preview: string;
   cwd: string;
   projectId: string | null;
+  name?: string | null;
   status?: { type: "idle" | "active"; activeFlags?: string[] };
   turns?: Array<Record<string, unknown>>;
 }
@@ -374,6 +375,21 @@ export class FakeCodexAppServer {
           });
           break;
         }
+        case "thread/name/set": {
+          const params = (message.params ?? {}) as Record<string, unknown>;
+          const thread = this.threads.find((entry) => entry.id === params.threadId);
+          if (!thread || typeof params.name !== "string") {
+            this.reply(socket, message.id, { error: "Thread not found" });
+            break;
+          }
+          thread.name = params.name;
+          this.reply(socket, message.id, {});
+          this.notify(socket, "thread/name/updated", {
+            threadId: thread.id,
+            threadName: thread.name,
+          });
+          break;
+        }
         case "thread/archive":
         case "thread/delete": {
           const threadId = this.threadId(message);
@@ -560,7 +576,7 @@ export class FakeCodexAppServer {
       agentNickname: null,
       agentRole: null,
       gitInfo: null,
-      name: thread.preview,
+      name: thread.name ?? thread.preview,
       turns: [],
     };
   }

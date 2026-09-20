@@ -67,6 +67,24 @@ test.describe("Electron Codex thread lifecycle", () => {
     );
   });
 
+  test("renames the selected session through the inline form", async () => {
+    const app = await harness.launch();
+    const chat = await harness.waitForChat(app);
+    const input = chat.getByRole("textbox", { name: "Message Codex" });
+    await input.fill("/rename");
+    await chat.getByRole("button", { name: "Send" }).click();
+
+    const prompt = chat.locator("#codex-user-input[data-rename-thread='true']");
+    await expect(prompt).toBeVisible();
+    await prompt.getByRole("textbox", { name: "Name" }).fill("Renamed session");
+    await prompt.getByRole("button", { name: "Save" }).click();
+
+    await expect(prompt).toBeHidden();
+    await expect.poll(() => harness.server.methods).toContain("thread/name/set");
+    await chat.locator(".codex-session-trigger").click();
+    await expect(chat.locator("#codex-session-menu")).toContainText("Renamed session");
+  });
+
   test("loads existing history and restores the selected thread when switching back", async () => {
     harness.server.threads.push({
       id: "history-thread",

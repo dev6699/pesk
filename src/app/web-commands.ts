@@ -74,6 +74,9 @@ export function handleWebCommand(
       if (typeof command.projectId === "string" && typeof command.cwd === "string")
         replyCommand(context.codex.startProjectThread(command.projectId, command.cwd));
       break;
+    case "renameThread":
+      replyCommand(typeof command.name === "string" && context.codex.renameThread(command.name));
+      break;
     case "startReview":
       replyCommand(
         typeof command.instructions === "string" && context.codex.startReview(command.instructions),

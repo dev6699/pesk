@@ -8,6 +8,7 @@ interface CodexInputControllerCallbacks {
   openReviewPrompt(): void;
   openProjectManager(): void;
   openNewThreadPrompt(): void;
+  openRenamePrompt(): void;
   renderUserInput(force: boolean): void;
   scrollHistoryToLatest(force?: boolean): void;
   isHistoryNearBottom(): boolean;
@@ -158,6 +159,15 @@ export class CodexInputController {
       this.hideSuggestions();
       this.resize();
       this.callbacks.openProjectManager();
+      this.input.focus();
+      return;
+    }
+    if (/^\/rename$/i.test(prompt)) {
+      this.rememberPrompt(prompt);
+      this.input.value = "";
+      this.hideSuggestions();
+      this.resize();
+      this.callbacks.openRenamePrompt();
       this.input.focus();
       return;
     }

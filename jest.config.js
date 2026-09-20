@@ -29,6 +29,8 @@ module.exports = {
     "^\\./project-manager\\.js$": "<rootDir>/src/renderer/features/chat/project-manager.ts",
     "^\\./project-thread-renderer\\.js$":
       "<rootDir>/src/renderer/features/chat/project-thread-renderer.ts",
+    "^\\./rename-thread-renderer\\.js$":
+      "<rootDir>/src/renderer/features/chat/rename-thread-renderer.ts",
     "^\\.\\./remote-terminal/commands\\.js$":
       "<rootDir>/src/renderer/features/remote-terminal/commands.ts",
   },

@@ -49,4 +49,21 @@ test.describe("browser session controls", () => {
     await page.getByRole("button", { name: "Copy session ID" }).click();
     await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
   });
+
+  test("renames the selected session through the inline form", async ({ page }) => {
+    await page.goto(url);
+    const input = page.getByRole("textbox", { name: "Message Codex" });
+    await input.fill("/rename");
+    await page.getByRole("button", { name: "Send" }).click();
+
+    const prompt = page.locator("#codex-user-input[data-rename-thread='true']");
+    await expect(prompt).toBeVisible();
+    await prompt.getByRole("textbox", { name: "Name" }).fill("Renamed session");
+    await prompt.getByRole("button", { name: "Save" }).click();
+
+    await expect(prompt).toBeHidden();
+    await expect.poll(() => fixture.lastCommand).toBe("renameThread");
+    await page.locator(".codex-session-trigger").click();
+    await expect(page.locator("#codex-session-menu")).toContainText("Renamed session");
+  });
 });

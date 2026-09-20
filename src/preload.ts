@@ -83,6 +83,7 @@ const api: PeskApi = {
   selectCodexModel: invokeChannel("select-codex-model"),
   cancelCodexModel: invokeChannel("cancel-codex-model"),
   startCodexProjectThread: invokeChannel("start-codex-project-thread"),
+  renameCodexThread: invokeChannel("rename-codex-thread"),
   startCodexReview: invokeChannel("start-codex-review"),
   fuzzyFileSearch: invokeChannel("fuzzy-file-search"),
   listCodexProjects: invokeChannel("list-codex-projects"),

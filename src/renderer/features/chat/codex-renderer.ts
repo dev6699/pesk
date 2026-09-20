@@ -16,6 +16,7 @@ import {
 } from "./codex-renderer-helpers.js";
 import { openProjectManager } from "./project-manager.js";
 import { openProjectThreadPrompt } from "./project-thread-renderer.js";
+import { openRenamePrompt } from "./rename-thread-renderer.js";
 import {
   REMOTE_TERMINAL_COMMANDS,
   handleRemoteTerminalCommand,
@@ -122,6 +123,8 @@ export class CodexRenderer {
           openProjectManager(this.userInput ?? document.createElement("section")),
         openNewThreadPrompt: () =>
           openProjectThreadPrompt(this.userInput ?? document.createElement("section")),
+        openRenamePrompt: () =>
+          openRenamePrompt(this.userInput ?? document.createElement("section")),
         renderUserInput: (force) => this.renderUserInput(force),
         scrollHistoryToLatest: (force) => this.scrollHistoryToLatest(force),
         isHistoryNearBottom: () => this.historyRenderer.isNearBottom(),
@@ -401,19 +404,23 @@ export class CodexRenderer {
         next.codex.threads.current.thread.projectId,
       );
     }
-    const closedProjectThread =
+    const closedGuidedPrompt =
       next.codex.threads.selectedId !== this.state.codex.threads.selectedId &&
-      document.body.dataset.projectThread === "true";
+      (document.body.dataset.projectThread === "true" ||
+        document.body.dataset.renameThread === "true");
     if (
       next.codex.threads.selectedId !== this.state.codex.threads.selectedId &&
       (document.body.dataset.projectManager === "true" ||
-        document.body.dataset.projectThread === "true")
+        document.body.dataset.projectThread === "true" ||
+        document.body.dataset.renameThread === "true")
     ) {
       delete document.body.dataset.projectManager;
       delete document.body.dataset.projectThread;
+      delete document.body.dataset.renameThread;
       if (this.userInput) {
         delete this.userInput.dataset.projectManager;
         delete this.userInput.dataset.projectThread;
+        delete this.userInput.dataset.renameThread;
       }
       this.userInput?.replaceChildren();
       if (this.userInput) this.userInput.hidden = true;
@@ -451,7 +458,7 @@ export class CodexRenderer {
     const sessionOptionsKey = displayedThreads
       .map(
         (thread) =>
-          `${thread.id}\u0000${thread.preview ?? ""}\u0000${this.threadProjectId(thread)}\u0000${this.projectName(this.threadProjectId(thread))}\u0000${thread.recencyAt ?? ""}`,
+          `${thread.id}\u0000${thread.name ?? ""}\u0000${thread.preview ?? ""}\u0000${this.threadProjectId(thread)}\u0000${this.projectName(this.threadProjectId(thread))}\u0000${thread.recencyAt ?? ""}`,
       )
       .join("\u0001");
     if (sessionOptionsKey !== this.renderedSessionOptionsKey) {
@@ -466,7 +473,8 @@ export class CodexRenderer {
         for (const thread of displayedThreads) {
           const option = document.createElement("option");
           option.value = thread.id;
-          option.textContent = thread.preview ? `${thread.id} — ${thread.preview}` : thread.id;
+          const title = thread.name || thread.preview;
+          option.textContent = title ? `${thread.id} — ${title}` : thread.id;
           option.title = thread.id;
           option.dataset.projectName = this.projectName(this.threadProjectId(thread));
           option.dataset.recency = this.formatThreadTime(thread.recencyAt);
@@ -517,9 +525,10 @@ export class CodexRenderer {
       this.promptRenderer.isReviewPromptOpen ||
       this.state.codex.modelPicker ||
       document.body.dataset.projectManager === "true" ||
-      document.body.dataset.projectThread === "true",
+      document.body.dataset.projectThread === "true" ||
+      document.body.dataset.renameThread === "true",
     );
-    if (closedProjectThread) this.inputController.focusChatInput();
+    if (closedGuidedPrompt) this.inputController.focusChatInput();
     if (this.modeToggle) {
       const plan = next.codex.threads.current.thread.collaborationMode === "plan";
       this.modeToggle.hidden = !plan;
@@ -587,13 +596,14 @@ export class CodexRenderer {
     if (
       matchesShortcut(event, "closeProjectManager") &&
       (document.body.dataset.projectManager === "true" ||
-        document.body.dataset.projectThread === "true")
+        document.body.dataset.projectThread === "true" ||
+        document.body.dataset.renameThread === "true")
     ) {
       event.preventDefault();
       event.stopImmediatePropagation();
       this.userInput
         ?.querySelector<HTMLButtonElement>(
-          "[data-project-cancel='true'], [data-project-thread-cancel='true']",
+          "[data-project-cancel='true'], [data-project-thread-cancel='true'], form.codex-rename-thread-form button[type='button']",
         )
         ?.click();
       return;

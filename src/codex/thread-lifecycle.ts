@@ -8,6 +8,7 @@ import type {
   ThreadForkResponse,
   ThreadStartResponse,
   ThreadCompactStartResponse,
+  ThreadSetNameResponse,
   DynamicToolSpec,
 } from "../codex-schema/v2";
 import type {
@@ -21,6 +22,7 @@ import type {
   ThreadReadRequest,
   ThreadResumeRequest,
   ThreadStartRequestWithTools,
+  ThreadSetNameRequest,
   ThreadTurnsListRequest,
   ThreadCompactStartRequest,
 } from "./protocol";
@@ -42,6 +44,7 @@ export type ThreadLifecycleRequestInput =
   | WithoutRequestId<ThreadForkRequest>
   | WithoutRequestId<ThreadCompactStartRequest>
   | WithoutRequestId<ThreadStartRequestWithTools>
+  | WithoutRequestId<ThreadSetNameRequest>
   | WithoutRequestId<ProjectThreadStartRequest>;
 
 export interface ThreadLifecycleDependencies {
@@ -202,6 +205,33 @@ export class CodexThreadLifecycle {
       },
       () => undefined,
     );
+  }
+
+  /** Sets the user-facing name of the currently selected thread. */
+  rename(name: string): boolean {
+    const threadId = this.deps.threadManager.selectedThreadId;
+    const value = name.trim();
+    if (!threadId || !value) {
+      this.deps.threadManager.activeThread.setCommandNotice(
+        !threadId ? "Select a thread before renaming it." : "Enter a thread name.",
+      );
+      this.deps.onStateChanged();
+      return false;
+    }
+    const accepted = this.request<ThreadSetNameResponse>(
+      { method: "thread/name/set", params: { threadId, name: value } },
+      (message) => {
+        if (message.error) {
+          this.deps.threadManager.activeThread.setCommandNotice("Unable to rename thread.");
+          this.deps.onStateChanged();
+        }
+      },
+    );
+    if (!accepted) {
+      this.deps.threadManager.activeThread.setCommandNotice("Unable to rename thread.");
+      this.deps.onStateChanged();
+    }
+    return accepted;
   }
 
   /** Starts manual history compaction for the selected idle thread. */
@@ -508,6 +538,19 @@ export class CodexThreadLifecycle {
   ): void {
     thread.setProjectId(message.params.projectId);
     this.deps.projectManager.scheduleRefresh();
+    this.deps.onStateChanged();
+  }
+
+  /** Applies a server-side thread name update to cached thread metadata. */
+  handleNameUpdated(message: Extract<ServerMessage, { method: "thread/name/updated" }>): void {
+    const thread = this.deps.threadManager.threads.find(
+      (candidate) => candidate.id === message.params.threadId,
+    );
+    if (!thread) return;
+    this.deps.threadManager.updateThread({
+      ...thread,
+      name: message.params.threadName ?? null,
+    });
     this.deps.onStateChanged();
   }
 

@@ -76,6 +76,40 @@ test("retains the model returned while resuming a thread", () => {
   });
 });
 
+test("renames the selected thread through app-server", () => {
+  const { lifecycle, threadManager, requests } = fixture();
+  threadManager.threads.push({ id: "thread-1" } as never);
+  threadManager.thread("thread-1");
+  threadManager.select("thread-1");
+
+  expect(lifecycle.rename("  Renamed thread  ")).toBe(true);
+  expect(requests[0].message).toEqual({
+    method: "thread/name/set",
+    params: { threadId: "thread-1", name: "Renamed thread" },
+  });
+});
+
+test("applies thread name notifications without changing list order", () => {
+  const { lifecycle, threadManager } = fixture();
+  threadManager.threads.push(
+    { id: "thread-1", preview: "Old" } as never,
+    {
+      id: "thread-2",
+      preview: "Other",
+    } as never,
+  );
+
+  lifecycle.handleNameUpdated({
+    method: "thread/name/updated",
+    params: { threadId: "thread-1", threadName: "Renamed" },
+  });
+
+  expect(threadManager.threads).toMatchObject([
+    { id: "thread-1", preview: "Old", name: "Renamed" },
+    { id: "thread-2", preview: "Other" },
+  ]);
+});
+
 test("refreshing a selected thread does not change its display position", () => {
   const { lifecycle, threadManager, requests } = fixture();
   threadManager.threads.push(

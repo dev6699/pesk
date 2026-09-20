@@ -64,6 +64,7 @@ export interface IpcInvokeContract {
     args: [projectId: string, cwd: string];
     result: RendererState;
   };
+  "rename-codex-thread": { args: [name: string]; result: RendererState };
   "start-codex-review": { args: [instructions: string]; result: RendererState };
   "implement-codex-plan": {
     args: [planText: string, clearContext: boolean];

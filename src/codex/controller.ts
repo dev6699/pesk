@@ -336,6 +336,11 @@ export class CodexController {
     return this.projectManager.deleteProject(projectId);
   }
 
+  /** Renames the currently selected thread through app-server. */
+  renameThread(name: string): boolean {
+    return this.lifecycle.rename(name);
+  }
+
   /** Applies a model and reasoning effort selected in the model picker. */
   selectModel(model: string, effort: string): void {
     this.modelManager.select(model, effort);
@@ -638,6 +643,9 @@ export class CodexController {
         break;
       case "thread/project/updated":
         this.lifecycle.handleProjectUpdated(message, thread);
+        break;
+      case "thread/name/updated":
+        this.lifecycle.handleNameUpdated(message);
         break;
       case "thread/archived":
         this.lifecycle.handleThreadRemoved(message.params.threadId);

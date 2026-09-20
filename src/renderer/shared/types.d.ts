@@ -200,6 +200,7 @@ interface CodexRuntimeState {
     selectedId?: string;
     items: Array<{
       id: string;
+      name?: string | null;
       preview?: string;
       status?: unknown;
       projectId?: string | null;

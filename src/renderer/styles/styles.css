@@ -1106,6 +1106,15 @@ body.chat-only #codex-chat {
   min-width: 0;
 }
 
+.codex-rename-thread-form label > span {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.codex-rename-thread-form label > input {
+  display: block;
+}
+
 .codex-user-input-note-label {
   color: var(--text-secondary);
   font-size: 9px;

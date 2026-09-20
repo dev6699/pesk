@@ -3121,6 +3121,7 @@ test("shows and selects slash commands", () => {
     "/planSwitch to Plan mode",
     "/goalUsage: /goal [<objective>|clear|edit|pause|resume]",
     "/projectManage projects",
+    "/renameRename the current thread",
     "/compactCompact the current conversation",
     "/defaultSwitch to Default mode",
     "/newStart a new Codex session",

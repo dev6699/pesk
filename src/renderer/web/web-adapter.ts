@@ -447,6 +447,8 @@ const webApi = {
   cancelCodexModel: async () => (await sendCommand("cancelModel")).state ?? state!,
   startCodexProjectThread: async (projectId: string, cwd: string) =>
     (await sendCommand("startProjectThread", { projectId, cwd })).state ?? state!,
+  renameCodexThread: async (name: string) =>
+    (await sendCommand("renameThread", { name })).state ?? state!,
   startCodexReview: async (instructions: string) =>
     (await sendCommand("startReview", { instructions })).state ?? state!,
   implementCodexPlan: async (planText: string, clearContext: boolean) =>
