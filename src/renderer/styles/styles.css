@@ -2593,7 +2593,8 @@ body.chat-only #codex-chat {
 }
 
 .codex-command-suggestion {
-  grid-template-columns: max-content minmax(0, 1fr);
+  /* Keep every description on the same column regardless of command length. */
+  grid-template-columns: 5.5rem minmax(0, 1fr);
 }
 
 .codex-file-suggestion-name {
