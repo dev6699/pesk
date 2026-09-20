@@ -1,4 +1,8 @@
-import type { GetAccountRateLimitsResponse, RateLimitSnapshot } from "../codex-schema/v2";
+import type {
+  GetAccountRateLimitsResponse,
+  RateLimitSnapshot,
+  RateLimitWindow,
+} from "../codex-schema/v2";
 import type { AccountRateLimitsRequest, JsonRpcResponse } from "./protocol";
 
 export interface RateLimitManagerOptions {
@@ -39,7 +43,7 @@ export class CodexRateLimitManager {
 
   /** Applies a live account rate-limit notification. */
   handleUpdated(rateLimits: RateLimitSnapshot): void {
-    this.rateLimits = rateLimits;
+    this.rateLimits = mergeRateLimitSnapshot(this.rateLimits, rateLimits);
     this.options.onStateChanged();
   }
 
@@ -47,4 +51,38 @@ export class CodexRateLimitManager {
   resetTransportState(): void {
     this.readPending = false;
   }
+}
+
+function mergeRateLimitSnapshot(
+  previous: RateLimitSnapshot | undefined,
+  update: RateLimitSnapshot,
+): RateLimitSnapshot {
+  if (!previous) return structuredClone(update);
+
+  const sparseUpdate = update as Partial<RateLimitSnapshot>;
+  return {
+    ...previous,
+    ...sparseUpdate,
+    limitId: sparseUpdate.limitId ?? previous.limitId,
+    limitName: sparseUpdate.limitName ?? previous.limitName,
+    normalModelSlug: sparseUpdate.normalModelSlug ?? previous.normalModelSlug,
+    primary: mergeRateLimitWindow(previous.primary, sparseUpdate.primary),
+    secondary: mergeRateLimitWindow(previous.secondary, sparseUpdate.secondary),
+    credits: sparseUpdate.credits ?? previous.credits,
+    individualLimit: sparseUpdate.individualLimit ?? previous.individualLimit,
+    spendControlReached: sparseUpdate.spendControlReached ?? previous.spendControlReached,
+    planType: sparseUpdate.planType ?? previous.planType,
+    rateLimitReachedType: sparseUpdate.rateLimitReachedType ?? previous.rateLimitReachedType,
+  };
+}
+
+function mergeRateLimitWindow(
+  previous: RateLimitWindow | null,
+  update: RateLimitWindow | null | undefined,
+): RateLimitWindow | null {
+  if (!update) return previous;
+  return {
+    ...previous,
+    ...update,
+  };
 }

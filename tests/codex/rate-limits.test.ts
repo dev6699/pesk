@@ -41,6 +41,31 @@ test("accepts live rate-limit updates", () => {
   expect(publish).toHaveBeenCalledTimes(1);
 });
 
+test("merges sparse live updates into the last complete snapshot", () => {
+  const publish = jest.fn();
+  const manager = new CodexRateLimitManager({
+    request: () => true,
+    onStateChanged: publish,
+  });
+  const initial = {
+    primary: { usedPercent: 99, windowDurationMins: 60, resetsAt: 1_700_000_000 },
+    secondary: null,
+    credits: null,
+    individualLimit: null,
+    spendControlReached: false,
+    rateLimitReachedType: null,
+  } as never;
+
+  manager.handleUpdated(initial);
+  manager.handleUpdated({ primary: { usedPercent: 100 } } as never);
+
+  expect(manager.getSnapshot()).toMatchObject({
+    primary: { usedPercent: 100, windowDurationMins: 60, resetsAt: 1_700_000_000 },
+    secondary: null,
+  });
+  expect(publish).toHaveBeenCalledTimes(2);
+});
+
 test("clears a rejected read guard and ignores an empty response", () => {
   const callbacks: Array<(message: JsonRpcResponse<unknown>) => void> = [];
   const manager = new CodexRateLimitManager({
