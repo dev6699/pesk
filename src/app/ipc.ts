@@ -6,7 +6,18 @@ import { registerEvent, registerInvoke } from "./ipc-contract";
 
 /** Registers the main-process IPC surface, grouped by the feature it controls. */
 export function registerIpcHandlers(context: ApplicationContext): void {
-  const { codex, pet, chat, presets, menu, webServer, state, focus, remoteTerminal } = context;
+  const {
+    codex,
+    codexProfiles,
+    pet,
+    chat,
+    presets,
+    menu,
+    webServer,
+    state,
+    focus,
+    remoteTerminal,
+  } = context;
 
   // General application and renderer state
   registerInvoke("open-external-url", (_event, url) => {
@@ -32,19 +43,15 @@ export function registerIpcHandlers(context: ApplicationContext): void {
     if (typeof themeName === "string") context.setTheme(themeName);
     return state.getState();
   });
-  registerInvoke("get-codex-app-server-profiles", () => context.getCodexAppServerProfiles());
+  registerInvoke("get-codex-app-server-profiles", () => codexProfiles.get());
   registerInvoke("add-codex-app-server-profile", (_event, name, url) =>
-    context.addCodexAppServerProfile(name, url),
+    codexProfiles.add(name, url),
   );
   registerInvoke("update-codex-app-server-profile", (_event, id, name, url) =>
-    context.updateCodexAppServerProfile(id, name, url),
+    codexProfiles.update(id, name, url),
   );
-  registerInvoke("delete-codex-app-server-profile", (_event, id) =>
-    context.deleteCodexAppServerProfile(id),
-  );
-  registerInvoke("select-codex-app-server-profile", (_event, id) =>
-    context.selectCodexAppServerProfile(id),
-  );
+  registerInvoke("delete-codex-app-server-profile", (_event, id) => codexProfiles.delete(id));
+  registerInvoke("select-codex-app-server-profile", (_event, id) => codexProfiles.select(id));
   registerEvent("refresh-codex-rate-limits", () => codex.refreshRateLimits());
   registerEvent("open-config-folder", () => void shell.openPath(context.userDataPath));
 
