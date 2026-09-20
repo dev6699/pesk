@@ -1,11 +1,11 @@
 /**
- * Run with: npm run release
+ * Run with: npm run release -- <version>
  *
- * Publishes v<package-version> by creating and pushing a tag, which starts the
- * GitHub Release workflow. It never pushes commits or branches. Before tagging,
- * it requires a clean, already-pushed master checkout; matching package and lock
- * versions; no existing tag; successful formatting and tests; and an explicit
- * confirmation before it creates or pushes a tag.
+ * Updates package versions, commits and pushes master, then publishes
+ * v<version> by creating and pushing a tag, which starts the GitHub Release
+ * workflow. Before changing anything, it requires a clean master checkout
+ * that is already pushed. It runs formatting and tests, then asks for explicit
+ * confirmation before pushing the version commit and release tag.
  */
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
@@ -54,16 +54,16 @@ async function confirmRelease(tag) {
 }
 
 async function main() {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-  const lockfile = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
-  const version = packageJson.version;
+  const requestedVersion = process.argv[2];
+  if (!requestedVersion || process.argv.length > 3) {
+    fail("usage: npm run release -- <version> (for example, npm run release -- 1.0.0)");
+  }
+
+  const version = requestedVersion;
   const tag = `v${version}`;
 
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
     fail(`package.json version '${version}' is not a valid release version.`);
-  }
-  if (lockfile.version !== version || lockfile.packages?.[""]?.version !== version) {
-    fail("package-lock.json version does not match package.json. Run npm version <version> first.");
   }
   if (output("git", ["status", "--porcelain"])) {
     fail("the working tree is not clean. Commit, stash, or remove every change first.");
@@ -81,6 +81,20 @@ async function main() {
   if (remoteTags) fail(`remote tag ${tag} already exists.`);
   if (output("git", ["tag", "--list", tag])) fail(`local tag ${tag} already exists.`);
 
+  run(npmCommand, ["version", version, "--no-git-tag-version"], {
+    shell: process.platform === "win32",
+  });
+
+  const updatedPackageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const lockfile = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
+  if (
+    updatedPackageJson.version !== version ||
+    lockfile.version !== version ||
+    lockfile.packages?.[""]?.version !== version
+  ) {
+    fail("npm version did not update package.json and package-lock.json consistently.");
+  }
+
   run(npmCommand, ["run", "format:check"], { shell: process.platform === "win32" });
   run(npmCommand, ["test"], { shell: process.platform === "win32" });
 
@@ -89,14 +103,18 @@ async function main() {
     return;
   }
 
-  console.log(
-    `Creating and pushing ${tag} from ${output("git", ["rev-parse", "--short", "HEAD"])}...`,
-  );
+  run("git", ["add", "package.json", "package-lock.json"]);
+  run("git", ["commit", "-m", `Release ${tag}`]);
+  run("git", ["push", "origin", "master"]);
+
+  console.log(`Creating and pushing ${tag}...`);
   run("git", ["tag", "-a", tag, "-m", `Release ${tag}`]);
   try {
     run("git", ["push", "origin", tag]);
   } catch (error) {
-    console.error(`Tag was created locally but was not pushed. Remove it with: git tag -d ${tag}`);
+    console.error(
+      `Version commit was pushed, but the tag was not pushed. Retry with: git push origin ${tag}`,
+    );
     throw error;
   }
   console.log(`Published ${tag}. GitHub Actions will build and attach the Windows installer.`);
