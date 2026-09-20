@@ -868,9 +868,18 @@ body.chat-only #codex-chat {
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
-  font:
-    14px/1 system-ui,
-    sans-serif;
+}
+
+#codex-chat-lock svg,
+.codex-image-select svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 #codex-chat-lock.chat-lock-active {
@@ -2702,8 +2711,6 @@ body.chat-only #codex-chat {
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
 }
 
 .codex-image-select:hover,

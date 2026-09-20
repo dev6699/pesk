@@ -28,7 +28,19 @@ const chatLockButton = document.getElementById("codex-chat-lock") as HTMLButtonE
 if (chatLockButton) {
   const button = chatLockButton;
   function updateChatLockIndicator(locked: boolean): void {
-    button.textContent = locked ? "🔒" : "🔓";
+    button.innerHTML = locked
+      ? `<svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="5" y="10" width="14" height="10" rx="2"></rect>
+          <path d="M7 10V7a5 5 0 0 1 10 0v3"></path>
+          <circle cx="12" cy="15" r="1"></circle>
+          <path d="M12 16v2"></path>
+        </svg>`
+      : `<svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="5" y="10" width="14" height="10" rx="2"></rect>
+          <path d="M8 10V7a4 4 0 0 1 7.5-2"></path>
+          <circle cx="12" cy="15" r="1"></circle>
+          <path d="M12 16v2"></path>
+        </svg>`;
     button.setAttribute("aria-label", locked ? "Unlock chat window" : "Lock chat window");
     button.title = locked
       ? "Allow chat to hide when it loses focus (Ctrl+Shift+L)"
