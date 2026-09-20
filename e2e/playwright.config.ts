@@ -29,7 +29,7 @@ export default defineConfig({
       name: "electron",
       use: { ...devices["Desktop Chrome"] },
       testMatch:
-        /[\\/]specs[\\/](app[\\/].*|codex[\\/](?:.*\.desktop|connection|profile-switching)\.spec\.ts|projects[\\/].*\.desktop\.spec\.ts|attention[\\/].*\.desktop\.spec\.ts|remote[\\/].*\.desktop\.spec\.ts|regression[\\/].*\.desktop\.spec\.ts)/,
+        /[\\/]specs[\\/](app[\\/].*|codex[\\/](?:.*\.desktop|connection|profile-switching)\.spec\.ts|projects[\\/].*\.desktop\.spec\.ts|attention[\\/].*\.desktop\.spec\.ts|remote[\\/].*\.desktop\.spec\.ts|regression[\\/].*\.desktop\.spec\.ts|docs[\\/].*\.desktop\.spec\.ts)/,
     },
   ],
 });

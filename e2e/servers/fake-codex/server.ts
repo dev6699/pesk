@@ -52,7 +52,14 @@ export class FakeCodexAppServer {
   private longRunning = false;
   private fileChangeEnabled = false;
   private fileChanges: FakeCodexFileChange[] = [];
+  private fileChangeSequence: FakeCodexFileChange[][] | undefined;
   private remoteTerminalEnabled = false;
+  private displayModel = "fixture-model";
+  private displayModelProvider = "fixture-provider";
+  private displayCliVersion = "fixture";
+  private approvalCommand = "echo approval-required";
+  private remoteCommand = "echo from codex";
+  private remoteCommandReason = "E2E remote terminal command";
   private turnDelayMs = 20;
   private streamingDelayMs = 0;
   private nextQueuedSubmissionId = 1;
@@ -129,6 +136,21 @@ export class FakeCodexAppServer {
     this.receivedApprovalResponses = 0;
   }
 
+  setDisplayIdentity(values: { model: string; provider: string; cliVersion: string }): void {
+    this.displayModel = values.model;
+    this.displayModelProvider = values.provider;
+    this.displayCliVersion = values.cliVersion;
+  }
+
+  setApprovalCommand(command: string): void {
+    this.approvalCommand = command;
+  }
+
+  setRemoteCommand(command: string, reason: string): void {
+    this.remoteCommand = command;
+    this.remoteCommandReason = reason;
+  }
+
   enableMultipleApprovals(): void {
     this.approvalEnabled = true;
     this.expectedApprovalResponses = 2;
@@ -202,6 +224,12 @@ export class FakeCodexAppServer {
   ): void {
     this.fileChangeEnabled = true;
     this.fileChanges = changes.map((change) => ({ ...change }));
+    this.fileChangeSequence = undefined;
+  }
+
+  enableFileChangeSequence(sequences: FakeCodexFileChange[][]): void {
+    this.fileChangeEnabled = true;
+    this.fileChangeSequence = sequences.map((changes) => changes.map((change) => ({ ...change })));
   }
 
   enableRemoteTerminal(): void {
@@ -285,6 +313,24 @@ export class FakeCodexAppServer {
             platformOs: "linux",
           });
           break;
+        case "account/rateLimits/read":
+          this.reply(socket, message.id, {
+            rateLimits: {
+              limitId: "docs-capture",
+              limitName: "Documentation capture",
+              normalModelSlug: "pesk-code-69",
+              primary: { usedPercent: 31, windowDurationMins: 300, resetsAt: 1_800_000_000 },
+              secondary: { usedPercent: 68, windowDurationMins: 10_080, resetsAt: 1_800_000_000 },
+              credits: { hasCredits: true, unlimited: false, balance: "42" },
+              individualLimit: null,
+              spendControlReached: false,
+              planType: "pro_plan",
+              rateLimitReachedType: null,
+            },
+            rateLimitsByLimitId: null,
+            rateLimitResetCredits: null,
+          });
+          break;
         case "thread/list":
           this.reply(socket, message.id, {
             data: this.threads.map((thread) => this.threadSummary(thread)),
@@ -363,8 +409,8 @@ export class FakeCodexAppServer {
           this.threads.push(thread);
           this.reply(socket, message.id, {
             thread: this.threadSummary(thread),
-            model: "fixture-model",
-            modelProvider: "fixture-provider",
+            model: this.displayModel,
+            modelProvider: this.displayModelProvider,
             serviceTier: null,
             cwd: thread.cwd,
             instructionSources: [],
@@ -372,6 +418,8 @@ export class FakeCodexAppServer {
             approvalsReviewer: null,
             sandbox: { type: "dangerFullAccess" },
             reasoningEffort: null,
+            tokenUsage: this.tokenUsage(),
+            modelInfo: this.modelInfo(),
           });
           break;
         }
@@ -416,8 +464,8 @@ export class FakeCodexAppServer {
             this.threads.find((candidate) => candidate.id === threadId) ?? this.threads[0];
           this.reply(socket, message.id, {
             thread: this.threadSummary(thread),
-            model: "fixture-model",
-            modelProvider: "fixture-provider",
+            model: this.displayModel,
+            modelProvider: this.displayModelProvider,
             serviceTier: null,
             cwd: thread.cwd,
             instructionSources: [],
@@ -425,8 +473,15 @@ export class FakeCodexAppServer {
             approvalsReviewer: null,
             sandbox: { type: "dangerFullAccess" },
             reasoningEffort: null,
+            tokenUsage: this.tokenUsage(),
+            modelInfo: this.modelInfo(),
             turnsBackwardsCursor: null,
             itemsBackwardsCursor: null,
+          });
+          this.notify(socket, "thread/tokenUsage/updated", {
+            threadId: thread.id,
+            turnId: "release-triage-turn",
+            tokenUsage: this.tokenUsage(),
           });
           break;
         }
@@ -560,8 +615,8 @@ export class FakeCodexAppServer {
       sectionEnteredAt: null,
       projectId: thread.projectId,
       historyMode: "paginated",
-      modelProvider: "fixture-provider",
-      model: "fixture-model",
+      modelProvider: this.displayModelProvider,
+      model: this.displayModel,
       reasoningEffort: null,
       createdAt: 1,
       updatedAt: 1,
@@ -569,7 +624,7 @@ export class FakeCodexAppServer {
       status: thread.status ?? { type: "idle" },
       path: null,
       cwd: thread.cwd,
-      cliVersion: "fixture",
+      cliVersion: this.displayCliVersion,
       originator: null,
       source: "appServer",
       threadSource: null,
@@ -578,6 +633,31 @@ export class FakeCodexAppServer {
       gitInfo: null,
       name: thread.name ?? thread.preview,
       turns: [],
+    };
+  }
+
+  private modelInfo(): Record<string, string> {
+    return {
+      model: this.displayModel,
+      provider: this.displayModelProvider,
+      reasoningEffort: "balanced",
+      serviceTier: "standard",
+    };
+  }
+
+  private tokenUsage(): Record<string, unknown> {
+    const breakdown = {
+      totalTokens: 18_400,
+      inputTokens: 13_200,
+      cachedInputTokens: 8_600,
+      cacheWriteInputTokens: 0,
+      outputTokens: 3_100,
+      reasoningOutputTokens: 2_100,
+    };
+    return {
+      total: breakdown,
+      last: { ...breakdown, inputTokens: 5_400, totalTokens: 7_200 },
+      modelContextWindow: 1_000_000,
     };
   }
 
@@ -598,13 +678,17 @@ export class FakeCodexAppServer {
   }
 
   private emitTurn(socket: WebSocket, threadId: string): void {
-    const turnId = "e2e-turn-1";
-    const itemId = "e2e-agent-message-1";
+    const fileChangeTurn = this.fileChangeSequence?.length ?? 0;
+    const turnId = fileChangeTurn ? `e2e-file-change-turn-${fileChangeTurn}` : "e2e-turn-1";
+    const itemId = fileChangeTurn
+      ? `e2e-file-change-item-${fileChangeTurn}`
+      : "e2e-agent-message-1";
+    const fileChanges = this.fileChangeSequence?.shift() ?? this.fileChanges;
     const item = this.approvalEnabled
       ? {
           type: "commandExecution",
           id: itemId,
-          command: "echo approval-required",
+          command: this.approvalCommand,
           status: "inProgress",
         }
       : this.remoteTerminalEnabled
@@ -624,7 +708,7 @@ export class FakeCodexAppServer {
               type: "fileChange",
               id: itemId,
               status: "completed",
-              changes: this.fileChanges,
+              changes: fileChanges,
             }
           : {
               type: "agentMessage",
@@ -650,7 +734,7 @@ export class FakeCodexAppServer {
           approvalId: null,
           kind: "command",
           environmentId: null,
-          command: "echo approval-required",
+          command: this.approvalCommand,
           cwd: "/tmp/pesk-e2e-workspace",
           reason: "E2E approval request",
           startedAtMs: 1,
@@ -827,7 +911,7 @@ export class FakeCodexAppServer {
         callId: "rterm-execute-1",
         namespace: "remote_terminal",
         tool: "execute",
-        arguments: { command: "echo from codex", reason: "E2E remote terminal command" },
+        arguments: { command: this.remoteCommand, reason: this.remoteCommandReason },
       },
       304,
     );

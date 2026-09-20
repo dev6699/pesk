@@ -102,6 +102,11 @@ const playwright = spawnSync(
     "--config",
     path.join(root, "e2e", "playwright.config.ts"),
     ...process.argv.slice(2),
+    ...(process.argv
+      .slice(2)
+      .some((argument) => /(?:[\\/]docs[\\/]|screenshots\.desktop\.spec\.ts)/.test(argument))
+      ? []
+      : ["--grep-invert", "@docs"]),
   ],
   { cwd: root, env, stdio: "inherit" },
 );

@@ -6,9 +6,14 @@
 
 Pesk is an Electron and TypeScript application for working with Codex through a dedicated chat workspace, remote-machine investigation, configurable Windows workflows, and remote Codex session access.
 
-<p align="center">
-  <img src="docs/screenshot.png" alt="Pesk desktop companion and Codex chat window" width="720" />
-</p>
+<table>
+  <tr>
+    <td><img src="docs/screenshot-workspace.png" alt="Pesk Codex workspace reviewing a Windows release candidate" width="180" /></td>
+    <td><img src="docs/screenshot-file-changes.png" alt="Pesk thread-wide file change review" width="180" /></td>
+    <td><img src="docs/screenshot-approval-gate.png" alt="Pesk human approval gate for a remote diagnostic command" width="180" /></td>
+    <td><img src="docs/screenshot-imagegen.png" alt="Pesk generated-image activity and project manager" width="180" /></td>
+  </tr>
+</table>
 
 ## Features
 

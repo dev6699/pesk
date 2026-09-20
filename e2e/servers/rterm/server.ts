@@ -18,7 +18,7 @@ export class FakeRtermServer {
       if (request.url?.startsWith("/provider/ssh")) {
         response.writeHead(200, { "Content-Type": "text/html" });
         response.end(
-          "<!doctype html><html><body><main id='fake-rterm'>Fake rterm</main><pre id='fake-rterm-output'></pre>" +
+          "<!doctype html><html><body style='margin:0;padding:18px;background:#101419;color:#d7e2e8;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace'><main id='fake-rterm' style='color:#83d4b0;font-weight:700'>Fake rterm</main><div style='margin-top:6px;color:#91a4ae'>production-e2e-host · connected</div><pre id='fake-rterm-output' style='margin-top:18px;color:#c5d3da'>root@production-e2e-host:~$ awaiting approved command</pre>" +
             "<script src='/provider/ssh/client.js'></script>" +
             "<script>" +
             "const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';" +

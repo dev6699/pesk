@@ -20,6 +20,8 @@ npm start         # Build and launch Electron locally
 npm test          # Build, then run Jest serially
 npm run test:e2e  # Build in a temporary directory and run all Playwright browser/Electron projects
 npm run test:e2e:headed # Run Electron coverage with the chat window shown
+npm run test:e2e:screenshots # Capture the README documentation screenshots
+npm run test:e2e:screenshots -- --headed # Capture documentation screenshots with the chat window shown
 PLAYWRIGHT_WORKERS=1 npm run test:e2e # Override the default worker count
 npm run test:e2e -- e2e/specs/codex/chat.desktop.spec.ts # Run one spec
 npm run test:e2e -- --grep "queued message" # Filter tests by title
@@ -47,6 +49,8 @@ npm run typecheck:e2e
 Static checks do not prove Windows GUI, installer, or runtime behavior; verify those separately when changing windows, shortcuts, packaging, or startup behavior.
 
 Playwright uses the real renderer and Electron shell. The first E2E run on each host platform bootstraps and caches its Electron dependency tree under `.e2e-deps/<platform>`; later runs reuse it. Do not share a Windows `node_modules` tree with WSL/Linux. If the Playwright Chromium browser is unavailable, install it once with `npx playwright install chromium`. Run Electron coverage from a native Linux or native Windows runtime, not a mixed WSL/Windows Electron setup. Local reports default to an OS temporary directory; CI writes to `test-results/` and retains the HTML report, traces, screenshots, and videos for failures.
+
+Documentation screenshot tests under `e2e/specs/docs/` are tagged `@docs` and excluded from normal `test:e2e` and `test:e2e:headed` runs. Use `test:e2e:screenshots` to capture them explicitly; pass `--headed` for a visible Electron window.
 
 Electron E2E specs use the worker-scoped `electronProfile` fixture from `e2e/helpers/electron-test.ts`. Each test creates a fresh harness with that directory; the harness resets persisted state while retaining Chromium caches and configures its own fake app-server profile. The worker removes the directory at teardown. Do not hard-code profile paths or server endpoints. Remote E2E specs must reserve an ephemeral local web port so a test cannot connect to a running Pesk instance.
 

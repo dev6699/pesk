@@ -1,6 +1,6 @@
 {
   "name": "pesk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Animated Windows desktop pet.",
   "main": "build/main.js",
   "author": "dev6699",
@@ -12,6 +12,7 @@
     "test": "npm run build && npm run typecheck:tests && jest --runInBand",
     "test:e2e": "node scripts/test-e2e.js",
     "test:e2e:headed": "node scripts/test-e2e.js --headed",
+    "test:e2e:screenshots": "node scripts/test-e2e.js --project=electron e2e/specs/docs/screenshots.desktop.spec.ts",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win",

@@ -68,6 +68,10 @@ test.describe("Electron attention workflows", () => {
     const pet = app.windows().find((window) => window.url().includes("pet.html"));
     if (!pet) throw new Error("Electron pet window did not open");
     await expect(chat.locator(".codex-session-trigger")).toContainText("Thread A");
+    await expect(pet.locator("#codex-status")).toHaveAttribute(
+      "title",
+      "Selected thread: e2e-thread-1",
+    );
 
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()
@@ -78,12 +82,13 @@ test.describe("Electron attention workflows", () => {
         ?.hide();
       BrowserWindow.getFocusedWindow()?.blur();
     });
+    const aggregate = pet.locator("#codex-aggregate-status-label");
     harness.server.emitApprovalForThread("e2e-thread-1", "echo thread-a");
     await expect(chat.locator(".codex-session-trigger")).toContainText("Thread A");
     await expect(chat.locator("#codex-user-input")).toContainText("echo thread-a");
+    await expect(aggregate).toHaveAttribute("title", "");
 
     harness.server.emitApprovalForThread("attention-thread-b", "echo thread-b");
-    const aggregate = pet.locator("#codex-aggregate-status-label");
     await expect(aggregate).toHaveAttribute("title", /Thread B: Waiting · needs approval/);
     harness.server.emitTurnStartedForThread("attention-thread-c");
     await expect(aggregate).toHaveAttribute("title", /Thread B: Waiting · needs approval/);
