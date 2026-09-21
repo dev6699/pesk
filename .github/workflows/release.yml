@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   publish:
@@ -15,29 +16,51 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Wait for CI on tagged commit
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sha = "${{ github.sha }}"
+          $repository = "${{ github.repository }}"
+          $deadline = (Get-Date).ToUniversalTime().AddMinutes(30)
+
+          while ($true) {
+            $runsJson = gh run list --repo $repository --workflow ci.yml --commit $sha --json status,conclusion,headSha --limit 10
+            if ($LASTEXITCODE -ne 0) {
+              throw "Unable to query CI runs for $sha."
+            }
+
+            $runs = @()
+            if ($runsJson) {
+              $runs = @($runsJson | ConvertFrom-Json | Where-Object { $_.headSha -eq $sha })
+            }
+            if ($runs.Count -gt 0) {
+              $run = $runs[0]
+              if ($run.status -eq "completed") {
+                if ($run.conclusion -ne "success") {
+                  throw "CI for $sha finished with conclusion '$($run.conclusion)'."
+                }
+                Write-Host "CI passed for $sha."
+                break
+              }
+              Write-Host "CI for $sha is $($run.status); waiting..."
+            } else {
+              Write-Host "No CI run found for $sha; waiting..."
+            }
+
+            if ((Get-Date).ToUniversalTime() -ge $deadline) {
+              throw "Timed out waiting for CI for $sha."
+            }
+            Start-Sleep -Seconds 15
+          }
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
       - run: npm ci
-      - run: npm run format:check
-      - run: npm test
-      - run: npx playwright install chromium
-      - run: npm run test:e2e
-        env:
-          CI: true
-
-      - name: Upload Playwright report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-report-${{ github.ref_name }}
-          path: |
-            playwright-report/
-            test-results/
-          if-no-files-found: ignore
-
       - name: Verify release tag matches package version
         shell: pwsh
         run: |

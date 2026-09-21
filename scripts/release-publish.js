@@ -1,11 +1,9 @@
 /**
  * Run with: npm run release -- <version>
  *
- * Updates package versions, commits and pushes master, then publishes
- * v<version> by creating and pushing a tag, which starts the GitHub Release
- * workflow. Before changing anything, it requires a clean master checkout
- * that is already pushed. It runs formatting and tests, then asks for explicit
- * confirmation before pushing the version commit and release tag.
+ * Updates package.json and package-lock.json, commits and pushes master, then
+ * prints the commands for manually creating and pushing the release tag after
+ * CI passes.
  */
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
@@ -42,11 +40,11 @@ function fail(message) {
 
 async function confirmRelease(tag) {
   if (!process.stdin.isTTY) {
-    fail("an interactive terminal is required to confirm tag publication.");
+    fail("an interactive terminal is required to confirm the release.");
   }
   const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const answer = await prompt.question(`Publish ${tag}? [y/N] `);
+    const answer = await prompt.question(`Prepare ${tag} and push the version commit? [y/N] `);
     return /^(y|yes)$/i.test(answer.trim());
   } finally {
     prompt.close();
@@ -81,6 +79,11 @@ async function main() {
   if (remoteTags) fail(`remote tag ${tag} already exists.`);
   if (output("git", ["tag", "--list", tag])) fail(`local tag ${tag} already exists.`);
 
+  if (!(await confirmRelease(tag))) {
+    console.log("Release cancelled.");
+    return;
+  }
+
   run(npmCommand, ["version", version, "--no-git-tag-version"], {
     shell: process.platform === "win32",
   });
@@ -95,29 +98,13 @@ async function main() {
     fail("npm version did not update package.json and package-lock.json consistently.");
   }
 
-  run(npmCommand, ["run", "format:check"], { shell: process.platform === "win32" });
-  run(npmCommand, ["test"], { shell: process.platform === "win32" });
-
-  if (!(await confirmRelease(tag))) {
-    console.log("Release cancelled.");
-    return;
-  }
-
   run("git", ["add", "package.json", "package-lock.json"]);
   run("git", ["commit", "-m", `Release ${tag}`]);
   run("git", ["push", "origin", "master"]);
 
-  console.log(`Creating and pushing ${tag}...`);
-  run("git", ["tag", "-a", tag, "-m", `Release ${tag}`]);
-  try {
-    run("git", ["push", "origin", tag]);
-  } catch (error) {
-    console.error(
-      `Version commit was pushed, but the tag was not pushed. Retry with: git push origin ${tag}`,
-    );
-    throw error;
-  }
-  console.log(`Published ${tag}. GitHub Actions will build and attach the Windows installer.`);
+  console.log(`Version commit pushed. After master CI passes, create and push ${tag}:`);
+  console.log(`  git tag -a ${tag} -m "Release ${tag}"`);
+  console.log(`  git push origin ${tag}`);
 }
 
 main().catch((error) => {
