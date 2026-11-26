@@ -134,6 +134,18 @@ export function renderMarkdown(value: string): string {
   return template.innerHTML;
 }
 
+function markdownFilePath(href: string): string | undefined {
+  let path: string;
+  try {
+    path = decodeURIComponent(href);
+  } catch {
+    return undefined;
+  }
+  if (/[\x00-\x1f\x7f]/.test(path)) return undefined;
+  if (/^\/(?![/\\])|^[a-z]:[/\\]|^\\\\[^\\]+\\[^\\]+/i.test(path)) return path;
+  return undefined;
+}
+
 export function sanitizeMarkdownHtml(html: string): string {
   const template = document.createElement("template");
   template.innerHTML = html;
@@ -172,6 +184,8 @@ export function sanitizeMarkdownHtml(html: string): string {
         child.remove();
         continue;
       }
+      const path =
+        child.tagName === "A" ? markdownFilePath(child.getAttribute("href") ?? "") : undefined;
       for (const attribute of [...child.attributes]) {
         const name = attribute.name.toLowerCase();
         const keep =
@@ -197,6 +211,15 @@ export function sanitizeMarkdownHtml(html: string): string {
         child.setAttribute("rel", "noreferrer");
       }
       visit(child);
+      if (path) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "codex-file-path-copy";
+        button.dataset.filePath = path;
+        button.title = "Copy path";
+        button.append(...child.childNodes);
+        child.replaceWith(button);
+      }
     }
   };
   visit(template.content as unknown as Element);
@@ -204,9 +227,10 @@ export function sanitizeMarkdownHtml(html: string): string {
 }
 
 /** Copies text using the Clipboard API with a desktop-compatible fallback. */
-export async function copyTextToClipboard(text: string): Promise<void> {
+export async function copyTextToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
+    return true;
   } catch {
     const copyTarget = document.createElement("textarea");
     copyTarget.value = text;
@@ -214,8 +238,13 @@ export async function copyTextToClipboard(text: string): Promise<void> {
     copyTarget.style.opacity = "0";
     document.body.append(copyTarget);
     copyTarget.select();
-    document.execCommand("copy");
-    copyTarget.remove();
+    try {
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
+      copyTarget.remove();
+    }
   }
 }
 

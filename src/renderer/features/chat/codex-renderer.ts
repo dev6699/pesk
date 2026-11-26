@@ -29,6 +29,8 @@ export class CodexRenderer {
   private readonly rateLimit: HTMLElement;
   private readonly goal: HTMLElement;
   private readonly commandNotice: HTMLElement;
+  private readonly filePathStatus = document.getElementById("codex-file-path-status");
+  private filePathStatusTimer?: number;
   private readonly statusDock?: HTMLElement;
   private readonly fileSuggestions: HTMLElement;
   private readonly suggestionRenderer: CodexSuggestionRenderer;
@@ -341,9 +343,26 @@ export class CodexRenderer {
   /** Wires history scrolling and older-history pagination. */
   private setupHistoryControls(): void {
     this.history.addEventListener("click", (event) => {
-      const copyButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
-        ".codex-code-copy",
-      );
+      const target = event.target as Element;
+      const pathButton = target.closest<HTMLButtonElement>(".codex-file-path-copy");
+      const path = pathButton?.dataset.filePath;
+      if (pathButton && path) {
+        event.stopPropagation();
+        void copyTextToClipboard(path).then((copied) => {
+          pathButton.classList.toggle("codex-file-path-copied", copied);
+          const message = copied ? "Path copied" : "Could not copy path";
+          pathButton.title = message;
+          const status = this.filePathStatus;
+          if (!status) return;
+          status.textContent = message;
+          window.clearTimeout(this.filePathStatusTimer);
+          this.filePathStatusTimer = window.setTimeout(() => {
+            status.textContent = "";
+          }, 2500);
+        });
+        return;
+      }
+      const copyButton = target.closest<HTMLButtonElement>(".codex-code-copy");
       if (!copyButton || !this.history.contains(copyButton)) return;
       const code = copyButton.parentElement?.querySelector<HTMLElement>(":scope > code");
       if (!code) return;

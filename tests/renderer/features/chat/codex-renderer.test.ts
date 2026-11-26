@@ -18,7 +18,8 @@ jest.mock(
             /!\[([^\]]*)\]\((https?:[^ )]+)(?:\s+"([^"]*)")?\)/g,
             (_match, alt, src, title) =>
               `<img src="${src}" alt="${alt}"${title ? ` title="${title}"` : ""}>`,
-          )}</p>`,
+          )
+          .replace(/\[([^\]]+)\]\(([^ )]+)\)/g, '<a href="$2">$1</a>')}</p>`,
     },
   }),
   { virtual: true },
@@ -61,6 +62,7 @@ function makeRenderer(
     <div id="error"></div>
     <div id="rate-limit"></div>
     <div id="history"></div>
+    <div id="codex-file-path-status" role="status"></div>
     <div id="codex-status-dock" hidden>
       <div id="codex-command-notice" hidden></div>
       <div id="working"><span></span><span id="elapsed"></span></div>
@@ -373,6 +375,52 @@ test("opens Markdown images through the image opener", () => {
   expect(image).not.toBeNull();
   image?.click();
   expect(window.peskApi.openExternalUrl).toHaveBeenCalledWith("https://example.com/diagram.png");
+});
+
+test.each(["desktop", "web"])("copies Markdown file paths in %s chat", async (chat) => {
+  const { renderer, elements } = makeRenderer(defaultRendererState(), chat === "web");
+  const settings = defaultRendererState();
+  settings.codex.threads.current.thread.messages = [
+    {
+      role: "assistant",
+      text: [
+        "[Project client](/mnt/c/Pesk%20Workspace/projects.ts:79)",
+        "[Project validator](C:%5CWork%20Space%5Cprojects.ts:376)",
+        "[Docs](https://example.com/docs)",
+        "[Unsafe](javascript:alert)",
+        "[Protocol relative](//example.com/docs)",
+      ].join(" "),
+    },
+  ];
+  const writeText = jest.fn(async () => undefined);
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  try {
+    renderer.updateState(settings);
+    const buttons = elements.history.querySelectorAll<HTMLButtonElement>(".codex-file-path-copy");
+    expect(Array.from(buttons, (button) => button.textContent)).toEqual([
+      "Project client",
+      "Project validator",
+    ]);
+    buttons[0].click();
+    buttons[1].click();
+    expect(writeText.mock.calls).toEqual([
+      ["/mnt/c/Pesk Workspace/projects.ts:79"],
+      ["C:\\Work Space\\projects.ts:376"],
+    ]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(buttons[0].title).toBe("Path copied");
+    expect(document.getElementById("codex-file-path-status")?.textContent).toBe("Path copied");
+    expect(window.peskApi.openExternalUrl).not.toHaveBeenCalled();
+    expect(elements.history.querySelector(".codex-markdown a[href^='https:']")?.textContent).toBe(
+      "Docs",
+    );
+    expect(elements.history.querySelectorAll(".codex-markdown a[href]")).toHaveLength(1);
+  } finally {
+    if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+    else Reflect.deleteProperty(navigator, "clipboard");
+  }
 });
 
 test("does not replace rendered history with a stale shorter snapshot", () => {
