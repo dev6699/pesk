@@ -43,6 +43,8 @@ let credential = readCredential();
 let retryTimer: number | undefined;
 let retryDelay = 1000;
 let authenticated = false;
+let authenticationFailed = false;
+let suspendedSocket: WebSocket | undefined;
 let resolveInitialState: ((state: RendererState) => void) | undefined;
 let serviceWorkerRegistration: Promise<ServiceWorkerRegistration | undefined>;
 const initialState = new Promise<RendererState>((resolve) => {
@@ -222,12 +224,32 @@ function decodeBase64(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+const disconnectedRterm: RtermSnapshot = {
+  enabled: false,
+  state: "disconnected",
+  output: "",
+  hostLabel: "",
+  authFailed: false,
+};
+
+function settleDisconnectedRequests(): void {
+  for (const resolve of pendingFileSearches.values()) resolve([]);
+  pendingFileSearches.clear();
+  for (const resolve of pendingCommands.values()) resolve({ ok: false, state });
+  pendingCommands.clear();
+  for (const resolve of pendingRterm.values()) resolve({ ...disconnectedRterm });
+  pendingRterm.clear();
+  for (const resolve of pendingRtermUrls.values()) resolve("");
+  pendingRtermUrls.clear();
+}
+
 function connect(): void {
   setConnectionStatus("connecting");
   const connection = new WebSocket(
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/web-socket`,
   );
   socket = connection;
+  if (document.visibilityState === "hidden") suspendedSocket = connection;
 
   connection.addEventListener("open", () => {
     if (connection !== socket) return;
@@ -335,13 +357,9 @@ function connect(): void {
 
   connection.addEventListener("close", (event) => {
     if (connection !== socket) return;
-    for (const resolve of pendingFileSearches.values()) resolve([]);
-    pendingFileSearches.clear();
-    for (const resolve of pendingCommands.values()) {
-      resolve({ ok: false, state });
-    }
-    pendingCommands.clear();
+    settleDisconnectedRequests();
     if (event.code === 1008) {
+      authenticationFailed = true;
       clearCredential();
       setConnectionStatus("failed");
       showConnectionError("Web access authentication failed.");
@@ -359,17 +377,27 @@ function connect(): void {
   });
 }
 
+function markSocketSuspended(): void {
+  suspendedSocket = socket;
+}
+
 function reconnectImmediately(): void {
-  if (!socket) return;
+  if (!socket || authenticationFailed || document.visibilityState === "hidden") return;
+  const previous = socket;
+  const shouldReplace = previous === suspendedSocket;
+  suspendedSocket = undefined;
+  const active =
+    previous.readyState === WebSocket.OPEN || previous.readyState === WebSocket.CONNECTING;
+  if (active && !shouldReplace) return;
   if (retryTimer !== undefined) {
     window.clearTimeout(retryTimer);
     retryTimer = undefined;
   }
-  if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
-    return;
-  }
+  settleDisconnectedRequests();
   retryDelay = 1000;
   connect();
+  // Ignore events from the old transport before asking it to close.
+  if (active) previous.close();
 }
 
 const pairingCode = new URLSearchParams(location.search).get("code");
@@ -403,10 +431,14 @@ connectionStatus?.addEventListener("keydown", (event) => {
   event.preventDefault();
   location.reload();
 });
+window.addEventListener("blur", markSocketSuspended);
+window.addEventListener("focus", reconnectImmediately);
+window.addEventListener("pagehide", markSocketSuspended);
 window.addEventListener("pageshow", reconnectImmediately);
 window.addEventListener("online", reconnectImmediately);
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") reconnectImmediately();
+  if (document.visibilityState === "hidden") markSocketSuspended();
+  else reconnectImmediately();
 });
 
 function send(type: string, data: Record<string, unknown> = {}): void {
@@ -499,14 +531,7 @@ const webApi = {
   getRterm: async () => {
     const requestId = ++nextCommandId;
     await initialState;
-    if (socket.readyState !== WebSocket.OPEN)
-      return {
-        enabled: false,
-        state: "disconnected",
-        output: "",
-        hostLabel: "",
-        authFailed: false,
-      } as RtermSnapshot;
+    if (socket.readyState !== WebSocket.OPEN) return { ...disconnectedRterm };
     return new Promise<RtermSnapshot>((resolve) => {
       pendingRterm.set(requestId, resolve);
       send("getRterm", { requestId });
