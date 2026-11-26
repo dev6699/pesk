@@ -10,7 +10,6 @@ const project = {
   name: "Workspace",
   roots: [{ path: "/workspace" }],
   metadata: { team: "platform" },
-  position: 0,
   createdAt: 1,
   updatedAt: 2,
   recencyAt: null,

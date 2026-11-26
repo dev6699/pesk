@@ -394,7 +394,6 @@ function isProject(value: unknown): value is Project {
     Object.entries(metadata as Record<string, unknown>).every(
       ([key, value]) => nonEmpty(key) && typeof value === "string",
     ) &&
-    typeof project.position === "number" &&
     typeof project.createdAt === "number" &&
     typeof project.updatedAt === "number" &&
     (project.recencyAt === null || typeof project.recencyAt === "number")

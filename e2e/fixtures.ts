@@ -248,7 +248,6 @@ export class WebChatFixture {
           name: String(message.name ?? "New project"),
           roots: [{ path: String(message.root ?? "") }],
           metadata: {},
-          position: projects.length,
           createdAt: 1,
           updatedAt: 1,
           recencyAt: null,
@@ -274,7 +273,6 @@ export class WebChatFixture {
         if (index >= 0 && beforeIndex >= 0) {
           const [project] = projects.splice(index, 1);
           projects.splice(Math.min(beforeIndex, projects.length), 0, project);
-          projects.forEach((entry, position) => (entry.position = position));
         }
       } else if (message.type === "deleteProject") {
         nextState.codex.projects.items = projects.filter(

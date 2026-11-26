@@ -16,7 +16,6 @@ export interface FakeCodexProject {
   name: string;
   roots: Array<{ path: string }>;
   metadata: Record<string, string>;
-  position: number;
   createdAt: number;
   updatedAt: number;
   recencyAt: number | null;
@@ -348,7 +347,6 @@ export class FakeCodexAppServer {
             name: String(params.name ?? "Created project"),
             roots: Array.isArray(params.roots) ? (params.roots as Array<{ path: string }>) : [],
             metadata: (params.metadata ?? {}) as Record<string, string>,
-            position: this.projects.length,
             createdAt: 1,
             updatedAt: 1,
             recencyAt: null,
@@ -384,7 +382,6 @@ export class FakeCodexAppServer {
               ? this.projects.findIndex((entry) => entry.id === beforeProjectId)
               : this.projects.length;
             this.projects.splice(beforeIndex < 0 ? this.projects.length : beforeIndex, 0, project);
-            this.projects.forEach((entry, position) => (entry.position = position));
           }
           this.reply(socket, message.id, {});
           break;

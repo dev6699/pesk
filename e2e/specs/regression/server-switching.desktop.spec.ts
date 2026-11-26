@@ -43,7 +43,6 @@ test.describe("server switching with active threads", () => {
           name: "Server B project",
           roots: [{ path: "/tmp/server-b" }],
           metadata: {},
-          position: 0,
           createdAt: 1,
           updatedAt: 1,
           recencyAt: null,

@@ -10,7 +10,6 @@ const project = (id = "project-1", name = "Workspace") => ({
   name,
   roots: [{ path: "/workspace" }, { path: "/shared" }],
   metadata: {},
-  position: 0,
   createdAt: 1,
   updatedAt: 1,
   recencyAt: null,

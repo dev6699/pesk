@@ -18,7 +18,6 @@ test.describe("Electron Codex connection", () => {
       name: "Fixture project",
       roots: [{ path: "/tmp/pesk-e2e-workspace" }],
       metadata: {},
-      position: 0,
       createdAt: 1,
       updatedAt: 1,
       recencyAt: null,

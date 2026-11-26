@@ -220,7 +220,6 @@ interface CodexRuntimeState {
       name: string;
       roots: Array<{ path: string }>;
       metadata: { [key: string]: string | undefined };
-      position: number;
       createdAt: number;
       updatedAt: number;
       recencyAt: number | null;

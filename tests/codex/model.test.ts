@@ -28,6 +28,7 @@ function model(name: string): Model {
     additionalSpeedTiers: [],
     serviceTiers: [],
     defaultServiceTier: null,
+    availableAccessPrograms: null,
     isDefault: name === "gpt-first",
   };
 }
